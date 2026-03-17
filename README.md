@@ -1,6 +1,6 @@
 # SoPra RESTful Service Template FS26
 
-test sonar
+test sonar 2
 
 ## Getting started with Spring Boot
 -   Documentation: https://docs.spring.io/spring-boot/docs/current/reference/html/index.html
