@@ -59,9 +59,6 @@ public class Board {
         return ports;
     }
 
-    public void setHexTiles(List<String> hexTiles) {
-        this.hexTiles = hexTiles;
-    }
     public void setIntersections(List<Boolean> intersections) {
         this.intersections = intersections;
     }

@@ -7,15 +7,15 @@ public class GamePostDTO {
 
 	private Long id;
     private List<LobbyGetDTO> players;
-    private board.BoardGetDTO board;
+    private BoardGetDTO board;
     private Integer currentTurnIndex;
     private PlayerGetDTO currentPlayer;
-    private robber.RobberGetDTO robber;
-    private dice.DiceGetDTO dice;
+    private RobberGetDTO robber;
+    private DiceGetDTO dice;
     private Integer diceValue;
-    private developmentDeck.DevelopmentDeckGetDTO developmentDeck;
-    private longestRoad.PlayerGetDTO longestRoad;
-    private largestArmy.PlayerGetDTO largestArmy;
+    private DevelopmentDeckGetDTO developmentDeck;
+    private PlayerGetDTO longestRoad;
+    private PlayerGetDTO largestArmy;
     private Integer targetVictoryPoints;
     private LocalDateTime startedAt;
     private LocalDateTime finishedAt;
@@ -39,11 +39,11 @@ public class GamePostDTO {
         this.players = players;
     }
 
-    public board.BoardGetDTO getBoard() {
+    public BoardGetDTO getBoard() {
         return board;
     }
 
-    public void setBoard(board.BoardGetDTO board) {
+    public void setBoard(BoardGetDTO board) {
         this.board = board;
     }
 
@@ -63,19 +63,19 @@ public class GamePostDTO {
         this.currentPlayer = currentPlayer;
     }
 
-    public robber.RobberGetDTO getRobber() {
+    public RobberGetDTO getRobber() {
         return robber;
     }
 
-    public void setRobber(robber.RobberGetDTO robber) {
+    public void setRobber(RobberGetDTO robber) {
         this.robber = robber;
     }
 
-    public dice.DiceGetDTO getDice() {
+    public DiceGetDTO getDice() {
         return dice;
     }
 
-    public void setDice(dice.DiceGetDTO dice) {
+    public void setDice(DiceGetDTO dice) {
         this.dice = dice;
     }
 
@@ -87,27 +87,27 @@ public class GamePostDTO {
         this.diceValue = diceValue;
     }
 
-    public developmentDeck.DevelopmentDeckGetDTO getDevelopmentDeck() {
+    public DevelopmentDeckGetDTO getDevelopmentDeck() {
         return developmentDeck;
     }
 
-    public void setDevelopmentDeck(developmentDeck.DevelopmentDeckGetDTO developmentDeck) {
+    public void setDevelopmentDeck(DevelopmentDeckGetDTO developmentDeck) {
         this.developmentDeck = developmentDeck;
     }
 
-    public longestRoad.PlayerGetDTO getLongestRoad() {
+    public PlayerGetDTO getLongestRoad() {
         return longestRoad;
     }
 
-    public void setLongestRoad(longestRoad.PlayerGetDTO longestRoad) {
+    public void setLongestRoad(PlayerGetDTO longestRoad) {
         this.longestRoad = longestRoad;
     }
 
-    public largestArmy.PlayerGetDTO getLargestArmy() {
+    public PlayerGetDTO getLargestArmy() {
         return largestArmy;
     }
 
-    public void setLargestArmy(largestArmy.PlayerGetDTO largestArmy) {
+    public void setLargestArmy(PlayerGetDTO largestArmy) {
         this.largestArmy = largestArmy;
     }
 

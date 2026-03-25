@@ -12,52 +12,52 @@ public class Game{
 	@GeneratedValue
 	private Long id;
 
-    @Players
+    @Column
     private List<Player> players;
 
-    @Board
+    @Column
     private Board board;
 
-    @CurrentTurnIndex
+    @Column
     private Integer currentTurnIndex;
 
-    @CurrentPlayer
+    @Column
     private Player currentPlayer;
 
-    @Robber
+    @Column
     private Robber robber;
 
-    @Dice
+    @Column
     private Dice dice;
 
-    @DiceValue
+    @Column
     private Integer diceValue;
 
-    @DevelopmentDeck
+    @Column
     private DevelopmentDeck developmentDeck;
 
-    @LongestRoad
+    @Column
     private Player longestRoad;
 
-    @LargestArmy
+    @Column
     private Player largestArmy;
 
-    @TargetVictoryPoints
+    @Column
     private Integer targetVictoryPoints;
 
-    @StartedAt
+    @Column
     private LocalDateTime startedAt;
 
-    @FinishedAt
+    @Column
     private LocalDateTime finishedAt;
 
-    @Winner
+    @Column
     private Player winner;
 
-    @EventLog
+    @Column
     private List<String> eventLog;
 
-    @ChatMessages
+    @Column
     private List<String> chatMessages;
 
 	public Long getId() {
