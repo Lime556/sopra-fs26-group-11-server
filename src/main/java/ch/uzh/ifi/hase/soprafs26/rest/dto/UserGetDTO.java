@@ -5,9 +5,9 @@ import ch.uzh.ifi.hase.soprafs26.constant.UserStatus;
 public class UserGetDTO {
 
 	private Long id;
-	private String name;
 	private String username;
-	private UserStatus status;
+	private UserStatus userStatus;
+	private double winRate;
 
 	public Long getId() {
 		return id;
@@ -15,14 +15,6 @@ public class UserGetDTO {
 
 	public void setId(Long id) {
 		this.id = id;
-	}
-
-	public String getName() {
-		return name;
-	}
-
-	public void setName(String name) {
-		this.name = name;
 	}
 
 	public String getUsername() {
@@ -33,11 +25,19 @@ public class UserGetDTO {
 		this.username = username;
 	}
 
-	public UserStatus getStatus() {
-		return status;
+	public UserStatus getUserStatus() {
+		return userStatus;
 	}
 
-	public void setStatus(UserStatus status) {
-		this.status = status;
+	public void setUserStatus(UserStatus userStatus) {
+		this.userStatus = userStatus;
+	}
+
+	public double getWinRate() {
+		return winRate;
+	}
+
+	public void setWinRate(double winRate) {
+		this.winRate = winRate;
 	}
 }

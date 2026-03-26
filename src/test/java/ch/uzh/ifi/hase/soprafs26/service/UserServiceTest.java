@@ -31,56 +31,56 @@ public class UserServiceTest {
 		// given
 		testUser = new User();
 		testUser.setId(1L);
-		testUser.setName("testName");
 		testUser.setUsername("testUsername");
+        testUser.setPasswordHash("testPassword");
 
 		// when -> any object is being save in the userRepository -> return the dummy
 		// testUser
-		Mockito.when(userRepository.save(Mockito.any())).thenReturn(testUser);
+		Mockito.when(userRepository.save(Mockito.any(User.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 	}
 
-	@Test
-	public void createUser_validInputs_success() {
-		// when -> any object is being save in the userRepository -> return the dummy
-		// testUser
-		User createdUser = userService.createUser(testUser);
+    @Test
+    public void createUser_validInputs_success() {
+        Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(null);
 
-		// then
-		Mockito.verify(userRepository, Mockito.times(1)).save(Mockito.any());
+        User createdUser = userService.createUser(testUser);
 
-		assertEquals(testUser.getId(), createdUser.getId());
-		assertEquals(testUser.getName(), createdUser.getName());
-		assertEquals(testUser.getUsername(), createdUser.getUsername());
-		assertNotNull(createdUser.getToken());
-		assertEquals(UserStatus.OFFLINE, createdUser.getStatus());
-	}
+        Mockito.verify(userRepository, Mockito.times(1)).save(Mockito.any());
+        Mockito.verify(userRepository, Mockito.times(1)).flush();
 
-	@Test
-	public void createUser_duplicateName_throwsException() {
-		// given -> a first user has already been created
-		userService.createUser(testUser);
+        assertEquals(testUser.getUsername(), createdUser.getUsername());
+        assertEquals(testUser.getPasswordHash(), createdUser.getPasswordHash());
+        assertNotNull(createdUser.getToken());
+        assertNotNull(createdUser.getCreationDate());
+        assertEquals(UserStatus.ONLINE, createdUser.getUserStatus());
+        assertEquals(0.0, createdUser.getWinRate());
+    }
 
-		// when -> setup additional mocks for UserRepository
-		Mockito.when(userRepository.findByName(Mockito.any())).thenReturn(testUser);
-		Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(null);
 
-		// then -> attempt to create second user with same user -> check that an error
-		// is thrown
-		assertThrows(ResponseStatusException.class, () -> userService.createUser(testUser));
-	}
+    @Test
+    public void createUser_duplicateUsername_throwsException() {
+        Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(testUser);
 
-	@Test
-	public void createUser_duplicateInputs_throwsException() {
-		// given -> a first user has already been created
-		userService.createUser(testUser);
+        assertThrows(ResponseStatusException.class, () -> userService.createUser(testUser));
+    }
 
-		// when -> setup additional mocks for UserRepository
-		Mockito.when(userRepository.findByName(Mockito.any())).thenReturn(testUser);
-		Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(testUser);
+    @Test
+    public void createUser_emptyUsername_throwsException() {
+        User invalidUser = new User();
+        invalidUser.setUsername("");
+        invalidUser.setPasswordHash("testPassword");
 
-		// then -> attempt to create second user with same user -> check that an error
-		// is thrown
-		assertThrows(ResponseStatusException.class, () -> userService.createUser(testUser));
-	}
+        assertThrows(ResponseStatusException.class, () -> userService.createUser(invalidUser));
+    }
+
+    @Test
+    public void createUser_emptyPassword_throwsException() {
+        User invalidUser = new User();
+        invalidUser.setUsername("testUsername");
+        invalidUser.setPasswordHash("");
+
+        assertThrows(ResponseStatusException.class, () -> userService.createUser(invalidUser));
+    }
 
 }

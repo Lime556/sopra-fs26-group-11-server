@@ -39,39 +39,40 @@ public class UserServiceIntegrationTest {
 	public void createUser_validInputs_success() {
 		// given
 		assertNull(userRepository.findByUsername("testUsername"));
-
+	
 		User testUser = new User();
-		testUser.setName("testName");
 		testUser.setUsername("testUsername");
-
+		testUser.setPasswordHash("testPassword");
+	
 		// when
 		User createdUser = userService.createUser(testUser);
-
+	
 		// then
-		assertEquals(testUser.getId(), createdUser.getId());
-		assertEquals(testUser.getName(), createdUser.getName());
+		assertNotNull(createdUser.getId());
 		assertEquals(testUser.getUsername(), createdUser.getUsername());
+		assertEquals(testUser.getPasswordHash(), createdUser.getPasswordHash());
 		assertNotNull(createdUser.getToken());
-		assertEquals(UserStatus.OFFLINE, createdUser.getStatus());
+		assertNotNull(createdUser.getCreationDate());
+		assertEquals(UserStatus.ONLINE, createdUser.getUserStatus());
+		assertEquals(0.0, createdUser.getWinRate());
 	}
 
 	@Test
 	public void createUser_duplicateUsername_throwsException() {
+		// given
 		assertNull(userRepository.findByUsername("testUsername"));
-
+	
 		User testUser = new User();
-		testUser.setName("testName");
 		testUser.setUsername("testUsername");
+		testUser.setPasswordHash("testPassword");
 		userService.createUser(testUser);
-
+	
 		// attempt to create second user with same username
 		User testUser2 = new User();
-
-		// change the name but forget about the username
-		testUser2.setName("testName2");
 		testUser2.setUsername("testUsername");
-
-		// check that an error is thrown
+		testUser2.setPasswordHash("anotherPassword");
+	
+		// then
 		assertThrows(ResponseStatusException.class, () -> userService.createUser(testUser2));
 	}
 }
