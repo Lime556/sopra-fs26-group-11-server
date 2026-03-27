@@ -34,12 +34,14 @@ public class UserServiceTest {
 		testUser.setUsername("testUsername");
         testUser.setPasswordHash("testPassword");
 
-		// when -> any object is being save in the userRepository -> return the dummy
-		// testUser
+		// mock repository save to return the saved user
 		Mockito.when(userRepository.save(Mockito.any(User.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 	}
 
+
+
+	// User creation tests
     @Test
     public void createUser_validInputs_success() {
         Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(null);
@@ -86,8 +88,6 @@ public class UserServiceTest {
 	@Test
 	public void createUser_usernameWithLeadingTrailingSpaces_trimmed() {
 		Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(null);
-		Mockito.when(userRepository.save(Mockito.any(User.class)))
-				.thenAnswer(invocation -> invocation.getArgument(0));
 
 		User user = new User();
 		user.setUsername("  testUsername  ");
@@ -105,6 +105,57 @@ public class UserServiceTest {
 		invalidUser.setPasswordHash("testPassword");
 
 		assertThrows(ResponseStatusException.class, () -> userService.createUser(invalidUser));
+	}
+
+
+
+
+	// Authentication tests
+	@Test
+	public void authenticate_validToken_success() {
+		User onlineUser = new User();
+		onlineUser.setId(1L);
+		onlineUser.setUsername("testUsername");
+		onlineUser.setToken("valid-token");
+		onlineUser.setUserStatus(UserStatus.ONLINE);
+
+		Mockito.when(userRepository.findByToken("valid-token")).thenReturn(onlineUser);
+
+		User authenticatedUser = userService.authenticate("valid-token");
+
+		assertEquals(onlineUser.getId(), authenticatedUser.getId());
+		assertEquals(onlineUser.getUsername(), authenticatedUser.getUsername());
+		assertEquals(onlineUser.getToken(), authenticatedUser.getToken());
+	}
+
+	@Test
+	public void authenticate_nullToken_throwsException() {
+		assertThrows(ResponseStatusException.class, () -> userService.authenticate(null));
+	}
+
+	@Test
+	public void authenticate_blankToken_throwsException() {
+		assertThrows(ResponseStatusException.class, () -> userService.authenticate("   "));
+	}
+
+	@Test
+	public void authenticate_unknownToken_throwsException() {
+		Mockito.when(userRepository.findByToken("unknown-token")).thenReturn(null);
+
+		assertThrows(ResponseStatusException.class, () -> userService.authenticate("unknown-token"));
+	}
+
+	@Test
+	public void authenticate_offlineUser_throwsException() {
+		User offlineUser = new User();
+		offlineUser.setId(1L);
+		offlineUser.setUsername("testUsername");
+		offlineUser.setToken("offline-token");
+		offlineUser.setUserStatus(UserStatus.OFFLINE);
+
+		Mockito.when(userRepository.findByToken("offline-token")).thenReturn(offlineUser);
+
+		assertThrows(ResponseStatusException.class, () -> userService.authenticate("offline-token"));
 	}
 
 }

@@ -4,6 +4,7 @@ import org.mapstruct.*;
 import org.mapstruct.factory.Mappers;
 
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.UserAuthDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserPostDTO;
 
@@ -32,4 +33,6 @@ public interface DTOMapper {
 	User convertUserPostDTOtoEntity(UserPostDTO userPostDTO);
 
 	UserGetDTO convertEntityToUserGetDTO(User user);
+
+	UserAuthDTO convertEntityToUserAuthDTO(User user);
 }

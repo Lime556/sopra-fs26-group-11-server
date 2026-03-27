@@ -46,23 +46,34 @@ public class UserControllerTest {
 	@MockitoBean
 	private UserService userService;
 
+
+
+	// GET /users tests
 	@Test
 	public void givenUsers_whenGetUsers_thenReturnJsonArray() throws Exception {
 		// given
+		String token = "valid-token";
+	
+		User authUser = new User();
+		authUser.setId(99L);
+		authUser.setUsername("authenticatedUser");
+		authUser.setUserStatus(UserStatus.ONLINE);
+	
 		User user = new User();
 		user.setUsername("firstname@lastname");
 		user.setUserStatus(UserStatus.OFFLINE);
 		user.setWinRate(0.0);
-
+	
 		List<User> allUsers = Collections.singletonList(user);
-
-		// this mocks the UserService -> we define above what the userService should
-		// return when getUsers() is called
+	
+		given(userService.authenticate(token)).willReturn(authUser);
 		given(userService.getUsers()).willReturn(allUsers);
-
+	
 		// when
-		MockHttpServletRequestBuilder getRequest = get("/users").contentType(MediaType.APPLICATION_JSON);
-
+		MockHttpServletRequestBuilder getRequest = get("/users")
+				.header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON);
+	
 		// then
 		mockMvc.perform(getRequest).andExpect(status().isOk())
 				.andExpect(jsonPath("$", hasSize(1)))
@@ -71,6 +82,42 @@ public class UserControllerTest {
 				.andExpect(jsonPath("$[0].winRate", is(user.getWinRate())));
 	}
 
+	@Test
+	public void givenNoToken_whenGetUsers_thenReturnUnauthorized() throws Exception {
+		// given
+		given(userService.authenticate(Mockito.isNull()))
+				.willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"));
+		
+		// when
+		MockHttpServletRequestBuilder getRequest = get("/users")
+				.contentType(MediaType.APPLICATION_JSON);
+		
+		// then
+		mockMvc.perform(getRequest)
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	public void givenInvalidToken_whenGetUsers_thenReturnUnauthorized() throws Exception {
+		String token = "invalid-token";
+
+		// given
+		given(userService.authenticate(token))
+				.willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"));
+
+		// when
+		MockHttpServletRequestBuilder getRequest = get("/users")
+				.header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON);
+
+		// then
+		mockMvc.perform(getRequest)
+				.andExpect(status().isUnauthorized());
+	}
+
+
+
+	// POST /users tests
 	@Test
 	public void createUser_validInput_userCreated() throws Exception {
 		// given
@@ -98,8 +145,31 @@ public class UserControllerTest {
 				.andExpect(jsonPath("$.id", is(user.getId().intValue())))
 				.andExpect(jsonPath("$.username", is(user.getUsername())))
 				.andExpect(jsonPath("$.userStatus", is(user.getUserStatus().toString())))
-				.andExpect(jsonPath("$.winRate", is(user.getWinRate())));
+				.andExpect(jsonPath("$.winRate", is(user.getWinRate())))
+				.andExpect(jsonPath("$.token", is(user.getToken())));
 	}
+
+	@Test
+	public void createUser_duplicateUsername_returnsBadRequest() throws Exception {
+		UserPostDTO userPostDTO = new UserPostDTO();
+		userPostDTO.setUsername("testUsername");
+		userPostDTO.setPassword("testPassword");
+
+		// given
+		given(userService.createUser(Mockito.any()))
+				.willThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "username is not unique"));
+
+		// when
+		MockHttpServletRequestBuilder postRequest = post("/users")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(asJsonString(userPostDTO));
+
+		// then
+		mockMvc.perform(postRequest)
+				.andExpect(status().isBadRequest());
+	}
+
+
 
 	/**
 	 * Helper Method to convert userPostDTO into a JSON string such that the input

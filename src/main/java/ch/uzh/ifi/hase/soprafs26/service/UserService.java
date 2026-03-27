@@ -45,7 +45,7 @@ public class UserService {
 		}
 
 		newUser.setUsername(newUser.getUsername().trim());
-		
+
 		if (newUser.getPasswordHash() == null || newUser.getPasswordHash().isBlank()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "password must not be empty");
 		}
@@ -81,5 +81,22 @@ public class UserService {
 		if (userByUsername != null) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, String.format(baseErrorMessage, "username", "is"));
 		}
+	}
+
+	public User authenticate(String token) {
+		if (token == null || token.isBlank()) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+
+		User user = userRepository.findByToken(token);
+		if (user == null) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+
+		if (user.getUserStatus() != UserStatus.ONLINE) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+
+		return user;
 	}
 }

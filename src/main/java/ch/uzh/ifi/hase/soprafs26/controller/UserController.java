@@ -4,6 +4,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.UserAuthDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserPostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.mapper.DTOMapper;
@@ -31,7 +32,10 @@ public class UserController {
 	@GetMapping("/users")
 	@ResponseStatus(HttpStatus.OK)
 	@ResponseBody
-	public List<UserGetDTO> getAllUsers() {
+	public List<UserGetDTO> getAllUsers(
+		@RequestHeader(value = "Authorization", required = false) String token
+	) {
+		userService.authenticate(token);
 		// fetch all users in the internal representation
 		List<User> users = userService.getUsers();
 		List<UserGetDTO> userGetDTOs = new ArrayList<>();
@@ -46,13 +50,13 @@ public class UserController {
 	@PostMapping("/users")
 	@ResponseStatus(HttpStatus.CREATED)
 	@ResponseBody
-	public UserGetDTO createUser(@RequestBody UserPostDTO userPostDTO) {
+	public UserAuthDTO createUser(@RequestBody UserPostDTO userPostDTO) {
 		// convert API user to internal representation
 		User userInput = DTOMapper.INSTANCE.convertUserPostDTOtoEntity(userPostDTO);
 
 		// create user
 		User createdUser = userService.createUser(userInput);
 		// convert internal representation of user back to API
-		return DTOMapper.INSTANCE.convertEntityToUserGetDTO(createdUser);
+		return DTOMapper.INSTANCE.convertEntityToUserAuthDTO(createdUser);
 	}
 }
