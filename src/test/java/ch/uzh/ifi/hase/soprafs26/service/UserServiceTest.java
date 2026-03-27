@@ -83,4 +83,28 @@ public class UserServiceTest {
         assertThrows(ResponseStatusException.class, () -> userService.createUser(invalidUser));
     }
 
+	@Test
+	public void createUser_usernameWithLeadingTrailingSpaces_trimmed() {
+		Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(null);
+		Mockito.when(userRepository.save(Mockito.any(User.class)))
+				.thenAnswer(invocation -> invocation.getArgument(0));
+
+		User user = new User();
+		user.setUsername("  testUsername  ");
+		user.setPasswordHash("testPassword");
+
+		User createdUser = userService.createUser(user);
+
+		assertEquals("testUsername", createdUser.getUsername());
+	}
+
+	@Test
+	public void createUser_nullUsername_throwsException() {
+		User invalidUser = new User();
+		invalidUser.setUsername(null);
+		invalidUser.setPasswordHash("testPassword");
+
+		assertThrows(ResponseStatusException.class, () -> userService.createUser(invalidUser));
+	}
+
 }
