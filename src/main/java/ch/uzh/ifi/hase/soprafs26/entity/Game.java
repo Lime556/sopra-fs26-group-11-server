@@ -1,8 +1,14 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
-import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.List;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 @Entity
 @Table(name = "Game")
@@ -12,34 +18,34 @@ public class Game{
 	@GeneratedValue
 	private Long id;
 
-    @Column
+    @Transient
     private List<Player> players;
 
-    @Column
+    @Transient
     private Board board;
 
     @Column
     private Integer currentTurnIndex;
 
-    @Column
+    @Transient
     private Player currentPlayer;
 
-    @Column
+    @Transient
     private Robber robber;
 
-    @Column
+    @Transient
     private Dice dice;
 
     @Column
     private Integer diceValue;
 
-    @Column
+    @Transient
     private DevelopmentDeck developmentDeck;
 
-    @Column
+    @Transient
     private Player longestRoad;
 
-    @Column
+    @Transient
     private Player largestArmy;
 
     @Column
@@ -51,13 +57,13 @@ public class Game{
     @Column
     private LocalDateTime finishedAt;
 
-    @Column
+    @Transient
     private Player winner;
 
-    @Column
+    @Transient
     private List<String> eventLog;
 
-    @Column
+    @Transient
     private List<String> chatMessages;
 
 	public Long getId() {
