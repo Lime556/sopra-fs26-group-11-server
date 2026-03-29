@@ -99,4 +99,21 @@ public class UserService {
 
 		return user;
 	}
+
+	public User login(User loginUser) {
+		User user = userRepository.findByUsername(loginUser.getUsername());
+
+		if (user == null) {
+			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+		}
+
+		if (!user.getPasswordHash().equals(loginUser.getPasswordHash())) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid password");
+		}
+		
+		user.setToken(UUID.randomUUID().toString());
+		userRepository.save(user);
+
+		return user;
+	}
 }
