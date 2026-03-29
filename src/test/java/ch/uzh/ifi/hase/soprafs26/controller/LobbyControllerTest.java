@@ -95,6 +95,7 @@ public class LobbyControllerTest {
         MockHttpServletRequestBuilder postRequest = post("/lobbies")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(asJsonString(lobbyPostDTO));
+    }
     public void joinLobby_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
