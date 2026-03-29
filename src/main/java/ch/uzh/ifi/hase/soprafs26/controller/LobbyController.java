@@ -4,12 +4,14 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
@@ -17,9 +19,6 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.mapper.DTOMapper;
 import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 public class LobbyController {
@@ -47,7 +46,8 @@ public class LobbyController {
                 lobbyPostDTO == null ? null : lobbyPostDTO.getCapacity(),
                 lobbyPostDTO == null ? null : lobbyPostDTO.getPassword());
         return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(createdLobby);
-        
+    }
+    
     @PostMapping("/lobbies/{lobbyId}/join")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
