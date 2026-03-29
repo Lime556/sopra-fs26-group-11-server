@@ -11,6 +11,8 @@ import ch.uzh.ifi.hase.soprafs26.entity.User;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import java.time.Instant;
+
 @DataJpaTest
 public class UserRepositoryIntegrationTest {
 
@@ -21,25 +23,27 @@ public class UserRepositoryIntegrationTest {
 	private UserRepository userRepository;
 
 	@Test
-	public void findByName_success() {
+	public void findByUsername_success() {
 		// given
 		User user = new User();
-		user.setName("Firstname Lastname");
 		user.setUsername("firstname@lastname");
-		user.setStatus(UserStatus.OFFLINE);
+		user.setPasswordHash("testPassword");
+		user.setUserStatus(UserStatus.OFFLINE);
 		user.setToken("1");
+		user.setCreationDate(Instant.now());
+		user.setWinRate(0.0);
 
 		entityManager.persist(user);
 		entityManager.flush();
 
 		// when
-		User found = userRepository.findByName(user.getName());
+		User found = userRepository.findByUsername(user.getUsername());
 
 		// then
 		assertNotNull(found.getId());
-		assertEquals(found.getName(), user.getName());
 		assertEquals(found.getUsername(), user.getUsername());
 		assertEquals(found.getToken(), user.getToken());
-		assertEquals(found.getStatus(), user.getStatus());
+		assertEquals(found.getUserStatus(), user.getUserStatus());
+		assertEquals(found.getWinRate(), user.getWinRate());
 	}
 }

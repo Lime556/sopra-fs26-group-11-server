@@ -2,12 +2,13 @@ package ch.uzh.ifi.hase.soprafs26.rest.dto;
 
 import ch.uzh.ifi.hase.soprafs26.constant.UserStatus;
 
-public class UserGetDTO {
+public class UserAuthDTO {
 
 	private Long id;
 	private String username;
 	private UserStatus userStatus;
 	private double winRate;
+    private String token;
 
 	public Long getId() {
 		return id;
@@ -40,4 +41,12 @@ public class UserGetDTO {
 	public void setWinRate(double winRate) {
 		this.winRate = winRate;
 	}
+
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
+    }
 }
