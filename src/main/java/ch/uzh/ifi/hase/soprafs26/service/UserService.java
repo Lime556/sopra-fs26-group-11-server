@@ -12,6 +12,7 @@ import ch.uzh.ifi.hase.soprafs26.constant.UserStatus;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,9 +40,21 @@ public class UserService {
 	}
 
 	public User createUser(User newUser) {
-		newUser.setToken(UUID.randomUUID().toString());
-		newUser.setStatus(UserStatus.OFFLINE);
+		if (newUser.getUsername() == null || newUser.getUsername().isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "username must not be empty");
+		}
+
+		newUser.setUsername(newUser.getUsername().trim());
+
+		if (newUser.getPasswordHash() == null || newUser.getPasswordHash().isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "password must not be empty");
+		}
+
 		checkIfUserExists(newUser);
+		newUser.setToken(UUID.randomUUID().toString());
+		newUser.setUserStatus(UserStatus.ONLINE);
+		newUser.setCreationDate(Instant.now());
+		newUser.setWinRate(0.0);
 		// saves the given entity but data is only persisted in the database once
 		// flush() is called
 		newUser = userRepository.save(newUser);
@@ -63,16 +76,44 @@ public class UserService {
 	 */
 	private void checkIfUserExists(User userToBeCreated) {
 		User userByUsername = userRepository.findByUsername(userToBeCreated.getUsername());
-		User userByName = userRepository.findByName(userToBeCreated.getName());
 
 		String baseErrorMessage = "The %s provided %s not unique. Therefore, the user could not be created!";
-		if (userByUsername != null && userByName != null) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-					String.format(baseErrorMessage, "username and the name", "are"));
-		} else if (userByUsername != null) {
+		if (userByUsername != null) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, String.format(baseErrorMessage, "username", "is"));
-		} else if (userByName != null) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, String.format(baseErrorMessage, "name", "is"));
 		}
+	}
+
+	public User authenticate(String token) {
+		if (token == null || token.isBlank()) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+
+		User user = userRepository.findByToken(token);
+		if (user == null) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+
+		if (user.getUserStatus() != UserStatus.ONLINE) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+
+		return user;
+	}
+
+	public User login(User loginUser) {
+		User user = userRepository.findByUsername(loginUser.getUsername());
+
+		if (user == null) {
+			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+		}
+
+		if (!user.getPasswordHash().equals(loginUser.getPasswordHash())) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid password");
+		}
+		
+		user.setToken(UUID.randomUUID().toString());
+		userRepository.save(user);
+
+		return user;
 	}
 }

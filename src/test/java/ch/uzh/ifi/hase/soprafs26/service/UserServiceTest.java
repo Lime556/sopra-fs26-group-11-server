@@ -31,56 +31,131 @@ public class UserServiceTest {
 		// given
 		testUser = new User();
 		testUser.setId(1L);
-		testUser.setName("testName");
 		testUser.setUsername("testUsername");
+        testUser.setPasswordHash("testPassword");
 
-		// when -> any object is being save in the userRepository -> return the dummy
-		// testUser
-		Mockito.when(userRepository.save(Mockito.any())).thenReturn(testUser);
+		// mock repository save to return the saved user
+		Mockito.when(userRepository.save(Mockito.any(User.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 	}
 
+
+
+	// User creation tests
+    @Test
+    public void createUser_validInputs_success() {
+        Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(null);
+
+        User createdUser = userService.createUser(testUser);
+
+        Mockito.verify(userRepository, Mockito.times(1)).save(Mockito.any());
+        Mockito.verify(userRepository, Mockito.times(1)).flush();
+
+        assertEquals(testUser.getUsername(), createdUser.getUsername());
+        assertEquals(testUser.getPasswordHash(), createdUser.getPasswordHash());
+        assertNotNull(createdUser.getToken());
+        assertNotNull(createdUser.getCreationDate());
+        assertEquals(UserStatus.ONLINE, createdUser.getUserStatus());
+        assertEquals(0.0, createdUser.getWinRate());
+    }
+
+
+    @Test
+    public void createUser_duplicateUsername_throwsException() {
+        Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(testUser);
+
+        assertThrows(ResponseStatusException.class, () -> userService.createUser(testUser));
+    }
+
+    @Test
+    public void createUser_emptyUsername_throwsException() {
+        User invalidUser = new User();
+        invalidUser.setUsername("");
+        invalidUser.setPasswordHash("testPassword");
+
+        assertThrows(ResponseStatusException.class, () -> userService.createUser(invalidUser));
+    }
+
+    @Test
+    public void createUser_emptyPassword_throwsException() {
+        User invalidUser = new User();
+        invalidUser.setUsername("testUsername");
+        invalidUser.setPasswordHash("");
+
+        assertThrows(ResponseStatusException.class, () -> userService.createUser(invalidUser));
+    }
+
 	@Test
-	public void createUser_validInputs_success() {
-		// when -> any object is being save in the userRepository -> return the dummy
-		// testUser
-		User createdUser = userService.createUser(testUser);
-
-		// then
-		Mockito.verify(userRepository, Mockito.times(1)).save(Mockito.any());
-
-		assertEquals(testUser.getId(), createdUser.getId());
-		assertEquals(testUser.getName(), createdUser.getName());
-		assertEquals(testUser.getUsername(), createdUser.getUsername());
-		assertNotNull(createdUser.getToken());
-		assertEquals(UserStatus.OFFLINE, createdUser.getStatus());
-	}
-
-	@Test
-	public void createUser_duplicateName_throwsException() {
-		// given -> a first user has already been created
-		userService.createUser(testUser);
-
-		// when -> setup additional mocks for UserRepository
-		Mockito.when(userRepository.findByName(Mockito.any())).thenReturn(testUser);
+	public void createUser_usernameWithLeadingTrailingSpaces_trimmed() {
 		Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(null);
 
-		// then -> attempt to create second user with same user -> check that an error
-		// is thrown
-		assertThrows(ResponseStatusException.class, () -> userService.createUser(testUser));
+		User user = new User();
+		user.setUsername("  testUsername  ");
+		user.setPasswordHash("testPassword");
+
+		User createdUser = userService.createUser(user);
+
+		assertEquals("testUsername", createdUser.getUsername());
 	}
 
 	@Test
-	public void createUser_duplicateInputs_throwsException() {
-		// given -> a first user has already been created
-		userService.createUser(testUser);
+	public void createUser_nullUsername_throwsException() {
+		User invalidUser = new User();
+		invalidUser.setUsername(null);
+		invalidUser.setPasswordHash("testPassword");
 
-		// when -> setup additional mocks for UserRepository
-		Mockito.when(userRepository.findByName(Mockito.any())).thenReturn(testUser);
-		Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(testUser);
+		assertThrows(ResponseStatusException.class, () -> userService.createUser(invalidUser));
+	}
 
-		// then -> attempt to create second user with same user -> check that an error
-		// is thrown
-		assertThrows(ResponseStatusException.class, () -> userService.createUser(testUser));
+
+
+
+	// Authentication tests
+	@Test
+	public void authenticate_validToken_success() {
+		User onlineUser = new User();
+		onlineUser.setId(1L);
+		onlineUser.setUsername("testUsername");
+		onlineUser.setToken("valid-token");
+		onlineUser.setUserStatus(UserStatus.ONLINE);
+
+		Mockito.when(userRepository.findByToken("valid-token")).thenReturn(onlineUser);
+
+		User authenticatedUser = userService.authenticate("valid-token");
+
+		assertEquals(onlineUser.getId(), authenticatedUser.getId());
+		assertEquals(onlineUser.getUsername(), authenticatedUser.getUsername());
+		assertEquals(onlineUser.getToken(), authenticatedUser.getToken());
+	}
+
+	@Test
+	public void authenticate_nullToken_throwsException() {
+		assertThrows(ResponseStatusException.class, () -> userService.authenticate(null));
+	}
+
+	@Test
+	public void authenticate_blankToken_throwsException() {
+		assertThrows(ResponseStatusException.class, () -> userService.authenticate("   "));
+	}
+
+	@Test
+	public void authenticate_unknownToken_throwsException() {
+		Mockito.when(userRepository.findByToken("unknown-token")).thenReturn(null);
+
+		assertThrows(ResponseStatusException.class, () -> userService.authenticate("unknown-token"));
+	}
+
+	@Test
+	public void authenticate_offlineUser_throwsException() {
+		User offlineUser = new User();
+		offlineUser.setId(1L);
+		offlineUser.setUsername("testUsername");
+		offlineUser.setToken("offline-token");
+		offlineUser.setUserStatus(UserStatus.OFFLINE);
+
+		Mockito.when(userRepository.findByToken("offline-token")).thenReturn(offlineUser);
+
+		assertThrows(ResponseStatusException.class, () -> userService.authenticate("offline-token"));
 	}
 
 }
