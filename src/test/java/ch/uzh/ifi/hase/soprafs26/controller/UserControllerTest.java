@@ -63,6 +63,7 @@ public class UserControllerTest {
 		user.setUsername("firstname@lastname");
 		user.setUserStatus(UserStatus.OFFLINE);
 		user.setWinRate(0.0);
+		user.setEmail("test@email.com");
 	
 		List<User> allUsers = Collections.singletonList(user);
 	
@@ -127,6 +128,7 @@ public class UserControllerTest {
 		user.setToken("1");
 		user.setUserStatus(UserStatus.ONLINE);
 		user.setWinRate(0.0);
+		user.setEmail("test@email.com");
 
 		UserPostDTO userPostDTO = new UserPostDTO();
 		userPostDTO.setUsername("testUsername");
@@ -168,6 +170,7 @@ public class UserControllerTest {
 		mockMvc.perform(postRequest)
 				.andExpect(status().isBadRequest());
 	}
+	
 
 
 

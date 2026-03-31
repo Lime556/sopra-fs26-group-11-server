@@ -45,6 +45,9 @@ public class User implements Serializable {
 	@Column(nullable = false)
 	private double winRate;
 
+	@Column(nullable = false)
+	private String email;
+
 	
 	public Long getId() {
 		return id;
@@ -100,5 +103,13 @@ public class User implements Serializable {
 
 	public void setWinRate(double winRate) {
 		this.winRate = winRate;
+	}
+
+	public String getEmail() {
+		return email;
+	}
+
+	public void setEmail(String email) {
+		this.email = email;
 	}
 }

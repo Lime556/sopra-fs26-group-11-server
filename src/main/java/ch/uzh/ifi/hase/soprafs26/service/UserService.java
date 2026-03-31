@@ -46,6 +46,10 @@ public class UserService {
 
 		newUser.setUsername(newUser.getUsername().trim());
 
+		if (newUser.getEmail() == null || newUser.getEmail().isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email must not be empty");
+		}
+
 		if (newUser.getPasswordHash() == null || newUser.getPasswordHash().isBlank()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "password must not be empty");
 		}
