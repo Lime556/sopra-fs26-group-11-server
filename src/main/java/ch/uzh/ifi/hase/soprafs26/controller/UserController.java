@@ -71,4 +71,10 @@ public class UserController {
 
 		return DTOMapper.INSTANCE.convertEntityToUserAuthDTO(authenticatedUser);
 	}
+
+	@PostMapping("/logout")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void logout(@RequestHeader("Authorization") String token) {
+   		userService.logout(token);
+	}
 }

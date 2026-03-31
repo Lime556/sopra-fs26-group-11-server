@@ -170,6 +170,86 @@ public class UserControllerTest {
 		mockMvc.perform(postRequest)
 				.andExpect(status().isBadRequest());
 	}
+
+	@Test
+	public void login_validInput_returnsUserAuthDTO() throws Exception {
+		// given
+		User user = new User();
+		user.setId(1L);
+		user.setUsername("testUsername");
+		user.setToken("valid-token");
+		user.setUserStatus(UserStatus.ONLINE);
+		user.setWinRate(0.0);
+
+		UserPostDTO userPostDTO = new UserPostDTO();
+		userPostDTO.setUsername("testUsername");
+		userPostDTO.setPassword("testPassword");
+
+		given(userService.login(Mockito.any())).willReturn(user);
+
+		// when
+		MockHttpServletRequestBuilder postRequest = post("/login")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(asJsonString(userPostDTO));
+
+		// then
+		mockMvc.perform(postRequest)
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id", is(user.getId().intValue())))
+				.andExpect(jsonPath("$.username", is(user.getUsername())))
+				.andExpect(jsonPath("$.userStatus", is(user.getUserStatus().toString())))
+				.andExpect(jsonPath("$.winRate", is(user.getWinRate())))
+				.andExpect(jsonPath("$.token", is(user.getToken())));
+	}
+
+	@Test
+	public void login_invalidCredentials_returnsUnauthorized() throws Exception {
+		UserPostDTO userPostDTO = new UserPostDTO();
+		userPostDTO.setUsername("testUsername");
+		userPostDTO.setPassword("wrongPassword");
+
+		// given
+		given(userService.login(Mockito.any()))
+				.willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid password"));
+
+		// when
+		MockHttpServletRequestBuilder postRequest = post("/login")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(asJsonString(userPostDTO));
+
+		// then
+		mockMvc.perform(postRequest)
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	public void logout_validToken_returnsNoContent() throws Exception {
+		String token = "valid-token";
+		
+		Mockito.doNothing().when(userService).logout(token);
+		
+		MockHttpServletRequestBuilder postRequest = post("/logout")
+				.header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON);
+
+		mockMvc.perform(postRequest)
+				.andExpect(status().isNoContent());
+	}
+
+	@Test
+	public void logout_invalidToken_returnsUnauthorized() throws Exception {
+		String token = "invalid-token";
+
+		Mockito.doThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"))
+				.when(userService).logout(token);
+
+		MockHttpServletRequestBuilder postRequest = post("/logout")
+				.header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON);
+
+		mockMvc.perform(postRequest)
+				.andExpect(status().isUnauthorized());
+	}
 	
 
 

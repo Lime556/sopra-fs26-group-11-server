@@ -177,4 +177,85 @@ public class UserServiceTest {
 		assertEquals("test@email.com", createdUser.getEmail());
 	}
 
+	
+	// Login tests
+	@Test
+	public void login_validCredentials_success() {
+		User existingUser = new User();
+		existingUser.setId(1L);
+		existingUser.setUsername("testUsername");
+		existingUser.setPasswordHash("testPassword");
+		existingUser.setEmail("test@email.com");
+
+		Mockito.when(userRepository.findByUsername("testUsername")).thenReturn(existingUser);
+
+		User loginUser = new User();
+		loginUser.setUsername("testUsername");
+		loginUser.setPasswordHash("testPassword");
+
+		User result = userService.login(loginUser);
+
+		assertNotNull(result.getToken());
+		assertEquals(existingUser.getUsername(), result.getUsername());
+		assertEquals(UserStatus.ONLINE, result.getUserStatus());
+		Mockito.verify(userRepository, Mockito.times(1)).save(existingUser);
+	}
+
+	@Test
+	public void login_wrongPassword_throwsUnauthorized() {
+		User existingUser = new User();
+		existingUser.setUsername("testUsername");
+		existingUser.setPasswordHash("password");
+
+		Mockito.when(userRepository.findByUsername("testUsername")).thenReturn(existingUser);
+
+		User loginUser = new User();
+		loginUser.setUsername("testUsername");
+		loginUser.setPasswordHash("wrongPassword");
+
+		assertThrows(ResponseStatusException.class, () -> userService.login(loginUser));
+	}
+
+	@Test
+	public void login_unknownUser_throwsNotFound() {
+		Mockito.when(userRepository.findByUsername("unknownUser")).thenReturn(null);
+
+		User loginUser = new User();
+		loginUser.setUsername("unknownUser");
+		loginUser.setPasswordHash("anyPassword");
+
+		assertThrows(ResponseStatusException.class, () -> userService.login(loginUser));
+	}
+
+
+	// Logout tests
+	@Test
+	public void logout_validToken_success() {
+		User user = new User();
+		user.setId(1L);
+		user.setUsername("testUsername");
+		user.setToken("valid-token");
+		user.setUserStatus(UserStatus.ONLINE);
+
+		Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+
+		userService.logout("valid-token");
+
+		assertEquals(UserStatus.OFFLINE, user.getUserStatus());
+		assertNotEquals("valid-token", user.getToken());
+		Mockito.verify(userRepository, Mockito.times(1)).save(user);
+	}
+	
+	@Test
+	public void logout_invalidToken_throwsException() {
+		User user = new User();
+		user.setId(1L);
+		user.setUsername("testUsername");
+		user.setToken("valid-token");
+		user.setUserStatus(UserStatus.ONLINE);
+
+		Mockito.when(userRepository.findByToken("invalid-token")).thenReturn(null);
+
+		assertThrows(ResponseStatusException.class, () -> userService.logout("invalid-token"));
+	}
 }
