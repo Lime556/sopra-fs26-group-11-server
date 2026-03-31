@@ -42,6 +42,7 @@ public class UserServiceIntegrationTest {
 	
 		User testUser = new User();
 		testUser.setUsername("testUsername");
+		testUser.setEmail("test@email.com");
 		testUser.setPasswordHash("testPassword");
 	
 		// when
@@ -64,6 +65,7 @@ public class UserServiceIntegrationTest {
 	
 		User testUser = new User();
 		testUser.setUsername("testUsername");
+		testUser.setEmail("test@email.com");
 		testUser.setPasswordHash("testPassword");
 		userService.createUser(testUser);
 	

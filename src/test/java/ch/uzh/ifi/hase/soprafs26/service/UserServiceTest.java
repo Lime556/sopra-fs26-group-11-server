@@ -33,6 +33,7 @@ public class UserServiceTest {
 		testUser.setId(1L);
 		testUser.setUsername("testUsername");
         testUser.setPasswordHash("testPassword");
+		testUser.setEmail("test@email.com");
 
 		// mock repository save to return the saved user
 		Mockito.when(userRepository.save(Mockito.any(User.class)))
@@ -91,6 +92,7 @@ public class UserServiceTest {
 
 		User user = new User();
 		user.setUsername("  testUsername  ");
+		user.setEmail("test@email.com");
 		user.setPasswordHash("testPassword");
 
 		User createdUser = userService.createUser(user);
@@ -102,6 +104,7 @@ public class UserServiceTest {
 	public void createUser_nullUsername_throwsException() {
 		User invalidUser = new User();
 		invalidUser.setUsername(null);
+		invalidUser.setEmail("test@email.com");
 		invalidUser.setPasswordHash("testPassword");
 
 		assertThrows(ResponseStatusException.class, () -> userService.createUser(invalidUser));
@@ -116,6 +119,7 @@ public class UserServiceTest {
 		User onlineUser = new User();
 		onlineUser.setId(1L);
 		onlineUser.setUsername("testUsername");
+		onlineUser.setEmail("test@email.com");
 		onlineUser.setToken("valid-token");
 		onlineUser.setUserStatus(UserStatus.ONLINE);
 
@@ -150,12 +154,27 @@ public class UserServiceTest {
 		User offlineUser = new User();
 		offlineUser.setId(1L);
 		offlineUser.setUsername("testUsername");
+		offlineUser.setEmail("test@email.com");
 		offlineUser.setToken("offline-token");
 		offlineUser.setUserStatus(UserStatus.OFFLINE);
 
 		Mockito.when(userRepository.findByToken("offline-token")).thenReturn(offlineUser);
 
 		assertThrows(ResponseStatusException.class, () -> userService.authenticate("offline-token"));
+	}
+
+	@Test
+	public void createUser_withEmail_success() {
+		Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(null);
+
+		User user = new User();
+		user.setUsername("testUser");
+		user.setPasswordHash("password");
+		user.setEmail("test@email.com");
+
+		User createdUser = userService.createUser(user);
+
+		assertEquals("test@email.com", createdUser.getEmail());
 	}
 
 }

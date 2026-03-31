@@ -42,8 +42,20 @@ public class LobbyServiceTest {
         host = new User();
         host.setId(10L);
         host.setToken("valid-token");
+        host.setEmail("host@email.com");
 
-        Mockito.when(lobbyRepository.save(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0));
+        user = new User();
+        user.setId(11L);
+        user.setToken("valid-token");
+        user.setEmail("user@email.com");
+
+        lobby = new Lobby();
+        lobby.setId(1L);
+        lobby.setCapacity(2);
+        lobby.setUsers(new HashSet<>());
+
+        Mockito.when(lobbyRepository.save(Mockito.any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
@@ -85,16 +97,6 @@ public class LobbyServiceTest {
         List<Lobby> lobbies = lobbyService.getLobbies();
 
         assertEquals(2, lobbies.size());
-        lobby = new Lobby();
-        lobby.setId(1L);
-        lobby.setCapacity(2);
-        lobby.setUsers(new HashSet<>());
-
-        user = new User();
-        user.setId(10L);
-        user.setToken("valid-token");
-
-        Mockito.when(lobbyRepository.save(Mockito.any())).thenReturn(lobby);
     }
 
     @Test
