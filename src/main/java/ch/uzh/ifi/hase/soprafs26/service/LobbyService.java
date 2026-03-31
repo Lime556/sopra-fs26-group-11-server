@@ -10,28 +10,44 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+
 @Service
 @Transactional
 public class LobbyService {
+
+    private static final int DEFAULT_LOBBY_CAPACITY = 4;
 
     private final LobbyRepository lobbyRepository;
     private final UserRepository userRepository;
 
     public LobbyService(@Qualifier("lobbyRepository") LobbyRepository lobbyRepository,
-            @Qualifier("userRepository") UserRepository userRepository) {
+                        @Qualifier("userRepository") UserRepository userRepository) {
         this.lobbyRepository = lobbyRepository;
         this.userRepository = userRepository;
     }
 
-    public Lobby joinLobby(Long lobbyId, String playerToken, String lobbyPassword) {
-        if (playerToken == null || playerToken.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token.");
-        }
+    public List<Lobby> getLobbies() {
+        return lobbyRepository.findAll();
+    }
 
-        User user = userRepository.findByToken(playerToken);
-        if (user == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authorization token.");
+    public Lobby createLobby(String playerToken, Integer capacity, String lobbyPassword) {
+        User host = getAuthenticatedUser(playerToken);
+
+        Lobby lobby = new Lobby();
+        lobby.setCapacity(resolveCapacity(capacity));
+        if (lobbyPassword != null && !lobbyPassword.isBlank()) {
+            lobby.setPassword(lobbyPassword.trim());
         }
+        lobby.getUsers().add(host);
+
+        Lobby createdLobby = lobbyRepository.save(lobby);
+        lobbyRepository.flush();
+        return createdLobby;
+    }
+
+    public Lobby joinLobby(Long lobbyId, String playerToken, String lobbyPassword) {
+        User user = getAuthenticatedUser(playerToken);
 
         Lobby lobby = lobbyRepository.findById(lobbyId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -44,7 +60,8 @@ public class LobbyService {
             }
         }
 
-        boolean alreadyJoined = lobby.getUsers().stream().anyMatch(existingUser -> existingUser.getId().equals(user.getId()));
+        boolean alreadyJoined = lobby.getUsers().stream()
+                .anyMatch(existingUser -> existingUser.getId().equals(user.getId()));
         if (alreadyJoined) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "User with id " + user.getId() + " already joined lobby " + lobbyId + ".");
@@ -59,5 +76,25 @@ public class LobbyService {
         lobby = lobbyRepository.save(lobby);
         lobbyRepository.flush();
         return lobby;
+    }
+
+    private User getAuthenticatedUser(String playerToken) {
+        if (playerToken == null || playerToken.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token.");
+        }
+
+        User user = userRepository.findByToken(playerToken);
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authorization token.");
+        }
+        return user;
+    }
+
+    private int resolveCapacity(Integer capacity) {
+        int resolved = capacity == null ? DEFAULT_LOBBY_CAPACITY : capacity;
+        if (resolved < 2 || resolved > 4) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lobby capacity must be between 2 and 4.");
+        }
+        return resolved;
     }
 }

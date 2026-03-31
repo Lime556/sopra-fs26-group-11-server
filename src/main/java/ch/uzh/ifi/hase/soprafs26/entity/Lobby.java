@@ -1,6 +1,14 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 import java.io.Serializable;
 import java.util.HashSet;
@@ -60,9 +68,6 @@ public class Lobby implements Serializable {
 
     @Transient
     public int getCurrentPlayers() {
-        if (users == null) {
-            return 0;
-        }
-        return users.size();
+        return users == null ? 0 : users.size();
     }
 }
