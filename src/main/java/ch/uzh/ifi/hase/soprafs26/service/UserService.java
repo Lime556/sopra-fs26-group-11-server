@@ -121,4 +121,25 @@ public class UserService {
 
 		return user;
 	}
+
+	public void logout(String token) {
+		if (token == null || token.isBlank()) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+
+		User user = userRepository.findByToken(token);
+
+		if (user == null) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+
+		if (user.getUserStatus() != UserStatus.ONLINE) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+
+		user.setUserStatus(UserStatus.OFFLINE);
+		user.setToken(UUID.randomUUID().toString());
+
+		userRepository.save(user);
+	}
 }

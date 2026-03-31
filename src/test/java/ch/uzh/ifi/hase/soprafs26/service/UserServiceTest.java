@@ -226,4 +226,36 @@ public class UserServiceTest {
 
 		assertThrows(ResponseStatusException.class, () -> userService.login(loginUser));
 	}
+
+
+	// Logout tests
+	@Test
+	public void logout_validToken_success() {
+		User user = new User();
+		user.setId(1L);
+		user.setUsername("testUsername");
+		user.setToken("valid-token");
+		user.setUserStatus(UserStatus.ONLINE);
+
+		Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+
+		userService.logout("valid-token");
+
+		assertEquals(UserStatus.OFFLINE, user.getUserStatus());
+		assertNotEquals("valid-token", user.getToken());
+		Mockito.verify(userRepository, Mockito.times(1)).save(user);
+	}
+	
+	@Test
+	public void logout_invalidToken_throwsException() {
+		User user = new User();
+		user.setId(1L);
+		user.setUsername("testUsername");
+		user.setToken("valid-token");
+		user.setUserStatus(UserStatus.ONLINE);
+
+		Mockito.when(userRepository.findByToken("invalid-token")).thenReturn(null);
+
+		assertThrows(ResponseStatusException.class, () -> userService.logout("invalid-token"));
+	}
 }
