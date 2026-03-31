@@ -116,6 +116,7 @@ public class UserService {
 		}
 		
 		user.setToken(UUID.randomUUID().toString());
+		user.setUserStatus(UserStatus.ONLINE);
 		userRepository.save(user);
 
 		return user;

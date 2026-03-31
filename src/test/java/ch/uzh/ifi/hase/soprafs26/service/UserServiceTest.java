@@ -177,4 +177,53 @@ public class UserServiceTest {
 		assertEquals("test@email.com", createdUser.getEmail());
 	}
 
+	
+	// Login tests
+	@Test
+	public void login_validCredentials_success() {
+		User existingUser = new User();
+		existingUser.setId(1L);
+		existingUser.setUsername("testUsername");
+		existingUser.setPasswordHash("testPassword");
+		existingUser.setEmail("test@email.com");
+
+		Mockito.when(userRepository.findByUsername("testUsername")).thenReturn(existingUser);
+
+		User loginUser = new User();
+		loginUser.setUsername("testUsername");
+		loginUser.setPasswordHash("testPassword");
+
+		User result = userService.login(loginUser);
+
+		assertNotNull(result.getToken());
+		assertEquals(existingUser.getUsername(), result.getUsername());
+		assertEquals(UserStatus.ONLINE, result.getUserStatus());
+		Mockito.verify(userRepository, Mockito.times(1)).save(existingUser);
+	}
+
+	@Test
+	public void login_wrongPassword_throwsUnauthorized() {
+		User existingUser = new User();
+		existingUser.setUsername("testUsername");
+		existingUser.setPasswordHash("password");
+
+		Mockito.when(userRepository.findByUsername("testUsername")).thenReturn(existingUser);
+
+		User loginUser = new User();
+		loginUser.setUsername("testUsername");
+		loginUser.setPasswordHash("wrongPassword");
+
+		assertThrows(ResponseStatusException.class, () -> userService.login(loginUser));
+	}
+
+	@Test
+	public void login_unknownUser_throwsNotFound() {
+		Mockito.when(userRepository.findByUsername("unknownUser")).thenReturn(null);
+
+		User loginUser = new User();
+		loginUser.setUsername("unknownUser");
+		loginUser.setPasswordHash("anyPassword");
+
+		assertThrows(ResponseStatusException.class, () -> userService.login(loginUser));
+	}
 }
