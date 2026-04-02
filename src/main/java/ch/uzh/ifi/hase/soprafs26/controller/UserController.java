@@ -2,6 +2,7 @@ package ch.uzh.ifi.hase.soprafs26.controller;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserAuthDTO;
@@ -72,9 +73,18 @@ public class UserController {
 		return DTOMapper.INSTANCE.convertEntityToUserAuthDTO(authenticatedUser);
 	}
 
-	@PostMapping("/logout")
+	@PutMapping("/users/{id}/logout")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	public void logout(@RequestHeader("Authorization") String token) {
-   		userService.logout(token);
+	public void logoutUser(
+		@PathVariable Long id,
+		@RequestHeader(value = "Authorization", required = false) String token
+	) {
+		User authUser = userService.authenticate(token);
+	  
+		if (!authUser.getId().equals(id)) {
+		  throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot logout other users");
+		}
+
+		userService.logout(token);
 	}
 }
