@@ -188,6 +188,70 @@ public class LobbyControllerTest {
 
         mockMvc.perform(postRequest).andExpect(status().isNotFound());
     }
+    
+    @Test
+    public void getLobbyById_validId_success() throws Exception {
+        Lobby lobby = new Lobby();
+        lobby.setId(1L);
+        lobby.setCapacity(4);
+        lobby.setUsers(new HashSet<>());
+
+        User user = new User();
+        user.setId(10L);
+        lobby.getUsers().add(user);
+
+        given(lobbyService.getLobbyById(1L, "token-123")).willReturn(lobby);
+
+        MockHttpServletRequestBuilder getRequest = get("/lobbies/1")
+                .header("Authorization", "Bearer token-123")
+                .contentType(MediaType.APPLICATION_JSON);
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(1)))
+                .andExpect(jsonPath("$.capacity", is(4)))
+                .andExpect(jsonPath("$.currentPlayers", is(1)))
+                .andExpect(jsonPath("$.playerIds", hasSize(1)))
+                .andExpect(jsonPath("$.playerIds[0]", is(10)));
+    }
+
+    @Test
+    public void getLobbyById_notFound_returnsNotFound() throws Exception {
+        given(lobbyService.getLobbyById(1L, "token-123"))
+                .willThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Lobby not found"));
+
+        MockHttpServletRequestBuilder getRequest = get("/lobbies/1")
+                .header("Authorization", "Bearer token-123")
+                .contentType(MediaType.APPLICATION_JSON);
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    public void getLobbyById_missingToken_returnsUnauthorized() throws Exception {
+        given(lobbyService.getLobbyById(1L, null))
+                .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing token"));
+
+        MockHttpServletRequestBuilder getRequest = get("/lobbies/1")
+                .contentType(MediaType.APPLICATION_JSON);
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void getLobbyById_invalidToken_returnsUnauthorized() throws Exception {
+        given(lobbyService.getLobbyById(1L, "invalid-token"))
+                .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token"));
+
+        MockHttpServletRequestBuilder getRequest = get("/lobbies/1")
+                .header("Authorization", "Bearer invalid-token")
+                .contentType(MediaType.APPLICATION_JSON);
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isUnauthorized());
+    }
 
     private String asJsonString(final Object object) {
         try {

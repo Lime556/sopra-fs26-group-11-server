@@ -172,4 +172,43 @@ public class LobbyServiceTest {
 
         assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
     }
+
+    @Test
+    public void getLobbyById_validId_success() {
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.of(lobby));
+
+        Lobby result = lobbyService.getLobbyById(1L, "valid-token");
+
+        assertEquals(1L, result.getId());
+    }
+
+    @Test
+    public void getLobbyById_notFound_throwsNotFound() {
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.getLobbyById(1L, "valid-token"));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    public void getLobbyById_missingToken_throwsUnauthorized() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.getLobbyById(1L, null));
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+    }
+    
+    @Test
+    public void getLobbyById_invalidToken_throwsUnauthorized() {
+        Mockito.when(userRepository.findByToken("invalid-token")).thenReturn(null);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.getLobbyById(1L, "invalid-token"));
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+    }
 }

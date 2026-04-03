@@ -47,6 +47,18 @@ public class LobbyController {
                 lobbyPostDTO == null ? null : lobbyPostDTO.getPassword());
         return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(createdLobby);
     }
+
+    @GetMapping("/lobbies/{lobbyId}")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public LobbyGetDTO getLobbyById(
+            @PathVariable Long lobbyId,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+
+        String token = extractToken(authorizationHeader);
+        Lobby lobby = lobbyService.getLobbyById(lobbyId, token);
+        return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(lobby);
+    }
     
     @PostMapping("/lobbies/{lobbyId}/join")
     @ResponseStatus(HttpStatus.OK)
