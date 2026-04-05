@@ -1,9 +1,10 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
-import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,15 +17,22 @@ import java.util.List;
 @Transactional
 public class LobbyService {
 
+    private final GameRepository gameRepository;
+
     private static final int DEFAULT_LOBBY_CAPACITY = 4;
 
     private final LobbyRepository lobbyRepository;
-    private final UserRepository userRepository;
-
-    public LobbyService(@Qualifier("lobbyRepository") LobbyRepository lobbyRepository,
-                        @Qualifier("userRepository") UserRepository userRepository) {
+    private final UserService userService;
+    
+    public LobbyService(
+        LobbyRepository lobbyRepository,
+        GameRepository gameRepository,
+        UserService userService
+    ) {
         this.lobbyRepository = lobbyRepository;
-        this.userRepository = userRepository;
+        this.gameRepository = gameRepository;
+        this.userService = userService;
+                        
     }
 
     public List<Lobby> getLobbies() {
@@ -32,10 +40,13 @@ public class LobbyService {
     }
 
     public Lobby createLobby(String playerToken, Integer capacity, String lobbyPassword) {
-        User host = getAuthenticatedUser(playerToken);
+        User host = userService.authenticate(playerToken);
 
         Lobby lobby = new Lobby();
         lobby.setCapacity(resolveCapacity(capacity));
+        lobby.setHostId(host.getId());
+        lobby.setGameId(null);
+
         if (lobbyPassword != null && !lobbyPassword.isBlank()) {
             lobby.setPassword(lobbyPassword.trim());
         }
@@ -47,7 +58,7 @@ public class LobbyService {
     }
 
     public Lobby joinLobby(Long lobbyId, String playerToken, String lobbyPassword) {
-        User user = getAuthenticatedUser(playerToken);
+        User user = userService.authenticate(playerToken);
 
         Lobby lobby = lobbyRepository.findById(lobbyId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -78,16 +89,46 @@ public class LobbyService {
         return lobby;
     }
 
-    private User getAuthenticatedUser(String playerToken) {
-        if (playerToken == null || playerToken.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token.");
+    public Game startGame (Long lobbyId, String playerToken) {
+        User requester = userService.authenticate(playerToken);
+
+        Lobby lobby = lobbyRepository.findById(lobbyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lobby with id " + lobbyId + " was not found."));
+
+        boolean requesterInLobby = lobby.getUsers().stream()
+        .anyMatch(user -> user.getId().equals(requester.getId()));
+                
+        if (!requesterInLobby) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this lobby");
         }
 
-        User user = userRepository.findByToken(playerToken);
-        if (user == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authorization token.");
+        if (!lobby.getHostId().equals(requester.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the host can start the game");
         }
-        return user;
+
+        if (lobby.getUsers().size() < 3) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough players");
+        }
+
+        if (lobby.getGameId() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Game already started");
+        }
+
+        Game game = new Game();
+        game.setCurrentTurnIndex(0);
+        game.setDiceValue(null);
+        game.setTargetVictoryPoints(10);
+        game.setStartedAt(java.time.LocalDateTime.now());
+        game.setFinishedAt(null);
+
+        game = gameRepository.save(game);
+
+        lobby.setGameId(game.getId());
+        lobbyRepository.save(lobby);
+        lobbyRepository.flush();
+
+        return game;
     }
 
     private int resolveCapacity(Integer capacity) {
@@ -97,4 +138,6 @@ public class LobbyService {
         }
         return resolved;
     }
+
+    
 }

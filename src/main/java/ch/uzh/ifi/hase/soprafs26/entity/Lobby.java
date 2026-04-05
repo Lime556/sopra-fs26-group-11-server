@@ -34,6 +34,12 @@ public class Lobby implements Serializable {
     @JoinTable(name = "lobby_users", joinColumns = @JoinColumn(name = "lobby_id"), inverseJoinColumns = @JoinColumn(name = "user_id"))
     private Set<User> users = new HashSet<>();
 
+    @Column(nullable = false)
+    private Long hostId;
+
+    @Column
+    private Long gameId;
+
     public Long getId() {
         return id;
     }
@@ -69,5 +75,21 @@ public class Lobby implements Serializable {
     @Transient
     public int getCurrentPlayers() {
         return users == null ? 0 : users.size();
+    }
+
+    public Long getHostId() {
+        return hostId;
+    }
+
+    public void setHostId(Long hostId) {
+        this.hostId = hostId;
+    }
+
+    public Long getGameId() {
+        return gameId;
+    }
+
+    public void setGameId(Long gameId) {
+        this.gameId = gameId;
     }
 }
