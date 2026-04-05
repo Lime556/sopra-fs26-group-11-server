@@ -78,6 +78,15 @@ public class LobbyService {
         return lobby;
     }
 
+    public Lobby getLobbyById(Long lobbyId, String playerToken) {
+        getAuthenticatedUser(playerToken);
+
+        return lobbyRepository.findById(lobbyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lobby with id " + lobbyId + " was not found."
+                ));
+    }
+
     private User getAuthenticatedUser(String playerToken) {
         if (playerToken == null || playerToken.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token.");
