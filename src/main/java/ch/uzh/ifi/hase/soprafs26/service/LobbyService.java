@@ -2,10 +2,12 @@ package ch.uzh.ifi.hase.soprafs26.service;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
-import org.springframework.beans.factory.annotation.Qualifier;
+import ch.uzh.ifi.hase.soprafs26.repository.PlayerRepository;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,20 +19,25 @@ import java.util.List;
 @Transactional
 public class LobbyService {
 
-    private final GameRepository gameRepository;
+
 
     private static final int DEFAULT_LOBBY_CAPACITY = 4;
 
+
+    private final GameRepository gameRepository;
     private final LobbyRepository lobbyRepository;
+    private final PlayerRepository playerRepository;
     private final UserService userService;
     
     public LobbyService(
         LobbyRepository lobbyRepository,
         GameRepository gameRepository,
+        PlayerRepository playerRepository,
         UserService userService
     ) {
         this.lobbyRepository = lobbyRepository;
         this.gameRepository = gameRepository;
+        this.playerRepository = playerRepository;
         this.userService = userService;
                         
     }
@@ -123,6 +130,21 @@ public class LobbyService {
         game.setFinishedAt(null);
 
         game = gameRepository.save(game);
+
+        List<User> orderedUsers = lobby.getUsers().stream()
+            .sorted((u1, u2) -> u1.getId().compareTo(u2.getId()))
+            .toList();
+
+        String[] colors = {"RED", "BLUE", "WHITE", "ORANGE"};
+
+        for (int i = 0; i < orderedUsers.size(); i++) {
+            Player player = new Player();
+            player.setUser(orderedUsers.get(i));
+            player.setGameId(game.getId());
+            player.setColor(colors[i]);
+            player.setVictoryPoints(0);
+            playerRepository.save(player);
+        }
 
         lobby.setGameId(game.getId());
         lobbyRepository.save(lobby);
