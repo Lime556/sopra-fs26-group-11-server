@@ -20,6 +20,7 @@ public class LobbyRepositoryIntegrationTest {
     @Test
     public void saveLobby_persistsAndGeneratesId() {
         Lobby lobby = new Lobby();
+        lobby.setName("Integration Lobby");
         lobby.setCapacity(4);
 
         Lobby persistedLobby = lobbyRepository.save(lobby);
