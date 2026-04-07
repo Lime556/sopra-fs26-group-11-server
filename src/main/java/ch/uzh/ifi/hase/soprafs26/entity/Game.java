@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -21,7 +22,8 @@ public class Game{
     @Transient
     private List<Player> players;
 
-    @Transient
+    @Convert(converter = BoardJsonConverter.class)
+    @Column(columnDefinition = "CLOB")
     private Board board;
 
     @Column

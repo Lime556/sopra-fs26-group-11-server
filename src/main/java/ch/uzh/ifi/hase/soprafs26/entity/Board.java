@@ -1,11 +1,14 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-public class Board {
+public class Board implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     private static final int STANDARD_INTERSECTION_COUNT = 54;
     private static final int STANDARD_EDGE_COUNT = 72;
@@ -45,6 +48,10 @@ public class Board {
 
     public List<String> getHexTiles() {
         return hexTiles;
+    }
+
+    public void setHexTiles(List<String> hexTiles) {
+        this.hexTiles = hexTiles;
     }
 
     public List<Boolean> getIntersections() {
