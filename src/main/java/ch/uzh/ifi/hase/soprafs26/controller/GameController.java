@@ -1,10 +1,15 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
+import ch.uzh.ifi.hase.soprafs26.entity.Boat;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -74,7 +79,26 @@ public class GameController {
         dto.setIntersections(board.getIntersections());
         dto.setEdges(board.getEdges());
         dto.setPorts(board.getPorts());
+        dto.setBoats(convertBoatsToDto(board.getBoats()));
         dto.setHexTile_DiceNumbers(board.getHexTile_DiceNumbers());
+        return dto;
+    }
+
+    private List<BoatGetDTO> convertBoatsToDto(List<Boat> boats) {
+        if (boats == null) {
+            return Collections.emptyList();
+        }
+
+        return boats.stream().map(this::convertBoatToDto).collect(Collectors.toList());
+    }
+
+    private BoatGetDTO convertBoatToDto(Boat boat) {
+        BoatGetDTO dto = new BoatGetDTO();
+        dto.setId(boat.getId());
+        dto.setBoatType(boat.getBoatType());
+        dto.setHexId(boat.getHexId());
+        dto.setFirstCorner(boat.getFirstCorner());
+        dto.setSecondCorner(boat.getSecondCorner());
         return dto;
     }
 

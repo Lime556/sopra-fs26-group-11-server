@@ -1,17 +1,11 @@
-package ch.uzh.ifi.hase.soprafs26.entity;
+package ch.uzh.ifi.hase.soprafs26.rest.dto;
 
-import java.io.Serializable;
-
-public class Boat implements Serializable {
-    private static final long serialVersionUID = 1L;
-
+public class BoatGetDTO {
     private Integer id;
     private String boatType;
     private Integer hexId;
     private Integer firstCorner;
     private Integer secondCorner;
-    private int[] position;
-    private int playerId;
 
     public Integer getId() {
         return id;
@@ -24,7 +18,7 @@ public class Boat implements Serializable {
     public String getBoatType() {
         return boatType;
     }
-    
+
     public void setBoatType(String boatType) {
         this.boatType = boatType;
     }
@@ -51,21 +45,5 @@ public class Boat implements Serializable {
 
     public void setSecondCorner(Integer secondCorner) {
         this.secondCorner = secondCorner;
-    }
-
-    public int[] getPosition() {
-        return position;
-    }
-
-    public void setPosition(int[] position) {
-        this.position = position;
-    }
-
-    public int getPlayerId() {
-        return playerId;
-    }
-
-    public void setPlayerId(int playerId) {
-        this.playerId = playerId;
     }
 }

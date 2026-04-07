@@ -8,6 +8,7 @@ public class BoardGetDTO {
     private List<Boolean> intersections;
     private List<Boolean> edges;
     private List<String> ports;
+    private List<BoatGetDTO> boats;
     private List<Integer> hexTile_DiceNumbers;
 
     public Long getId() {
@@ -48,6 +49,14 @@ public class BoardGetDTO {
 
     public void setPorts(List<String> ports) {
         this.ports = ports;
+    }
+
+    public List<BoatGetDTO> getBoats() {
+        return boats;
+    }
+
+    public void setBoats(List<BoatGetDTO> boats) {
+        this.boats = boats;
     }
 
     public List<Integer> getHexTile_DiceNumbers() {
