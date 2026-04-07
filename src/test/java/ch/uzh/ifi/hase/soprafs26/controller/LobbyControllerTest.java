@@ -41,10 +41,12 @@ public class LobbyControllerTest {
     public void getLobbies_returnsLobbies() throws Exception {
         Lobby first = new Lobby();
         first.setId(1L);
+        first.setName("First");
         first.setCapacity(4);
 
         Lobby second = new Lobby();
         second.setId(2L);
+        second.setName("Second");
         second.setCapacity(3);
 
         given(lobbyService.getLobbies()).willReturn(List.of(first, second));
@@ -60,6 +62,7 @@ public class LobbyControllerTest {
     public void createLobby_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
+        lobby.setName("Test Lobby");
         lobby.setCapacity(4);
         lobby.setUsers(new HashSet<>());
 
@@ -68,9 +71,10 @@ public class LobbyControllerTest {
         lobby.getUsers().add(host);
 
         LobbyPostDTO lobbyPostDTO = new LobbyPostDTO();
+        lobbyPostDTO.setName("Test Lobby");
         lobbyPostDTO.setCapacity(4);
 
-        given(lobbyService.createLobby("token-123", 4, null)).willReturn(lobby);
+        given(lobbyService.createLobby("token-123", "Test Lobby", 4, null)).willReturn(lobby);
 
         MockHttpServletRequestBuilder postRequest = post("/lobbies")
                 .header("Authorization", "Bearer token-123")
@@ -87,9 +91,10 @@ public class LobbyControllerTest {
     @Test
     public void createLobby_missingToken_returnsUnauthorized() throws Exception {
         LobbyPostDTO lobbyPostDTO = new LobbyPostDTO();
+        lobbyPostDTO.setName("Test Lobby");
         lobbyPostDTO.setCapacity(4);
 
-        given(lobbyService.createLobby(null, 4, null))
+        given(lobbyService.createLobby(null, "Test Lobby", 4, null))
                 .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token."));
 
         MockHttpServletRequestBuilder postRequest = post("/lobbies")
@@ -99,6 +104,7 @@ public class LobbyControllerTest {
     public void joinLobby_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
+        lobby.setName("Join Lobby");
         lobby.setCapacity(2);
         lobby.setUsers(new HashSet<>());
 
@@ -193,6 +199,7 @@ public class LobbyControllerTest {
     public void getLobbyById_validId_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
+        lobby.setName("Lobby Detail");
         lobby.setCapacity(4);
         lobby.setUsers(new HashSet<>());
 

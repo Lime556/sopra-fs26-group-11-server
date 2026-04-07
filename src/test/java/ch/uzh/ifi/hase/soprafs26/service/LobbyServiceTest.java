@@ -62,7 +62,7 @@ public class LobbyServiceTest {
     public void createLobby_validInput_success() {
         Mockito.when(userRepository.findByToken("valid-token")).thenReturn(host);
 
-        Lobby createdLobby = lobbyService.createLobby("valid-token", 4, null);
+        Lobby createdLobby = lobbyService.createLobby("valid-token", "Test Lobby", 4, null);
 
         assertEquals(4, createdLobby.getCapacity());
         assertEquals(1, createdLobby.getCurrentPlayers());
@@ -73,7 +73,7 @@ public class LobbyServiceTest {
         Mockito.when(userRepository.findByToken("valid-token")).thenReturn(host);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> lobbyService.createLobby("valid-token", 7, null));
+                () -> lobbyService.createLobby("valid-token", "Test Lobby", 7, null));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
     }
@@ -81,7 +81,7 @@ public class LobbyServiceTest {
     @Test
     public void createLobby_missingToken_throwsUnauthorized() {
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> lobbyService.createLobby(null, 4, null));
+                () -> lobbyService.createLobby(null, "Test Lobby", 4, null));
 
         assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
     }
