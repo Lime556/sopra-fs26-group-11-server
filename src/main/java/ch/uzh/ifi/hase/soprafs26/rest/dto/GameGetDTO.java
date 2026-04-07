@@ -13,6 +13,7 @@ public class GameGetDTO {
     private RobberGetDTO robber;
     private DiceGetDTO dice;
     private Integer diceValue;
+    private Integer robberTileIndex;
     private DevelopmentDeckGetDTO developmentDeck;
     private PlayerGetDTO longestRoad;
     private PlayerGetDTO largestArmy;
@@ -85,6 +86,14 @@ public class GameGetDTO {
 
     public void setDiceValue(Integer diceValue) {
         this.diceValue = diceValue;
+    }
+
+    public Integer getRobberTileIndex() {
+        return robberTileIndex;
+    }
+
+    public void setRobberTileIndex(Integer robberTileIndex) {
+        this.robberTileIndex = robberTileIndex;
     }
 
     public DevelopmentDeckGetDTO getDevelopmentDeck() {

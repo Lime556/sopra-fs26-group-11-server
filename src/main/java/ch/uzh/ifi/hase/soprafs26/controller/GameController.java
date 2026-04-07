@@ -57,6 +57,7 @@ public class GameController {
         dto.setBoard(convertBoardToDto(game.getBoard()));
         dto.setCurrentTurnIndex(game.getCurrentTurnIndex());
         dto.setDiceValue(game.getDiceValue());
+        dto.setRobberTileIndex(game.getRobberTileIndex());
         dto.setTargetVictoryPoints(game.getTargetVictoryPoints());
         dto.setStartedAt(game.getStartedAt());
         dto.setFinishedAt(game.getFinishedAt());

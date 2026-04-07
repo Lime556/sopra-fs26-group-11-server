@@ -30,9 +30,11 @@ public class GameService {
         authenticate(playerToken);
 
         Game game = new Game();
-        game.setBoard(resolveBoard(gamePostDTO));
+        Board board = resolveBoard(gamePostDTO);
+        game.setBoard(board);
         game.setCurrentTurnIndex(gamePostDTO == null ? null : gamePostDTO.getCurrentTurnIndex());
         game.setDiceValue(gamePostDTO == null ? null : gamePostDTO.getDiceValue());
+        game.setRobberTileIndex(resolveRobberTileIndex(board, gamePostDTO));
         game.setTargetVictoryPoints(gamePostDTO == null ? null : gamePostDTO.getTargetVictoryPoints());
         game.setStartedAt(gamePostDTO == null ? null : gamePostDTO.getStartedAt());
         game.setFinishedAt(gamePostDTO == null ? null : gamePostDTO.getFinishedAt());
@@ -70,6 +72,19 @@ public class GameService {
         board.setPorts(boardGetDTO.getPorts());
         board.setHexTile_DiceNumbers(boardGetDTO.getHexTile_DiceNumbers());
         return board;
+    }
+
+    private Integer resolveRobberTileIndex(Board board, GamePostDTO gamePostDTO) {
+        if (gamePostDTO != null && gamePostDTO.getRobberTileIndex() != null) {
+            return gamePostDTO.getRobberTileIndex();
+        }
+
+        if (board == null || board.getHexTiles() == null) {
+            return null;
+        }
+
+        int desertIndex = board.getHexTiles().indexOf("DESERT");
+        return desertIndex >= 0 ? desertIndex + 1 : null;
     }
 
     private User authenticate(String playerToken) {

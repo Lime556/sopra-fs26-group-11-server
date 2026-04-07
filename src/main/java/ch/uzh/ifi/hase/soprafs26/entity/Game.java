@@ -41,6 +41,9 @@ public class Game{
     @Column
     private Integer diceValue;
 
+    @Column
+    private Integer robberTileIndex;
+
     @Transient
     private DevelopmentDeck developmentDeck;
 
@@ -130,6 +133,14 @@ public class Game{
 
     public void setDiceValue(Integer diceValue) {
         this.diceValue = diceValue;
+    }
+
+    public Integer getRobberTileIndex() {
+        return robberTileIndex;
+    }
+
+    public void setRobberTileIndex(Integer robberTileIndex) {
+        this.robberTileIndex = robberTileIndex;
     }
 
     public DevelopmentDeck getDevelopmentDeck() {
