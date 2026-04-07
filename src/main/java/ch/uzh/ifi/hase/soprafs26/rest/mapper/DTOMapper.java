@@ -43,9 +43,11 @@ public interface DTOMapper {
 	UserAuthDTO convertEntityToUserAuthDTO(User user);
 
 	@Mapping(source = "id", target = "id")
+	@Mapping(source = "name", target = "name")
 	@Mapping(source = "capacity", target = "capacity")
 	@Mapping(source = "currentPlayers", target = "currentPlayers")
 	@Mapping(source = "users", target = "playerIds")
+	@Mapping(source = "password", target = "privateLobby")
 	LobbyGetDTO convertEntityToLobbyGetDTO(Lobby lobby);
 
 	default List<Long> mapUsersToPlayerIds(Set<User> users) {
@@ -53,5 +55,9 @@ public interface DTOMapper {
 			return Collections.emptyList();
 		}
 		return users.stream().map(User::getId).toList();
+	}
+
+	default boolean map(String password) {
+		return password != null && !password.isBlank();
 	}
 }

@@ -17,6 +17,7 @@ import java.util.List;
 public class LobbyService {
 
     private static final int DEFAULT_LOBBY_CAPACITY = 4;
+    private static final String DEFAULT_LOBBY_NAME = "Lobby";
 
     private final LobbyRepository lobbyRepository;
     private final UserRepository userRepository;
@@ -31,10 +32,11 @@ public class LobbyService {
         return lobbyRepository.findAll();
     }
 
-    public Lobby createLobby(String playerToken, Integer capacity, String lobbyPassword) {
+    public Lobby createLobby(String playerToken, String lobbyName, Integer capacity, String lobbyPassword) {
         User host = getAuthenticatedUser(playerToken);
 
         Lobby lobby = new Lobby();
+        lobby.setName(resolveLobbyName(lobbyName));
         lobby.setCapacity(resolveCapacity(capacity));
         if (lobbyPassword != null && !lobbyPassword.isBlank()) {
             lobby.setPassword(lobbyPassword.trim());
@@ -105,5 +107,12 @@ public class LobbyService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lobby capacity must be between 2 and 4.");
         }
         return resolved;
+    }
+
+    private String resolveLobbyName(String lobbyName) {
+        if (lobbyName == null || lobbyName.isBlank()) {
+            return DEFAULT_LOBBY_NAME;
+        }
+        return lobbyName.trim();
     }
 }
