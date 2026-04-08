@@ -8,6 +8,8 @@ public class LobbyGetDTO {
 	private int capacity;
 	private int currentPlayers;
 	private List<Long> playerIds;
+	private Long gameId;
+	private Long hostId;
 
 	public Long getId() {
 		return id;
@@ -39,5 +41,21 @@ public class LobbyGetDTO {
 
 	public void setPlayerIds(List<Long> playerIds) {
 		this.playerIds = playerIds;
+	}
+
+	public Long getGameId() {
+		return gameId;
+	}
+
+	public void setGameId(Long gameId) {
+		this.gameId = gameId;
+	}
+
+	public Long getHostId() {
+		return hostId;
+	}
+
+	public void setHostId(Long hostId) {
+		this.hostId = hostId;
 	}
 }

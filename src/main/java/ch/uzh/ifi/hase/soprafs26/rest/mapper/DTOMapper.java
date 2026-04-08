@@ -48,6 +48,8 @@ public interface DTOMapper {
 	@Mapping(source = "capacity", target = "capacity")
 	@Mapping(source = "currentPlayers", target = "currentPlayers")
 	@Mapping(source = "users", target = "playerIds")
+	@Mapping(source = "gameId", target = "gameId")
+	@Mapping(source = "hostId", target = "hostId")
 	LobbyGetDTO convertEntityToLobbyGetDTO(Lobby lobby);
 
 	default List<Long> mapUsersToPlayerIds(Set<User> users) {
