@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStartGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
@@ -42,7 +43,7 @@ public class LobbyController {
     public LobbyGetDTO createLobby(@RequestBody(required = false) LobbyPostDTO lobbyPostDTO,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Lobby createdLobby = lobbyService.createLobby(
-                extractToken(authorizationHeader),
+                authorizationHeader,
                 lobbyPostDTO == null ? null : lobbyPostDTO.getCapacity(),
                 lobbyPostDTO == null ? null : lobbyPostDTO.getPassword());
         return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(createdLobby);
@@ -58,18 +59,20 @@ public class LobbyController {
                     "Path lobby id does not match body lobby id.");
         }
 
-        String token = extractToken(authorizationHeader);
-        Lobby updatedLobby = lobbyService.joinLobby(lobbyId, token, lobbyJoinDTO == null ? null : lobbyJoinDTO.getPassword());
+        Lobby updatedLobby = lobbyService.joinLobby(lobbyId, authorizationHeader, lobbyJoinDTO == null ? null : lobbyJoinDTO.getPassword());
         return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
     }
 
-    private String extractToken(String authorizationHeader) {
-        if (authorizationHeader == null || authorizationHeader.isBlank()) {
-            return null;
-        }
-        if (authorizationHeader.startsWith("Bearer ")) {
-            return authorizationHeader.substring("Bearer ".length()).trim();
-        }
-        return authorizationHeader.trim();
+    @PostMapping("/lobbies/{lobbyId}/start")
+    @ResponseStatus(HttpStatus.CREATED)
+    @ResponseBody
+    public GameStartGetDTO startGame (
+        @PathVariable Long lobbyId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        return DTOMapper.INSTANCE.convertEntityToGameStartGetDTO(
+            lobbyService.startGame(lobbyId, authorizationHeader)
+    );
     }
+
 }
