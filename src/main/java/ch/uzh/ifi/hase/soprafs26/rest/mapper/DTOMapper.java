@@ -50,6 +50,8 @@ public interface DTOMapper {
 	@Mapping(source = "users", target = "playerIds")
 	@Mapping(source = "gameId", target = "gameId")
 	@Mapping(source = "hostId", target = "hostId")
+	@Mapping(source = "name", target = "name")
+	@Mapping(target = "privateLobby", expression = "java(lobby.getPassword() != null && !lobby.getPassword().isBlank())")
 	LobbyGetDTO convertEntityToLobbyGetDTO(Lobby lobby);
 
 	default List<Long> mapUsersToPlayerIds(Set<User> users) {

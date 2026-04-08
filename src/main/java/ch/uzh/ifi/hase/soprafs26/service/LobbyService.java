@@ -46,7 +46,7 @@ public class LobbyService {
         return lobbyRepository.findAll();
     }
 
-    public Lobby createLobby(String playerToken, Integer capacity, String lobbyPassword) {
+    public Lobby createLobby(String playerToken, Integer capacity, String lobbyPassword, String lobbyName) {
         User host = userService.authenticate(playerToken);
 
         Lobby lobby = new Lobby();
@@ -57,8 +57,13 @@ public class LobbyService {
         if (lobbyPassword != null && !lobbyPassword.isBlank()) {
             lobby.setPassword(lobbyPassword.trim());
         }
-        lobby.getUsers().add(host);
 
+        if (lobbyName == null || lobbyName.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lobby name must not be empty.");
+        }
+        lobby.setName(lobbyName.trim());
+        lobby.getUsers().add(host);
+    
         Lobby createdLobby = lobbyRepository.save(lobby);
         lobbyRepository.flush();
         return createdLobby;

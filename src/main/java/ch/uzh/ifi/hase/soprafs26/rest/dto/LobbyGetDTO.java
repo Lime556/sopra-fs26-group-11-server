@@ -10,6 +10,8 @@ public class LobbyGetDTO {
 	private List<Long> playerIds;
 	private Long gameId;
 	private Long hostId;
+	private String name;
+	private boolean privateLobby;
 
 	public Long getId() {
 		return id;
@@ -57,5 +59,21 @@ public class LobbyGetDTO {
 
 	public void setHostId(Long hostId) {
 		this.hostId = hostId;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public boolean isPrivateLobby() {
+		return privateLobby;
+	}
+
+	public void setPrivateLobby(boolean privateLobby) {
+		this.privateLobby = privateLobby;
 	}
 }

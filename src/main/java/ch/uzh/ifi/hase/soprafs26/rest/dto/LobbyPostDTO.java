@@ -4,6 +4,7 @@ public class LobbyPostDTO {
 
     private Integer capacity;
     private String password;
+    private String name;
 
     public Integer getCapacity() {
         return capacity;
@@ -19,5 +20,13 @@ public class LobbyPostDTO {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 }

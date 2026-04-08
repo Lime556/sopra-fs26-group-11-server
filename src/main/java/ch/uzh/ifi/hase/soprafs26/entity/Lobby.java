@@ -40,6 +40,10 @@ public class Lobby implements Serializable {
     @Column
     private Long gameId;
 
+    @Column
+    private String name;
+
+
     public Long getId() {
         return id;
     }
@@ -91,5 +95,13 @@ public class Lobby implements Serializable {
 
     public void setGameId(Long gameId) {
         this.gameId = gameId;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 }

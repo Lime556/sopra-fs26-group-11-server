@@ -45,7 +45,8 @@ public class LobbyController {
         Lobby createdLobby = lobbyService.createLobby(
                 authorizationHeader,
                 lobbyPostDTO == null ? null : lobbyPostDTO.getCapacity(),
-                lobbyPostDTO == null ? null : lobbyPostDTO.getPassword());
+                lobbyPostDTO == null ? null : lobbyPostDTO.getPassword(),
+                lobbyPostDTO == null ? null : lobbyPostDTO.getName());
         return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(createdLobby);
     }
     
