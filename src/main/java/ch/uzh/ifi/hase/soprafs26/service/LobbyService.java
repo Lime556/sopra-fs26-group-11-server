@@ -1,16 +1,17 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
-import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
-import ch.uzh.ifi.hase.soprafs26.entity.User;
-import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
-import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
+import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
+import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 
 @Service
 @Transactional
@@ -31,10 +32,11 @@ public class LobbyService {
         return lobbyRepository.findAll();
     }
 
-    public Lobby createLobby(String playerToken, Integer capacity, String lobbyPassword) {
+    public Lobby createLobby(String playerToken, String lobbyName, Integer capacity, String lobbyPassword) {
         User host = getAuthenticatedUser(playerToken);
 
         Lobby lobby = new Lobby();
+        lobby.setName(resolveLobbyName(lobbyName));
         lobby.setCapacity(resolveCapacity(capacity));
         if (lobbyPassword != null && !lobbyPassword.isBlank()) {
             lobby.setPassword(lobbyPassword.trim());
@@ -105,5 +107,12 @@ public class LobbyService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lobby capacity must be between 2 and 4.");
         }
         return resolved;
+    }
+
+    private String resolveLobbyName(String lobbyName) {
+        if (lobbyName == null || lobbyName.isBlank()) {
+            return "Untitled Lobby";
+        }
+        return lobbyName.trim();
     }
 }

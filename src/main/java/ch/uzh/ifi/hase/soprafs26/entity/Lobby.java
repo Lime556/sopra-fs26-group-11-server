@@ -1,5 +1,9 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
+import java.io.Serializable;
+import java.util.HashSet;
+import java.util.Set;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -10,10 +14,6 @@ import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 
-import java.io.Serializable;
-import java.util.HashSet;
-import java.util.Set;
-
 @Entity
 @Table(name = "lobbies")
 public class Lobby implements Serializable {
@@ -23,6 +23,9 @@ public class Lobby implements Serializable {
     @Id
     @GeneratedValue
     private Long id;
+
+    @Column(nullable = false)
+    private String name;
 
     @Column(nullable = false)
     private int capacity;
@@ -44,6 +47,14 @@ public class Lobby implements Serializable {
 
     public int getCapacity() {
         return capacity;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public void setCapacity(int capacity) {

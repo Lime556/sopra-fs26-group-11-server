@@ -5,6 +5,7 @@ import java.util.List;
 public class LobbyGetDTO {
 
 	private Long id;
+	private String name;
 	private int capacity;
 	private int currentPlayers;
 	private List<Long> playerIds;
@@ -15,6 +16,14 @@ public class LobbyGetDTO {
 
 	public void setId(Long id) {
 		this.id = id;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
 	}
 
 	public int getCapacity() {
