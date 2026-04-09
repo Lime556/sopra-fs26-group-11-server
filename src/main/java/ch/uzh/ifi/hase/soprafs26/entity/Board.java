@@ -1,11 +1,14 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-public class Board {
+public class Board implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     private static final int STANDARD_INTERSECTION_COUNT = 54;
     private static final int STANDARD_EDGE_COUNT = 72;
@@ -41,10 +44,16 @@ public class Board {
 
     private List<String> ports;
 
+    private List<Boat> boats;
+
     private List<Integer> hexTile_DiceNumbers;
 
     public List<String> getHexTiles() {
         return hexTiles;
+    }
+
+    public void setHexTiles(List<String> hexTiles) {
+        this.hexTiles = hexTiles;
     }
 
     public List<Boolean> getIntersections() {
@@ -71,6 +80,14 @@ public class Board {
         this.ports = ports;
     }
 
+    public List<Boat> getBoats() {
+        return boats;
+    }
+
+    public void setBoats(List<Boat> boats) {
+        this.boats = boats;
+    }
+
     public void setHexTile_DiceNumbers(List<Integer> hexTile_DiceNumbers) {
         this.hexTile_DiceNumbers = hexTile_DiceNumbers;
     }
@@ -79,11 +96,39 @@ public class Board {
         return hexTile_DiceNumbers;
     }
 
+    private List<Boat> createDefaultBoats(List<String> portTypes) {
+        List<Boat> defaultBoats = new ArrayList<>();
+        int[][] anchors = {
+            {16, 0, 5},
+            {2, 4, 3},
+            {3, 4, 5},
+            {4, 3, 4},
+            {7, 4, 5},
+            {12, 5, 0},
+            {13, 2, 3},
+            {19, 0, 1},
+            {18, 1, 2}
+        };
+
+        for (int i = 0; i < anchors.length; i++) {
+            Boat boat = new Boat();
+            boat.setId(i + 1);
+            boat.setBoatType(portTypes != null && i < portTypes.size() ? portTypes.get(i) : "STANDARD");
+            boat.setHexId(anchors[i][0]);
+            boat.setFirstCorner(anchors[i][1]);
+            boat.setSecondCorner(anchors[i][2]);
+            defaultBoats.add(boat);
+        }
+
+        return defaultBoats;
+    }
+
     public List<String> generateBoard() {
         this.hexTiles = new ArrayList<>(STANDARD_HEX_TILES);
         this.intersections = new ArrayList<>(Collections.nCopies(STANDARD_INTERSECTION_COUNT, false)); // false indicates unoccupied intersection
         this.edges = new ArrayList<>(Collections.nCopies(STANDARD_EDGE_COUNT, false)); // false indicates unoccupied edge
         this.ports = new ArrayList<>(STANDARD_PORTS);
+        this.boats = createDefaultBoats(this.ports);
         this.hexTile_DiceNumbers = new ArrayList<>(STANDARD_HEX_TILE_DICE_NUMBERS);
         return this.hexTiles;
     }

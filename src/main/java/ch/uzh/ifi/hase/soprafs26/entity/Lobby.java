@@ -1,5 +1,9 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
+import java.io.Serializable;
+import java.util.HashSet;
+import java.util.Set;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -9,10 +13,6 @@ import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
-
-import java.io.Serializable;
-import java.util.HashSet;
-import java.util.Set;
 
 @Entity
 @Table(name = "lobbies")
@@ -25,10 +25,10 @@ public class Lobby implements Serializable {
     private Long id;
 
     @Column(nullable = false)
-    private int capacity;
+    private String name;
 
     @Column(nullable = false)
-    private String name;
+    private int capacity;
 
     @Column
     private String password;
@@ -49,6 +49,14 @@ public class Lobby implements Serializable {
         return capacity;
     }
 
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
     public void setCapacity(int capacity) {
         this.capacity = capacity;
     }
@@ -59,14 +67,6 @@ public class Lobby implements Serializable {
 
     public void setPassword(String password) {
         this.password = password;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
     }
 
     public Set<User> getUsers() {

@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -21,7 +22,8 @@ public class Game{
     @Transient
     private List<Player> players;
 
-    @Transient
+    @Convert(converter = BoardJsonConverter.class)
+    @Column(columnDefinition = "CLOB")
     private Board board;
 
     @Column
@@ -38,6 +40,9 @@ public class Game{
 
     @Column
     private Integer diceValue;
+
+    @Column
+    private Integer robberTileIndex;
 
     @Transient
     private DevelopmentDeck developmentDeck;
@@ -128,6 +133,14 @@ public class Game{
 
     public void setDiceValue(Integer diceValue) {
         this.diceValue = diceValue;
+    }
+
+    public Integer getRobberTileIndex() {
+        return robberTileIndex;
+    }
+
+    public void setRobberTileIndex(Integer robberTileIndex) {
+        this.robberTileIndex = robberTileIndex;
     }
 
     public DevelopmentDeck getDevelopmentDeck() {

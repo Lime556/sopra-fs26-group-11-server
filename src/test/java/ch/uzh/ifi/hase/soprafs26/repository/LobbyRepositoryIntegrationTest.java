@@ -1,12 +1,12 @@
 package ch.uzh.ifi.hase.soprafs26.repository;
 
-import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 
 @DataJpaTest
 public class LobbyRepositoryIntegrationTest {
@@ -20,7 +20,7 @@ public class LobbyRepositoryIntegrationTest {
     @Test
     public void saveLobby_persistsAndGeneratesId() {
         Lobby lobby = new Lobby();
-        lobby.setName("Integration Lobby");
+        lobby.setName("Test Lobby");
         lobby.setCapacity(4);
 
         Lobby persistedLobby = lobbyRepository.save(lobby);

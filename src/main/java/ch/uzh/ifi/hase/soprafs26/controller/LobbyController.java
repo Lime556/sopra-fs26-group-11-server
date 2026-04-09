@@ -43,7 +43,7 @@ public class LobbyController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Lobby createdLobby = lobbyService.createLobby(
                 extractToken(authorizationHeader),
-                lobbyPostDTO == null ? null : lobbyPostDTO.getName(),
+            lobbyPostDTO == null ? null : lobbyPostDTO.getName(),
                 lobbyPostDTO == null ? null : lobbyPostDTO.getCapacity(),
                 lobbyPostDTO == null ? null : lobbyPostDTO.getPassword());
         return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(createdLobby);
