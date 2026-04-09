@@ -18,6 +18,7 @@ import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 public class LobbyService {
 
     private static final int DEFAULT_LOBBY_CAPACITY = 4;
+    private static final String DEFAULT_LOBBY_NAME = "Lobby";
 
     private final LobbyRepository lobbyRepository;
     private final UserRepository userRepository;

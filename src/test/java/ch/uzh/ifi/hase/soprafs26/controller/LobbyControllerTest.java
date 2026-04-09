@@ -41,12 +41,12 @@ public class LobbyControllerTest {
     public void getLobbies_returnsLobbies() throws Exception {
         Lobby first = new Lobby();
         first.setId(1L);
-                first.setName("First Lobby");
+        first.setName("First");
         first.setCapacity(4);
 
         Lobby second = new Lobby();
         second.setId(2L);
-                second.setName("Second Lobby");
+        second.setName("Second");
         second.setCapacity(3);
 
         given(lobbyService.getLobbies()).willReturn(List.of(first, second));
@@ -64,7 +64,7 @@ public class LobbyControllerTest {
     public void createLobby_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
-                lobby.setName("Test Lobby");
+        lobby.setName("Test Lobby");
         lobby.setCapacity(4);
         lobby.setUsers(new HashSet<>());
 
@@ -112,7 +112,7 @@ public class LobbyControllerTest {
     public void joinLobby_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
-        lobby.setName("Test Lobby");
+        lobby.setName("Join Lobby");
         lobby.setCapacity(2);
         lobby.setUsers(new HashSet<>());
 
@@ -207,7 +207,7 @@ public class LobbyControllerTest {
     public void getLobbyById_validId_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
-                lobby.setName("Test Lobby");
+        lobby.setName("Lobby Detail");
         lobby.setCapacity(4);
         lobby.setUsers(new HashSet<>());
 

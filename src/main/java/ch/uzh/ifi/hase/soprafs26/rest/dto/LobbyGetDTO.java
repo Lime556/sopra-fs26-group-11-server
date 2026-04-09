@@ -9,6 +9,7 @@ public class LobbyGetDTO {
 	private int capacity;
 	private int currentPlayers;
 	private List<Long> playerIds;
+	private boolean privateLobby;
 
 	public Long getId() {
 		return id;
@@ -48,5 +49,13 @@ public class LobbyGetDTO {
 
 	public void setPlayerIds(List<Long> playerIds) {
 		this.playerIds = playerIds;
+	}
+
+	public boolean isPrivateLobby() {
+		return privateLobby;
+	}
+
+	public void setPrivateLobby(boolean privateLobby) {
+		this.privateLobby = privateLobby;
 	}
 }
