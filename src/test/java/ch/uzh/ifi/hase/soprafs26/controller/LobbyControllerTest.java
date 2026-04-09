@@ -55,9 +55,9 @@ public class LobbyControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].id", is(1)))
-                .andExpect(jsonPath("$[0].name", is("First Lobby")))
+                .andExpect(jsonPath("$[0].name", is("First")))
                 .andExpect(jsonPath("$[1].id", is(2)))
-                .andExpect(jsonPath("$[1].name", is("Second Lobby")));
+                .andExpect(jsonPath("$[1].name", is("Second")));
     }
 
     @Test
@@ -224,7 +224,7 @@ public class LobbyControllerTest {
         mockMvc.perform(getRequest)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id", is(1)))
-                .andExpect(jsonPath("$.name", is("Test Lobby")))
+                .andExpect(jsonPath("$.name", is("Lobby Detail")))
                 .andExpect(jsonPath("$.capacity", is(4)))
                 .andExpect(jsonPath("$.currentPlayers", is(1)))
                 .andExpect(jsonPath("$.playerIds", hasSize(1)))

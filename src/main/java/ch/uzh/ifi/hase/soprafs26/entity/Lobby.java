@@ -30,9 +30,6 @@ public class Lobby implements Serializable {
     @Column(nullable = false)
     private int capacity;
 
-    @Column(nullable = false)
-    private String name;
-
     @Column
     private String password;
 
@@ -70,14 +67,6 @@ public class Lobby implements Serializable {
 
     public void setPassword(String password) {
         this.password = password;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
     }
 
     public Set<User> getUsers() {
