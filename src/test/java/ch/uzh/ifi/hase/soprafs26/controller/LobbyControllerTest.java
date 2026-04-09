@@ -207,6 +207,7 @@ public class LobbyControllerTest {
     public void getLobbyById_validId_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
+                lobby.setName("Test Lobby");
         lobby.setCapacity(4);
         lobby.setUsers(new HashSet<>());
 
