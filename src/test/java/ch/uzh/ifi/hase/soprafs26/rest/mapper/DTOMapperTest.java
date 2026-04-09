@@ -84,6 +84,7 @@ public class DTOMapperTest {
 	public void testGetLobby_fromLobby_toLobbyGetDTO_success() {
 		Lobby lobby = new Lobby();
 		lobby.setId(1L);
+		lobby.setName("Test Lobby");
 		lobby.setCapacity(4);
 		lobby.setUsers(new HashSet<>());
 
@@ -94,6 +95,7 @@ public class DTOMapperTest {
 		LobbyGetDTO lobbyGetDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(lobby);
 
 		assertEquals(lobby.getId(), lobbyGetDTO.getId());
+		assertEquals(lobby.getName(), lobbyGetDTO.getName());
 		assertEquals(lobby.getCapacity(), lobbyGetDTO.getCapacity());
 		assertEquals(lobby.getCurrentPlayers(), lobbyGetDTO.getCurrentPlayers());
 		assertEquals(1, lobbyGetDTO.getPlayerIds().size());

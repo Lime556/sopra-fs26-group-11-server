@@ -1,9 +1,11 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
-import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
-import ch.uzh.ifi.hase.soprafs26.entity.User;
-import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
-import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -13,12 +15,10 @@ import org.mockito.MockitoAnnotations;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
-import java.util.HashSet;
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
+import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 
 public class LobbyServiceTest {
 
@@ -62,8 +62,9 @@ public class LobbyServiceTest {
     public void createLobby_validInput_success() {
         Mockito.when(userRepository.findByToken("valid-token")).thenReturn(host);
 
-        Lobby createdLobby = lobbyService.createLobby("valid-token", 4, null);
+        Lobby createdLobby = lobbyService.createLobby("valid-token", "Test Lobby", 4, null);
 
+        assertEquals("Test Lobby", createdLobby.getName());
         assertEquals(4, createdLobby.getCapacity());
         assertEquals(1, createdLobby.getCurrentPlayers());
     }
@@ -73,7 +74,7 @@ public class LobbyServiceTest {
         Mockito.when(userRepository.findByToken("valid-token")).thenReturn(host);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> lobbyService.createLobby("valid-token", 7, null));
+                () -> lobbyService.createLobby("valid-token", "Test Lobby", 7, null));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
     }
@@ -81,9 +82,18 @@ public class LobbyServiceTest {
     @Test
     public void createLobby_missingToken_throwsUnauthorized() {
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> lobbyService.createLobby(null, 4, null));
+                () -> lobbyService.createLobby(null, "Test Lobby", 4, null));
 
         assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+    }
+
+    @Test
+    public void createLobby_blankName_defaultsToUntitledLobby() {
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(host);
+
+        Lobby createdLobby = lobbyService.createLobby("valid-token", "   ", 4, null);
+
+        assertEquals("Untitled Lobby", createdLobby.getName());
     }
 
     @Test

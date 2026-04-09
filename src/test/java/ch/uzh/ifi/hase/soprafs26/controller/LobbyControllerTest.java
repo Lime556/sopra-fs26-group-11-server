@@ -1,13 +1,12 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
-import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
-import ch.uzh.ifi.hase.soprafs26.entity.User;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
-import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
+import java.util.HashSet;
+import java.util.List;
+
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.is;
 import org.junit.jupiter.api.Test;
+import static org.mockito.BDDMockito.given;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpStatus;
@@ -15,18 +14,19 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.web.server.ResponseStatusException;
-
-import java.util.HashSet;
-import java.util.List;
-
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.is;
-import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.web.server.ResponseStatusException;
+
+import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
+import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 @WebMvcTest(LobbyController.class)
 public class LobbyControllerTest {
@@ -41,10 +41,12 @@ public class LobbyControllerTest {
     public void getLobbies_returnsLobbies() throws Exception {
         Lobby first = new Lobby();
         first.setId(1L);
+                first.setName("First Lobby");
         first.setCapacity(4);
 
         Lobby second = new Lobby();
         second.setId(2L);
+                second.setName("Second Lobby");
         second.setCapacity(3);
 
         given(lobbyService.getLobbies()).willReturn(List.of(first, second));
@@ -53,13 +55,16 @@ public class LobbyControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].id", is(1)))
-                .andExpect(jsonPath("$[1].id", is(2)));
+                .andExpect(jsonPath("$[0].name", is("First Lobby")))
+                .andExpect(jsonPath("$[1].id", is(2)))
+                .andExpect(jsonPath("$[1].name", is("Second Lobby")));
     }
 
     @Test
     public void createLobby_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
+                lobby.setName("Test Lobby");
         lobby.setCapacity(4);
         lobby.setUsers(new HashSet<>());
 
@@ -68,9 +73,10 @@ public class LobbyControllerTest {
         lobby.getUsers().add(host);
 
         LobbyPostDTO lobbyPostDTO = new LobbyPostDTO();
+        lobbyPostDTO.setName("Test Lobby");
         lobbyPostDTO.setCapacity(4);
 
-        given(lobbyService.createLobby("token-123", 4, null)).willReturn(lobby);
+        given(lobbyService.createLobby("token-123", "Test Lobby", 4, null)).willReturn(lobby);
 
         MockHttpServletRequestBuilder postRequest = post("/lobbies")
                 .header("Authorization", "Bearer token-123")
@@ -80,6 +86,7 @@ public class LobbyControllerTest {
         mockMvc.perform(postRequest)
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id", is(1)))
+                .andExpect(jsonPath("$.name", is("Test Lobby")))
                 .andExpect(jsonPath("$.capacity", is(4)))
                 .andExpect(jsonPath("$.currentPlayers", is(1)));
     }
@@ -87,18 +94,25 @@ public class LobbyControllerTest {
     @Test
     public void createLobby_missingToken_returnsUnauthorized() throws Exception {
         LobbyPostDTO lobbyPostDTO = new LobbyPostDTO();
+        lobbyPostDTO.setName("Test Lobby");
         lobbyPostDTO.setCapacity(4);
 
-        given(lobbyService.createLobby(null, 4, null))
+        given(lobbyService.createLobby(null, "Test Lobby", 4, null))
                 .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token."));
 
         MockHttpServletRequestBuilder postRequest = post("/lobbies")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(asJsonString(lobbyPostDTO));
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isUnauthorized());
     }
+
+    @Test
     public void joinLobby_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
+        lobby.setName("Test Lobby");
         lobby.setCapacity(2);
         lobby.setUsers(new HashSet<>());
 
@@ -209,6 +223,7 @@ public class LobbyControllerTest {
         mockMvc.perform(getRequest)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id", is(1)))
+                .andExpect(jsonPath("$.name", is("Test Lobby")))
                 .andExpect(jsonPath("$.capacity", is(4)))
                 .andExpect(jsonPath("$.currentPlayers", is(1)))
                 .andExpect(jsonPath("$.playerIds", hasSize(1)))
