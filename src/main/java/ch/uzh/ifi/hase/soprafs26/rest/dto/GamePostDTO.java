@@ -6,7 +6,7 @@ import java.util.List;
 public class GamePostDTO {
 
 	private Long id;
-    private List<LobbyGetDTO> players;
+    private List<PlayerGetDTO> players;
     private BoardGetDTO board;
     private Integer currentTurnIndex;
     private PlayerGetDTO currentPlayer;
@@ -32,11 +32,11 @@ public class GamePostDTO {
         this.id = id;
     }
 
-    public List<LobbyGetDTO> getPlayers() {
+    public List<PlayerGetDTO> getPlayers() {
         return players;
     }
 
-    public void setPlayers(List<LobbyGetDTO> players) {
+    public void setPlayers(List<PlayerGetDTO> players) {
         this.players = players;
     }
 
