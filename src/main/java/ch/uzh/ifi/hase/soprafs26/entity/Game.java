@@ -19,7 +19,8 @@ public class Game{
 	@GeneratedValue
 	private Long id;
 
-    @Transient
+    @Convert(converter = PlayerListJsonConverter.class)
+    @Column(columnDefinition = "CLOB")
     private List<Player> players;
 
     @Convert(converter = BoardJsonConverter.class)
@@ -61,6 +62,9 @@ public class Game{
 
     @Column
     private LocalDateTime finishedAt;
+
+    @Column
+    private Long winnerPlayerId;
 
     @Transient
     private Player winner;
@@ -191,12 +195,27 @@ public class Game{
         this.finishedAt = finishedAt;
     }
 
+    public Long getWinnerPlayerId() {
+        return winnerPlayerId;
+    }
+
+    public void setWinnerPlayerId(Long winnerPlayerId) {
+        this.winnerPlayerId = winnerPlayerId;
+    }
+
     public Player getWinner() {
+        if (winner == null && winnerPlayerId != null && players != null) {
+            winner = players.stream()
+                    .filter(player -> player != null && winnerPlayerId.equals(player.getId()))
+                    .findFirst()
+                    .orElse(null);
+        }
         return winner;
     }
 
     public void setWinner(Player winner) {
         this.winner = winner;
+        this.winnerPlayerId = winner == null ? null : winner.getId();
     }
 
     public List<String> getEventLog() {

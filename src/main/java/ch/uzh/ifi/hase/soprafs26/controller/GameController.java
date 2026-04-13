@@ -3,18 +3,23 @@ package ch.uzh.ifi.hase.soprafs26.controller;
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Boat;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -48,6 +53,16 @@ public class GameController {
         return convertGameToDto(game);
     }
 
+    @PutMapping("/games/{gameId}")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameGetDTO updateGame(@PathVariable Long gameId,
+            @RequestBody(required = false) GamePostDTO gamePostDTO,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Game updatedGame = gameService.updateGameState(gameId, extractToken(authorizationHeader), gamePostDTO);
+        return convertGameToDto(updatedGame);
+    }
+
     @GetMapping("/games/{gameId}/board")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
@@ -66,6 +81,48 @@ public class GameController {
         dto.setTargetVictoryPoints(game.getTargetVictoryPoints());
         dto.setStartedAt(game.getStartedAt());
         dto.setFinishedAt(game.getFinishedAt());
+        dto.setPlayers(convertPlayersToDto(game.getPlayers()));
+        dto.setWinner(convertPlayerToDto(game.getWinner()));
+        dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
+        return dto;
+    }
+
+    private List<Player> sortedPlayers(List<Player> players) {
+        if (players == null) {
+            return Collections.emptyList();
+        }
+
+        return players.stream()
+                .sorted(Comparator
+                .comparingInt((Player player) -> safeInt(player == null ? null : player.getVictoryPoints(), 0))
+                .thenComparingInt(player -> safeInt(player == null ? null : player.getCityPoints(), 0))
+                .thenComparingInt(player -> safeInt(player == null ? null : player.getSettlementPoints(), 0))
+                        .reversed())
+                .collect(Collectors.toList());
+    }
+
+    private List<PlayerGetDTO> convertPlayersToDto(List<Player> players) {
+        if (players == null) {
+            return Collections.emptyList();
+        }
+
+        return players.stream().map(this::convertPlayerToDto).collect(Collectors.toList());
+    }
+
+    private PlayerGetDTO convertPlayerToDto(Player player) {
+        if (player == null) {
+            return null;
+        }
+
+        PlayerGetDTO dto = new PlayerGetDTO();
+        dto.setId(player.getId());
+        dto.setName(player.getName());
+        dto.setVictoryPoints(player.getVictoryPoints());
+        dto.setSettlementPoints(player.getSettlementPoints());
+        dto.setCityPoints(player.getCityPoints());
+        dto.setDevelopmentCardVictoryPoints(player.getDevelopmentCardVictoryPoints());
+        dto.setHasLongestRoad(player.getHasLongestRoad());
+        dto.setHasLargestArmy(player.getHasLargestArmy());
         return dto;
     }
 
@@ -110,5 +167,9 @@ public class GameController {
             return authorizationHeader.substring("Bearer ".length()).trim();
         }
         return authorizationHeader.trim();
+    }
+
+    private int safeInt(Integer value, int fallback) {
+        return Optional.ofNullable(value).orElse(fallback);
     }
 }
