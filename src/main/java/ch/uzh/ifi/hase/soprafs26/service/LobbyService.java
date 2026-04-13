@@ -2,9 +2,11 @@ package ch.uzh.ifi.hase.soprafs26.service;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
+import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.PlayerRepository;
 
@@ -28,18 +30,20 @@ public class LobbyService {
     private final LobbyRepository lobbyRepository;
     private final PlayerRepository playerRepository;
     private final UserService userService;
+    private final LobbyParticipantRepository lobbyParticipantRepository;
     
     public LobbyService(
         LobbyRepository lobbyRepository,
         GameRepository gameRepository,
         PlayerRepository playerRepository,
+        LobbyParticipantRepository lobbyParticipantRepository,
         UserService userService
     ) {
         this.lobbyRepository = lobbyRepository;
         this.gameRepository = gameRepository;
         this.playerRepository = playerRepository;
+        this.lobbyParticipantRepository = lobbyParticipantRepository;
         this.userService = userService;
-                        
     }
 
     public List<Lobby> getLobbies() {
@@ -62,9 +66,15 @@ public class LobbyService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lobby name must not be empty.");
         }
         lobby.setName(lobbyName.trim());
-        lobby.getUsers().add(host);
     
         Lobby createdLobby = lobbyRepository.save(lobby);
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setLobby(createdLobby);
+        hostParticipant.setUser(host);
+        hostParticipant.setHost(true);
+        hostParticipant.setBot(false);
+        lobbyParticipantRepository.save(hostParticipant);
+
         lobbyRepository.flush();
         return createdLobby;
     }
@@ -83,20 +93,27 @@ public class LobbyService {
             }
         }
 
-        boolean alreadyJoined = lobby.getUsers().stream()
-                .anyMatch(existingUser -> existingUser.getId().equals(user.getId()));
+        boolean alreadyJoined = lobby.getParticipants().stream()
+                .anyMatch(participant -> 
+                    participant.getUser() != null &&
+                    participant.getUser().getId().equals(user.getId()));
         if (alreadyJoined) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "User with id " + user.getId() + " already joined lobby " + lobbyId + ".");
         }
 
-        if (lobby.getCurrentPlayers() >= lobby.getCapacity()) {
+        if (lobby.getCurrentParticipants() >= lobby.getCapacity()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Lobby with id " + lobbyId + " is full.");
         }
 
-        lobby.getUsers().add(user);
-        lobby = lobbyRepository.save(lobby);
+        LobbyParticipant participant = new LobbyParticipant();
+        participant.setLobby(lobby);
+        participant.setUser(user);
+        participant.setHost(false);
+        participant.setBot(false);
+        lobbyParticipantRepository.save(participant);
+
         lobbyRepository.flush();
         return lobby;
     }
@@ -108,8 +125,10 @@ public class LobbyService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Lobby with id " + lobbyId + " was not found."));
 
-        boolean requesterInLobby = lobby.getUsers().stream()
-        .anyMatch(user -> user.getId().equals(requester.getId()));
+        boolean requesterInLobby = lobby.getParticipants().stream()
+            .anyMatch(participant -> 
+                participant.getUser() != null &&
+                participant.getUser().getId().equals(requester.getId()));
                 
         if (!requesterInLobby) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this lobby");
@@ -119,7 +138,7 @@ public class LobbyService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the host can start the game");
         }
 
-        if (lobby.getUsers().size() < 3) {
+        if (lobby.getCurrentParticipants() < 3) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough players");
         }
 
@@ -136,15 +155,16 @@ public class LobbyService {
 
         game = gameRepository.save(game);
 
-        List<User> orderedUsers = lobby.getUsers().stream()
-            .sorted((u1, u2) -> u1.getId().compareTo(u2.getId()))
+        List<LobbyParticipant> orderedParticipants = lobby.getParticipants().stream()
+            .filter(participant -> participant.getUser() != null)
+            .sorted((p1, p2) -> p1.getUser().getId().compareTo(p2.getUser().getId()))
             .toList();
 
         String[] colors = {"RED", "BLUE", "WHITE", "ORANGE"};
 
-        for (int i = 0; i < orderedUsers.size(); i++) {
+        for (int i = 0; i < orderedParticipants.size(); i++) {
             Player player = new Player();
-            player.setUser(orderedUsers.get(i));
+            player.setUser(orderedParticipants.get(i).getUser());
             player.setGameId(game.getId());
             player.setColor(colors[i]);
             player.setVictoryPoints(0);
@@ -157,6 +177,16 @@ public class LobbyService {
 
         return game;
     }
+
+    public Lobby getLobbyById(Long lobbyId, String playerToken) {
+        userService.authenticate(playerToken);
+
+        Lobby lobby = lobbyRepository.findById(lobbyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lobby with id " + lobbyId + " was not found."));
+        return lobby;
+    }
+
 
     private int resolveCapacity(Integer capacity) {
         int resolved = capacity == null ? DEFAULT_LOBBY_CAPACITY : capacity;

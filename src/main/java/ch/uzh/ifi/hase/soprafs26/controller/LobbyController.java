@@ -21,6 +21,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.mapper.DTOMapper;
 import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
 
+
 @RestController
 public class LobbyController {
 
@@ -73,7 +74,20 @@ public class LobbyController {
     ) {
         return DTOMapper.INSTANCE.convertEntityToGameStartGetDTO(
             lobbyService.startGame(lobbyId, authorizationHeader)
-    );
+        );
     }
+
+    @GetMapping("/lobbies/{lobbyId}")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public LobbyGetDTO getLobbyById(
+        @PathVariable Long lobbyId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(
+            lobbyService.getLobbyById(lobbyId, authorizationHeader)
+        );
+    }
+    
 
 }
