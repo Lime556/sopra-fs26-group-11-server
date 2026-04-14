@@ -112,7 +112,7 @@ public class LobbyServiceTest {
     @Test
     public void joinLobby_validInputs_success() {
         Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
-        Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.of(lobby));
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
 
         Lobby updatedLobby = lobbyService.joinLobby(1L, "valid-token", null);
 
@@ -131,7 +131,7 @@ public class LobbyServiceTest {
     @Test
     public void joinLobby_lobbyNotFound_throwsNotFound() {
         Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
-        Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.empty());
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.empty());
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> lobbyService.joinLobby(1L, "valid-token", null));
@@ -144,7 +144,7 @@ public class LobbyServiceTest {
         lobby.setPassword("secret");
 
         Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
-        Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.of(lobby));
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> lobbyService.joinLobby(1L, "valid-token", "wrong"));
@@ -162,7 +162,7 @@ public class LobbyServiceTest {
         lobby.getUsers().add(existingB);
 
         Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
-        Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.of(lobby));
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> lobbyService.joinLobby(1L, "valid-token", null));
@@ -175,7 +175,7 @@ public class LobbyServiceTest {
         lobby.getUsers().add(user);
 
         Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
-        Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.of(lobby));
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> lobbyService.joinLobby(1L, "valid-token", null));
