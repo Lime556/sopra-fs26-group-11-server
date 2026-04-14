@@ -24,7 +24,7 @@ public class LobbyService {
 
 
     private static final int DEFAULT_LOBBY_CAPACITY = 4;
-
+    private static final int MIN_PLAYERS_TO_START = 2;
 
     private final GameRepository gameRepository;
     private final LobbyRepository lobbyRepository;
@@ -138,7 +138,7 @@ public class LobbyService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the host can start the game");
         }
 
-        if (lobby.getCurrentParticipants() < 3) {
+        if (lobby.getCurrentParticipants() < MIN_PLAYERS_TO_START) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough players");
         }
 
