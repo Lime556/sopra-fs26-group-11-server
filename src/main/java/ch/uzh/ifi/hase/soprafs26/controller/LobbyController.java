@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
@@ -24,9 +26,11 @@ import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
 public class LobbyController {
 
     private final LobbyService lobbyService;
+    private final SimpMessagingTemplate messaging;
 
-    LobbyController(LobbyService lobbyService) {
+    LobbyController(LobbyService lobbyService, SimpMessagingTemplate messaging) {
         this.lobbyService = lobbyService;
+        this.messaging = messaging;
     }
 
     @GetMapping("/lobbies")
@@ -46,7 +50,9 @@ public class LobbyController {
             lobbyPostDTO == null ? null : lobbyPostDTO.getName(),
                 lobbyPostDTO == null ? null : lobbyPostDTO.getCapacity(),
                 lobbyPostDTO == null ? null : lobbyPostDTO.getPassword());
-        return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(createdLobby);
+        LobbyGetDTO createdDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(createdLobby);
+        messaging.convertAndSend("/topic/lobbies", createdDTO);
+        return createdDTO;
     }
 
     @GetMapping("/lobbies/{lobbyId}")
@@ -73,7 +79,9 @@ public class LobbyController {
 
         String token = extractToken(authorizationHeader);
         Lobby updatedLobby = lobbyService.joinLobby(lobbyId, token, lobbyJoinDTO == null ? null : lobbyJoinDTO.getPassword());
-        return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        messaging.convertAndSend("/topic/lobbies", updatedDTO);
+        return updatedDTO;
     }
 
     private String extractToken(String authorizationHeader) {
