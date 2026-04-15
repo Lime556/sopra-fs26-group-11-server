@@ -94,13 +94,37 @@ public class GameService {
     public Game getGameById(Long gameId, String playerToken) {
         authenticate(playerToken);
 
-        return gameRepository.findById(gameId)
+        Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
+
+        ensureBoardInitialized(game);
+        return game;
     }
 
     public Board getBoardById(Long gameId, String playerToken) {
-        return getGameById(gameId, playerToken).getBoard();
+        Game game = getGameById(gameId, playerToken);
+        ensureBoardInitialized(game);
+        return game.getBoard();
+    }
+
+    private void ensureBoardInitialized(Game game) {
+        Board board = game.getBoard();
+        if (board != null
+            && board.getHexTiles() != null
+            && board.getHexTile_DiceNumbers() != null
+            && board.getHexTiles().size() >= 19
+            && board.getHexTile_DiceNumbers().size() >= 19) {
+            return;
+        }
+
+        Board regeneratedBoard = new Board();
+        regeneratedBoard.generateBoard();
+        game.setBoard(regeneratedBoard);
+
+        int desertIndex = regeneratedBoard.getHexTiles() != null ? regeneratedBoard.getHexTiles().indexOf("DESERT") : -1;
+        game.setRobberTileIndex(desertIndex >= 0 ? desertIndex + 1 : null);
+        gameRepository.save(game);
     }
 
     private Board resolveBoard(GamePostDTO gamePostDTO) {
