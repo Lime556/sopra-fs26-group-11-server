@@ -1,14 +1,11 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
+import jakarta.persistence.*;
+
 import java.io.Serializable;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-
 @Entity
-@Table(name = "Player")
+@Table(name = "players")
 public class Player implements Serializable {
     private static final long serialVersionUID = 1L;
 
@@ -16,9 +13,20 @@ public class Player implements Serializable {
     @GeneratedValue
     private Long id;
 
-    private String name;
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
-    private Integer victoryPoints;
+    @Column(nullable = false)
+    private Long gameId;
+
+    @Column(nullable = false)
+    private String color;
+
+    @Column(nullable = false)
+    private int victoryPoints;
+  
+    private String name;
 
     private Integer settlementPoints;
 
@@ -38,20 +46,44 @@ public class Player implements Serializable {
         this.id = id;
     }
 
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public Long getGameId() {
+        return gameId;
+    }
+
+    public void setGameId(Long gameId) {
+        this.gameId = gameId;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public void setColor(String color) {
+        this.color = color;
+    }
+
+    public int getVictoryPoints() {
+        return victoryPoints;
+    }
+
+    public void setVictoryPoints(int victoryPoints) {
+        this.victoryPoints = victoryPoints;
+    }
+  
     public String getName() {
         return name;
     }
 
     public void setName(String name) {
         this.name = name;
-    }
-
-    public Integer getVictoryPoints() {
-        return victoryPoints;
-    }
-
-    public void setVictoryPoints(Integer victoryPoints) {
-        this.victoryPoints = victoryPoints;
     }
 
     public Integer getSettlementPoints() {

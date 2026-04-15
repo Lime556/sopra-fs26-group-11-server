@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import ch.uzh.ifi.hase.soprafs26.constant.UserStatus;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserAuthDTO;
@@ -86,19 +87,37 @@ public class DTOMapperTest {
 		lobby.setId(1L);
 		lobby.setName("Test Lobby");
 		lobby.setCapacity(4);
-		lobby.setUsers(new HashSet<>());
+		lobby.setName("Test Lobby");
 
 		User player = new User();
 		player.setId(55L);
-		lobby.getUsers().add(player);
+		player.setUsername("player1");
+
+		LobbyParticipant participant = new LobbyParticipant();
+		participant.setId(10L);
+		participant.setLobby(lobby);
+		participant.setUser(player);
+		participant.setBot(false);
+
+		HashSet<LobbyParticipant> participants = new HashSet<>();
+		participants.add(participant);
+		lobby.setParticipants(participants);
+		lobby.setHostParticipant(participant);
 
 		LobbyGetDTO lobbyGetDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(lobby);
 
 		assertEquals(lobby.getId(), lobbyGetDTO.getId());
 		assertEquals(lobby.getName(), lobbyGetDTO.getName());
 		assertEquals(lobby.getCapacity(), lobbyGetDTO.getCapacity());
-		assertEquals(lobby.getCurrentPlayers(), lobbyGetDTO.getCurrentPlayers());
-		assertEquals(1, lobbyGetDTO.getPlayerIds().size());
-		assertEquals(55L, lobbyGetDTO.getPlayerIds().get(0));
+		assertEquals(lobby.getCurrentParticipants(), lobbyGetDTO.getCurrentParticipants());
+		assertEquals(1, lobbyGetDTO.getParticipants().size());
+		assertEquals(false, lobbyGetDTO.isPrivateLobby());
+		assertEquals("Test Lobby", lobbyGetDTO.getName());
+
+		assertEquals(10L, lobbyGetDTO.getHostParticipantId());
+		assertEquals(10L, lobbyGetDTO.getParticipants().get(0).getId());
+		assertEquals(55L, lobbyGetDTO.getParticipants().get(0).getUserId());
+		assertEquals("player1", lobbyGetDTO.getParticipants().get(0).getUsername());
+		assertEquals(false, lobbyGetDTO.getParticipants().get(0).isBot());
 	}
 }

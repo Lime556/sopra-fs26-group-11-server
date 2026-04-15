@@ -105,23 +105,6 @@ public class UserService {
 		}
 	}
 
-	public User authenticate(String token) {
-		if (token == null || token.isBlank()) {
-			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
-		}
-
-		User user = userRepository.findByToken(token);
-		if (user == null) {
-			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
-		}
-
-		if (user.getUserStatus() != UserStatus.ONLINE) {
-			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
-		}
-
-		return user;
-	}
-
 	public User login(User loginUser) {
 		User user = userRepository.findByUsername(loginUser.getUsername());
 
@@ -141,11 +124,13 @@ public class UserService {
 	}
 
 	public void logout(String token) {
-		if (token == null || token.isBlank()) {
+		String extractedToken = extractToken(token);
+
+		if (extractedToken == null || extractedToken.isBlank()) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
 		}
 
-		User user = userRepository.findByToken(token);
+		User user = userRepository.findByToken(extractedToken);
 
 		if (user == null) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
@@ -160,4 +145,33 @@ public class UserService {
 
 		userRepository.save(user);
 	}
+
+	public User authenticate(String token) {
+		String extractedToken = extractToken(token);
+
+		if (extractedToken == null || extractedToken.isBlank()) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+		
+		User user = userRepository.findByToken(extractedToken);
+		if (user == null) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+
+		if (user.getUserStatus() != UserStatus.ONLINE) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
+		}
+
+		return user;
+	}
+
+	private String extractToken(String authorizationHeader) {
+        if (authorizationHeader == null || authorizationHeader.isBlank()) {
+            return null;
+        }
+        if (authorizationHeader.startsWith("Bearer ")) {
+            return authorizationHeader.substring("Bearer ".length()).trim();
+        }
+        return authorizationHeader.trim();
+    }
 }

@@ -7,8 +7,10 @@ public class LobbyGetDTO {
 	private Long id;
 	private String name;
 	private int capacity;
-	private int currentPlayers;
-	private List<Long> playerIds;
+	private int currentParticipants;
+	private List<LobbyParticipantGetDTO> participants;
+	private Long gameId;
+	private Long hostParticipantId;
 	private boolean privateLobby;
 
 	public Long getId() {
@@ -35,20 +37,36 @@ public class LobbyGetDTO {
 		this.capacity = capacity;
 	}
 
-	public int getCurrentPlayers() {
-		return currentPlayers;
+	public int getCurrentParticipants() {
+		return currentParticipants;
+	}
+	
+	public void setCurrentParticipants(int currentParticipants) {
+		this.currentParticipants = currentParticipants;
 	}
 
-	public void setCurrentPlayers(int currentPlayers) {
-		this.currentPlayers = currentPlayers;
+	public List<LobbyParticipantGetDTO> getParticipants() {
+			return participants;
+		}
+
+	public void setParticipants(List<LobbyParticipantGetDTO> participants) {
+		this.participants = participants;
 	}
 
-	public List<Long> getPlayerIds() {
-		return playerIds;
+	public Long getGameId() {
+		return gameId;
 	}
 
-	public void setPlayerIds(List<Long> playerIds) {
-		this.playerIds = playerIds;
+	public void setGameId(Long gameId) {
+		this.gameId = gameId;
+	}
+
+	public Long getHostParticipantId() {
+		return hostParticipantId;
+	}
+
+	public void setHostParticipantId(Long hostParticipantId) {
+		this.hostParticipantId = hostParticipantId;
 	}
 
 	public boolean isPrivateLobby() {

@@ -1,18 +1,11 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
+import jakarta.persistence.*;
+
 import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.ManyToMany;
-import jakarta.persistence.Table;
-import jakarta.persistence.Transient;
 
 @Entity
 @Table(name = "lobbies")
@@ -33,9 +26,15 @@ public class Lobby implements Serializable {
     @Column
     private String password;
 
-    @ManyToMany
-    @JoinTable(name = "lobby_users", joinColumns = @JoinColumn(name = "lobby_id"), inverseJoinColumns = @JoinColumn(name = "user_id"))
-    private Set<User> users = new HashSet<>();
+    @OneToMany(mappedBy = "lobby", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<LobbyParticipant> participants = new HashSet<>();
+
+    @OneToOne
+    @JoinColumn(name = "host_participant_id")
+    private LobbyParticipant hostParticipant;
+
+    @Column
+    private Long gameId;
 
     public Long getId() {
         return id;
@@ -69,16 +68,32 @@ public class Lobby implements Serializable {
         this.password = password;
     }
 
-    public Set<User> getUsers() {
-        return users;
+    public Set<LobbyParticipant> getParticipants() {
+        return participants;
     }
 
-    public void setUsers(Set<User> users) {
-        this.users = users;
+    public void setParticipants(Set<LobbyParticipant> participants) {
+        this.participants = participants;
     }
 
     @Transient
-    public int getCurrentPlayers() {
-        return users == null ? 0 : users.size();
+    public int getCurrentParticipants() {
+        return participants == null ? 0 : participants.size();
+    }
+
+    public LobbyParticipant getHostParticipant() {
+        return hostParticipant;
+    }
+
+    public void setHostParticipant(LobbyParticipant hostParticipant) {
+        this.hostParticipant = hostParticipant;
+    }
+
+    public Long getGameId() {
+        return gameId;
+    }
+
+    public void setGameId(Long gameId) {
+        this.gameId = gameId;
     }
 }

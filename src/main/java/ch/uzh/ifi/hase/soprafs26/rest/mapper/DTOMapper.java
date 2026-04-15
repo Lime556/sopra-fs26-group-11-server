@@ -1,19 +1,19 @@
 package ch.uzh.ifi.hase.soprafs26.rest.mapper;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
-
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
 
+import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStartGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserAuthDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserPostDTO;
+import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyParticipantGetDTO;
 
 /**
  * DTOMapper
@@ -32,9 +32,9 @@ public interface DTOMapper {
 	DTOMapper INSTANCE = Mappers.getMapper(DTOMapper.class);
 
 	@Mapping(target = "id", ignore = true)
-    @Mapping(target = "userStatus", ignore = true)
-    @Mapping(target = "token", ignore = true)
-    @Mapping(target = "creationDate", ignore = true)
+  @Mapping(target = "userStatus", ignore = true)
+  @Mapping(target = "token", ignore = true)
+  @Mapping(target = "creationDate", ignore = true)
 	@Mapping(target = "winRate", ignore = true)
 	@Mapping(target = "passwordHash", source = "password")
 	User convertUserPostDTOtoEntity(UserPostDTO userPostDTO);
@@ -46,19 +46,20 @@ public interface DTOMapper {
 	@Mapping(source = "id", target = "id")
 	@Mapping(source = "name", target = "name")
 	@Mapping(source = "capacity", target = "capacity")
-	@Mapping(source = "currentPlayers", target = "currentPlayers")
-	@Mapping(source = "users", target = "playerIds")
-	@Mapping(source = "password", target = "privateLobby")
+	@Mapping(source = "currentParticipants", target = "currentParticipants")
+	@Mapping(source = "participants", target = "participants")
+	@Mapping(source = "gameId", target = "gameId")
+	@Mapping(source = "hostParticipant.id", target = "hostParticipantId")
+	@Mapping(target = "privateLobby", expression = "java(lobby.getPassword() != null && !lobby.getPassword().isBlank())")
 	LobbyGetDTO convertEntityToLobbyGetDTO(Lobby lobby);
 
-	default List<Long> mapUsersToPlayerIds(Set<User> users) {
-		if (users == null || users.isEmpty()) {
-			return Collections.emptyList();
-		}
-		return users.stream().map(User::getId).toList();
-	}
 
-	default boolean map(String password) {
-		return password != null && !password.isBlank();
-	}
+	@Mapping(source = "id", target = "id")
+	@Mapping(source = "bot", target = "bot")
+	@Mapping(target = "userId", expression = "java(participant.getUser() != null ? participant.getUser().getId() : null)")
+	@Mapping(target = "username", expression = "java(participant.getUser() != null ? participant.getUser().getUsername() : \"Bot\")")
+	LobbyParticipantGetDTO convertEntityToLobbyParticipantGetDTO(LobbyParticipant participant);
+
+	@Mapping(source = "id", target = "gameId")
+	GameStartGetDTO convertEntityToGameStartGetDTO(Game game);
 }

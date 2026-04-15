@@ -16,11 +16,13 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStartGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.mapper.DTOMapper;
 import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
+
 
 @RestController
 public class LobbyController {
@@ -43,54 +45,67 @@ public class LobbyController {
     @PostMapping("/lobbies")
     @ResponseStatus(HttpStatus.CREATED)
     @ResponseBody
-    public LobbyGetDTO createLobby(@RequestBody(required = false) LobbyPostDTO lobbyPostDTO,
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+    public LobbyGetDTO createLobby(
+        @RequestBody(required = false) LobbyPostDTO lobbyPostDTO,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+      
         Lobby createdLobby = lobbyService.createLobby(
-                extractToken(authorizationHeader),
-            lobbyPostDTO == null ? null : lobbyPostDTO.getName(),
+                authorizationHeader,
                 lobbyPostDTO == null ? null : lobbyPostDTO.getCapacity(),
-                lobbyPostDTO == null ? null : lobbyPostDTO.getPassword());
+                lobbyPostDTO == null ? null : lobbyPostDTO.getPassword(),
+                lobbyPostDTO == null ? null : lobbyPostDTO.getName());
+
         LobbyGetDTO createdDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(createdLobby);
         messaging.convertAndSend("/topic/lobbies", createdDTO);
         return createdDTO;
+    }
+    
+    @PostMapping("/lobbies/{lobbyId}/join")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public LobbyGetDTO joinLobby(
+        @PathVariable Long lobbyId,
+        @RequestBody LobbyJoinDTO lobbyJoinDTO,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+
+        if (lobbyJoinDTO != null && lobbyJoinDTO.getLobbyId() != null && !lobbyId.equals(lobbyJoinDTO.getLobbyId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Path lobby id does not match body lobby id.");
+        }
+
+        Lobby updatedLobby = lobbyService.joinLobby(
+          lobbyId, 
+          authorizationHeader, 
+          lobbyJoinDTO == null ? null : lobbyJoinDTO.getPassword());
+        
+        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        messaging.convertAndSend("/topic/lobbies", updatedDTO);
+        return updatedDTO;
+    }
+
+    @PostMapping("/lobbies/{lobbyId}/start")
+    @ResponseStatus(HttpStatus.CREATED)
+    @ResponseBody
+    public GameStartGetDTO startGame (
+        @PathVariable Long lobbyId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        return DTOMapper.INSTANCE.convertEntityToGameStartGetDTO(
+            lobbyService.startGame(lobbyId, authorizationHeader)
+        );
     }
 
     @GetMapping("/lobbies/{lobbyId}")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public LobbyGetDTO getLobbyById(
-            @PathVariable Long lobbyId,
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-
-        String token = extractToken(authorizationHeader);
-        Lobby lobby = lobbyService.getLobbyById(lobbyId, token);
-        return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(lobby);
+        @PathVariable Long lobbyId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(
+            lobbyService.getLobbyById(lobbyId, authorizationHeader)
+        );
     }
     
-    @PostMapping("/lobbies/{lobbyId}/join")
-    @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
-    public LobbyGetDTO joinLobby(@PathVariable Long lobbyId, @RequestBody LobbyJoinDTO lobbyJoinDTO,
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-        if (lobbyJoinDTO != null && lobbyJoinDTO.getLobbyId() != null && !lobbyId.equals(lobbyJoinDTO.getLobbyId())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Path lobby id does not match body lobby id.");
-        }
 
-        String token = extractToken(authorizationHeader);
-        Lobby updatedLobby = lobbyService.joinLobby(lobbyId, token, lobbyJoinDTO == null ? null : lobbyJoinDTO.getPassword());
-        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
-        messaging.convertAndSend("/topic/lobbies", updatedDTO);
-        return updatedDTO;
-    }
-
-    private String extractToken(String authorizationHeader) {
-        if (authorizationHeader == null || authorizationHeader.isBlank()) {
-            return null;
-        }
-        if (authorizationHeader.startsWith("Bearer ")) {
-            return authorizationHeader.substring("Bearer ".length()).trim();
-        }
-        return authorizationHeader.trim();
-    }
 }
