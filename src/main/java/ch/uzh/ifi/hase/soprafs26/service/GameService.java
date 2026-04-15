@@ -1,5 +1,18 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Boat;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
@@ -11,17 +24,6 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
-import java.time.LocalDateTime;
-import java.util.Comparator;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-import java.util.stream.Collectors;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @Transactional
@@ -177,12 +179,12 @@ public class GameService {
         Player player = new Player();
         player.setId(playerDto.getId());
         player.setName(playerDto.getName());
-        player.setVictoryPoints(playerDto.getVictoryPoints());
         player.setSettlementPoints(playerDto.getSettlementPoints());
         player.setCityPoints(playerDto.getCityPoints());
         player.setDevelopmentCardVictoryPoints(playerDto.getDevelopmentCardVictoryPoints());
         player.setHasLongestRoad(playerDto.getHasLongestRoad());
         player.setHasLargestArmy(playerDto.getHasLargestArmy());
+        player.recalculateVictoryPoints();
         return player;
     }
 
@@ -209,7 +211,7 @@ public class GameService {
 
         Player topPlayer = players.stream().max(rankingComparator).orElse(null);
 
-        if (topPlayer != null && topPlayer.getVictoryPoints() != null && topPlayer.getVictoryPoints() >= targetVictoryPoints) {
+        if (topPlayer != null && topPlayer.getVictoryPoints() >= targetVictoryPoints) {
             game.setWinner(topPlayer);
             if (game.getFinishedAt() == null) {
                 game.setFinishedAt(LocalDateTime.now());
