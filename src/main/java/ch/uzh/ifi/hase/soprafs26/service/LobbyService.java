@@ -52,7 +52,8 @@ public class LobbyService {
     public Lobby joinLobby(Long lobbyId, String playerToken, String lobbyPassword) {
         User user = getAuthenticatedUser(playerToken);
 
-        Lobby lobby = lobbyRepository.findById(lobbyId)
+        
+        Lobby lobby = lobbyRepository.findByIdWithLock(lobbyId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Lobby with id " + lobbyId + " was not found."));
 
