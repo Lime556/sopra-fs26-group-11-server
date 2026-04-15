@@ -51,90 +51,51 @@ public class LobbyService {
     }
 
     public Lobby createLobby(String playerToken, Integer capacity, String lobbyPassword, String lobbyName) {
-        User host = userService.authenticate(playerToken);
+        User hostUser = userService.authenticate(playerToken);
 
         Lobby lobby = new Lobby();
         lobby.setCapacity(resolveCapacity(capacity));
-        lobby.setHostId(host.getId());
         lobby.setGameId(null);
-
-        if (lobbyPassword != null && !lobbyPassword.isBlank()) {
-            lobby.setPassword(lobbyPassword.trim());
-        }
-
-        if (lobbyName == null || lobbyName.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lobby name must not be empty.");
-        }
-        lobby.setName(lobbyName.trim());
+        lobby.setPassword(normalizePassword(lobbyPassword));
+        lobby.setName(validateAndNormalizeLobbyName(lobbyName));
     
-        Lobby createdLobby = lobbyRepository.save(lobby);
-        LobbyParticipant hostParticipant = new LobbyParticipant();
-        hostParticipant.setLobby(createdLobby);
-        hostParticipant.setUser(host);
-        hostParticipant.setHost(true);
-        hostParticipant.setBot(false);
-        lobbyParticipantRepository.save(hostParticipant);
+        lobby = lobbyRepository.saveAndFlush(lobby);
 
-        lobbyRepository.flush();
-        return createdLobby;
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setLobby(lobby);
+        hostParticipant.setUser(hostUser);
+        hostParticipant.setBot(false);
+        hostParticipant = lobbyParticipantRepository.saveAndFlush(hostParticipant);
+
+        lobby.setHostParticipant(hostParticipant);
+
+        return lobbyRepository.saveAndFlush(lobby);
     }
 
     public Lobby joinLobby(Long lobbyId, String playerToken, String lobbyPassword) {
         User user = userService.authenticate(playerToken);
+        Lobby lobby = findLobbyOrThrow(lobbyId);
 
-        Lobby lobby = lobbyRepository.findById(lobbyId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Lobby with id " + lobbyId + " was not found."));
-
-        if (lobby.getPassword() != null && !lobby.getPassword().isBlank()) {
-            if (lobbyPassword == null || !lobby.getPassword().equals(lobbyPassword)) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                        "Wrong lobby password for lobby " + lobbyId + ".");
-            }
-        }
-
-        boolean alreadyJoined = lobby.getParticipants().stream()
-                .anyMatch(participant -> 
-                    participant.getUser() != null &&
-                    participant.getUser().getId().equals(user.getId()));
-        if (alreadyJoined) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "User with id " + user.getId() + " already joined lobby " + lobbyId + ".");
-        }
-
-        if (lobby.getCurrentParticipants() >= lobby.getCapacity()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Lobby with id " + lobbyId + " is full.");
-        }
+        validateLobbyPassword(lobby, lobbyPassword);
+        ensureUserNotAlreadyInLobby(lobby, user);
+        ensureLobbyNotFull(lobby);
 
         LobbyParticipant participant = new LobbyParticipant();
         participant.setLobby(lobby);
         participant.setUser(user);
-        participant.setHost(false);
         participant.setBot(false);
-        lobbyParticipantRepository.save(participant);
+        lobbyParticipantRepository.saveAndFlush(participant);
 
-        lobbyRepository.flush();
         return lobby;
     }
 
     public Game startGame (Long lobbyId, String playerToken) {
         User requester = userService.authenticate(playerToken);
+        Lobby lobby = findLobbyOrThrow(lobbyId);
 
-        Lobby lobby = lobbyRepository.findById(lobbyId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Lobby with id " + lobbyId + " was not found."));
-
-        boolean requesterInLobby = lobby.getParticipants().stream()
-            .anyMatch(participant -> 
-                participant.getUser() != null &&
-                participant.getUser().getId().equals(requester.getId()));
+        LobbyParticipant requesterParticipant = findParticipantByUserOrThrow(lobby, requester);
                 
-        if (!requesterInLobby) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this lobby");
-        }
-
-        if (!lobby.getHostId().equals(requester.getId())) {
+        if (lobby.getHostParticipant() == null || !lobby.getHostParticipant().getId().equals(requesterParticipant.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the host can start the game");
         }
 
@@ -152,8 +113,7 @@ public class LobbyService {
         game.setTargetVictoryPoints(10);
         game.setStartedAt(java.time.LocalDateTime.now());
         game.setFinishedAt(null);
-
-        game = gameRepository.save(game);
+        game = gameRepository.saveAndFlush(game);
 
         List<LobbyParticipant> orderedParticipants = lobby.getParticipants().stream()
             .filter(participant -> participant.getUser() != null)
@@ -172,19 +132,14 @@ public class LobbyService {
         }
 
         lobby.setGameId(game.getId());
-        lobbyRepository.save(lobby);
-        lobbyRepository.flush();
+        lobbyRepository.saveAndFlush(lobby);
 
         return game;
     }
 
     public Lobby getLobbyById(Long lobbyId, String playerToken) {
         userService.authenticate(playerToken);
-
-        Lobby lobby = lobbyRepository.findById(lobbyId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Lobby with id " + lobbyId + " was not found."));
-        return lobby;
+        return findLobbyOrThrow(lobbyId);
     }
 
 
@@ -194,6 +149,75 @@ public class LobbyService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lobby capacity must be between 2 and 4.");
         }
         return resolved;
+    }
+
+
+    private Lobby findLobbyOrThrow(Long lobbyId) {
+        return lobbyRepository.findById(lobbyId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Lobby with id " + lobbyId + " was not found."
+                ));
+    }
+
+    private String validateAndNormalizeLobbyName(String lobbyName) {
+        if (lobbyName == null || lobbyName.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lobby name must not be empty.");
+        }
+        return lobbyName.trim();
+    }
+
+    private String normalizePassword(String lobbyPassword) {
+        if (lobbyPassword == null || lobbyPassword.isBlank()) {
+            return null;
+        }
+        return lobbyPassword.trim();
+    }
+
+    private void validateLobbyPassword(Lobby lobby, String lobbyPassword) {
+        if (lobby.getPassword() != null && !lobby.getPassword().isBlank()) {
+            if (lobbyPassword == null || !lobby.getPassword().equals(lobbyPassword)) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Wrong lobby password for lobby " + lobby.getId() + "."
+                );
+            }
+        }
+    }
+
+    private void ensureUserNotAlreadyInLobby(Lobby lobby, User user) {
+        boolean alreadyJoined = lobby.getParticipants().stream()
+                .anyMatch(participant ->
+                        participant.getUser() != null
+                                && participant.getUser().getId().equals(user.getId()));
+    
+        if (alreadyJoined) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "User with id " + user.getId() + " already joined lobby " + lobby.getId() + "."
+            );
+        }
+    }
+
+    private void ensureLobbyNotFull(Lobby lobby) {
+        if (lobby.getCurrentParticipants() >= lobby.getCapacity()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Lobby with id " + lobby.getId() + " is full."
+            );
+        }
+    }
+
+    private LobbyParticipant findParticipantByUserOrThrow(Lobby lobby, User user) {
+        return lobby.getParticipants().stream()
+                .filter(participant ->
+                        participant.getUser() != null
+                                && participant.getUser().getId().equals(user.getId()))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "User is not part of this lobby"
+                ));
     }
 
     

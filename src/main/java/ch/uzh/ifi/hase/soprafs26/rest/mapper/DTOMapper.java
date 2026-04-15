@@ -47,14 +47,13 @@ public interface DTOMapper {
 	@Mapping(source = "currentParticipants", target = "currentParticipants")
 	@Mapping(source = "participants", target = "participants")
 	@Mapping(source = "gameId", target = "gameId")
-	@Mapping(source = "hostId", target = "hostId")
 	@Mapping(source = "name", target = "name")
+	@Mapping(source = "hostParticipant.id", target = "hostParticipantId")
 	@Mapping(target = "privateLobby", expression = "java(lobby.getPassword() != null && !lobby.getPassword().isBlank())")
 	LobbyGetDTO convertEntityToLobbyGetDTO(Lobby lobby);
 
 
 	@Mapping(source = "id", target = "id")
-	@Mapping(source = "host", target = "host")
 	@Mapping(source = "bot", target = "bot")
 	@Mapping(target = "userId", expression = "java(participant.getUser() != null ? participant.getUser().getId() : null)")
 	@Mapping(target = "username", expression = "java(participant.getUser() != null ? participant.getUser().getUsername() : \"Bot\")")

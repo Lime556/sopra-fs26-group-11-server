@@ -4,7 +4,6 @@ public class LobbyParticipantGetDTO {
     private Long id;
     private Long userId;
     private String username;
-    private boolean host;
     private boolean bot;
 
     public Long getId() {
@@ -29,14 +28,6 @@ public class LobbyParticipantGetDTO {
 
     public void setUsername(String username) {
         this.username = username;
-    }
-
-    public boolean isHost() {
-        return host;
-    }
-
-    public void setHost(boolean host) {
-        this.host = host;
     }
 
     public boolean isBot() {

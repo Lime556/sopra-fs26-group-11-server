@@ -18,9 +18,6 @@ public class LobbyParticipant {
     private User user;
 
     @Column(nullable = false)
-    private boolean host;
-
-    @Column(nullable = false)
     private boolean bot;
 
     public Long getId() {
@@ -45,14 +42,6 @@ public class LobbyParticipant {
 
     public void setUser(User user) {
         this.user = user;
-    }
-
-    public boolean isHost() {
-        return host;
-    }
-
-    public void setHost(boolean host) {
-        this.host = host;
     }
 
     public boolean isBot() {

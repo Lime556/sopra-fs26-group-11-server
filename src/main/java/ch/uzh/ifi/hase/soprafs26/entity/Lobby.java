@@ -25,8 +25,9 @@ public class Lobby implements Serializable {
     @OneToMany(mappedBy = "lobby", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<LobbyParticipant> participants = new HashSet<>();
 
-    @Column(nullable = false)
-    private Long hostId;
+    @OneToOne
+    @JoinColumn(name = "host_participant_id")
+    private LobbyParticipant hostParticipant;
 
     @Column
     private Long gameId;
@@ -72,12 +73,12 @@ public class Lobby implements Serializable {
         return participants == null ? 0 : participants.size();
     }
 
-    public Long getHostId() {
-        return hostId;
+    public LobbyParticipant getHostParticipant() {
+        return hostParticipant;
     }
 
-    public void setHostId(Long hostId) {
-        this.hostId = hostId;
+    public void setHostParticipant(LobbyParticipant hostParticipant) {
+        this.hostParticipant = hostParticipant;
     }
 
     public Long getGameId() {

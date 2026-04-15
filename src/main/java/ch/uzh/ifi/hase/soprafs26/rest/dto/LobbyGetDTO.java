@@ -9,7 +9,7 @@ public class LobbyGetDTO {
 	private int currentParticipants;
 	private List<LobbyParticipantGetDTO> participants;
 	private Long gameId;
-	private Long hostId;
+	private Long hostParticipantId;
 	private String name;
 	private boolean privateLobby;
 
@@ -53,12 +53,12 @@ public class LobbyGetDTO {
 		this.gameId = gameId;
 	}
 
-	public Long getHostId() {
-		return hostId;
+	public Long getHostParticipantId() {
+		return hostParticipantId;
 	}
 
-	public void setHostId(Long hostId) {
-		this.hostId = hostId;
+	public void setHostParticipantId(Long hostParticipantId) {
+		this.hostParticipantId = hostParticipantId;
 	}
 
 	public String getName() {
