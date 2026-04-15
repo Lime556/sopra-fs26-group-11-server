@@ -1,6 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.rest.mapper;
 
-import org.mapstruct.*;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
@@ -31,9 +32,9 @@ public interface DTOMapper {
 	DTOMapper INSTANCE = Mappers.getMapper(DTOMapper.class);
 
 	@Mapping(target = "id", ignore = true)
-    @Mapping(target = "userStatus", ignore = true)
-    @Mapping(target = "token", ignore = true)
-    @Mapping(target = "creationDate", ignore = true)
+  @Mapping(target = "userStatus", ignore = true)
+  @Mapping(target = "token", ignore = true)
+  @Mapping(target = "creationDate", ignore = true)
 	@Mapping(target = "winRate", ignore = true)
 	@Mapping(target = "passwordHash", source = "password")
 	User convertUserPostDTOtoEntity(UserPostDTO userPostDTO);
@@ -43,11 +44,11 @@ public interface DTOMapper {
 	UserAuthDTO convertEntityToUserAuthDTO(User user);
 
 	@Mapping(source = "id", target = "id")
+	@Mapping(source = "name", target = "name")
 	@Mapping(source = "capacity", target = "capacity")
 	@Mapping(source = "currentParticipants", target = "currentParticipants")
 	@Mapping(source = "participants", target = "participants")
 	@Mapping(source = "gameId", target = "gameId")
-	@Mapping(source = "name", target = "name")
 	@Mapping(source = "hostParticipant.id", target = "hostParticipantId")
 	@Mapping(target = "privateLobby", expression = "java(lobby.getPassword() != null && !lobby.getPassword().isBlank())")
 	LobbyGetDTO convertEntityToLobbyGetDTO(Lobby lobby);

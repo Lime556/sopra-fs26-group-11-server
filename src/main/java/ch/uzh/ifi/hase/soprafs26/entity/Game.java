@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -18,10 +19,12 @@ public class Game{
 	@GeneratedValue
 	private Long id;
 
-    @Transient
+    @Convert(converter = PlayerListJsonConverter.class)
+    @Column(columnDefinition = "CLOB")
     private List<Player> players;
 
-    @Transient
+    @Convert(converter = BoardJsonConverter.class)
+    @Column(columnDefinition = "CLOB")
     private Board board;
 
     @Column
@@ -38,6 +41,9 @@ public class Game{
 
     @Column
     private Integer diceValue;
+
+    @Column
+    private Integer robberTileIndex;
 
     @Transient
     private DevelopmentDeck developmentDeck;
@@ -56,6 +62,9 @@ public class Game{
 
     @Column
     private LocalDateTime finishedAt;
+
+    @Column
+    private Long winnerPlayerId;
 
     @Transient
     private Player winner;
@@ -130,6 +139,14 @@ public class Game{
         this.diceValue = diceValue;
     }
 
+    public Integer getRobberTileIndex() {
+        return robberTileIndex;
+    }
+
+    public void setRobberTileIndex(Integer robberTileIndex) {
+        this.robberTileIndex = robberTileIndex;
+    }
+
     public DevelopmentDeck getDevelopmentDeck() {
         return developmentDeck;
     }
@@ -178,12 +195,27 @@ public class Game{
         this.finishedAt = finishedAt;
     }
 
+    public Long getWinnerPlayerId() {
+        return winnerPlayerId;
+    }
+
+    public void setWinnerPlayerId(Long winnerPlayerId) {
+        this.winnerPlayerId = winnerPlayerId;
+    }
+
     public Player getWinner() {
+        if (winner == null && winnerPlayerId != null && players != null) {
+            winner = players.stream()
+                    .filter(player -> player != null && winnerPlayerId.equals(player.getId()))
+                    .findFirst()
+                    .orElse(null);
+        }
         return winner;
     }
 
     public void setWinner(Player winner) {
         this.winner = winner;
+        this.winnerPlayerId = winner == null ? null : winner.getId();
     }
 
     public List<String> getEventLog() {

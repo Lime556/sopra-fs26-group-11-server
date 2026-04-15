@@ -5,12 +5,12 @@ import java.util.List;
 public class LobbyGetDTO {
 
 	private Long id;
+	private String name;
 	private int capacity;
 	private int currentParticipants;
 	private List<LobbyParticipantGetDTO> participants;
 	private Long gameId;
 	private Long hostParticipantId;
-	private String name;
 	private boolean privateLobby;
 
 	public Long getId() {
@@ -19,6 +19,14 @@ public class LobbyGetDTO {
 
 	public void setId(Long id) {
 		this.id = id;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
 	}
 
 	public int getCapacity() {
@@ -59,14 +67,6 @@ public class LobbyGetDTO {
 
 	public void setHostParticipantId(Long hostParticipantId) {
 		this.hostParticipantId = hostParticipantId;
-	}
-
-	public String getName() {
-		return name;
-	}
-
-	public void setName(String name) {
-		this.name = name;
 	}
 
 	public boolean isPrivateLobby() {

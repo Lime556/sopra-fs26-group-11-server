@@ -10,12 +10,12 @@ import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.PlayerRepository;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.util.List;
 
 @Service
 @Transactional
@@ -74,8 +74,11 @@ public class LobbyService {
 
     public Lobby joinLobby(Long lobbyId, String playerToken, String lobbyPassword) {
         User user = userService.authenticate(playerToken);
-        Lobby lobby = findLobbyOrThrow(lobbyId);
 
+        Lobby lobby = lobbyRepository.findByIdWithLock(lobbyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lobby with id " + lobbyId + " was not found."));
+      
         validateLobbyPassword(lobby, lobbyPassword);
         ensureUserNotAlreadyInLobby(lobby, user);
         ensureLobbyNotFull(lobby);

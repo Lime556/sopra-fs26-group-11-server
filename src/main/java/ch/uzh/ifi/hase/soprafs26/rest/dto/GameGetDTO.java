@@ -6,13 +6,14 @@ import java.util.List;
 public class GameGetDTO {
 
 	private Long id;
-    private List<LobbyGetDTO> players;
+    private List<PlayerGetDTO> players;
     private BoardGetDTO board;
     private Integer currentTurnIndex;
     private PlayerGetDTO currentPlayer;
     private RobberGetDTO robber;
     private DiceGetDTO dice;
     private Integer diceValue;
+    private Integer robberTileIndex;
     private DevelopmentDeckGetDTO developmentDeck;
     private PlayerGetDTO longestRoad;
     private PlayerGetDTO largestArmy;
@@ -20,6 +21,8 @@ public class GameGetDTO {
     private LocalDateTime startedAt;
     private LocalDateTime finishedAt;
     private PlayerGetDTO winner;
+
+    private Boolean gameFinished;
     private List<String> eventLog;
     private List<String> chatMessages;
 
@@ -31,11 +34,11 @@ public class GameGetDTO {
         this.id = id;
     }
 
-    public List<LobbyGetDTO> getPlayers() {
+    public List<PlayerGetDTO> getPlayers() {
         return players;
     }
 
-    public void setPlayers(List<LobbyGetDTO> players) {
+    public void setPlayers(List<PlayerGetDTO> players) {
         this.players = players;
     }
 
@@ -85,6 +88,14 @@ public class GameGetDTO {
 
     public void setDiceValue(Integer diceValue) {
         this.diceValue = diceValue;
+    }
+
+    public Integer getRobberTileIndex() {
+        return robberTileIndex;
+    }
+
+    public void setRobberTileIndex(Integer robberTileIndex) {
+        this.robberTileIndex = robberTileIndex;
     }
 
     public DevelopmentDeckGetDTO getDevelopmentDeck() {
@@ -141,6 +152,14 @@ public class GameGetDTO {
 
     public void setWinner(PlayerGetDTO winner) {
         this.winner = winner;
+    }
+
+    public Boolean getGameFinished() {
+        return gameFinished;
+    }
+
+    public void setGameFinished(Boolean gameFinished) {
+        this.gameFinished = gameFinished;
     }
 
     public List<String> getEventLog() {
