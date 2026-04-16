@@ -1,5 +1,13 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import java.util.List;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
@@ -9,13 +17,6 @@ import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.PlayerRepository;
-
-import java.util.List;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @Transactional
@@ -110,9 +111,15 @@ public class LobbyService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Game already started");
         }
 
+        Board board = new Board();
+        board.generateBoard();
+
         Game game = new Game();
+        game.setBoard(board);
         game.setCurrentTurnIndex(0);
         game.setDiceValue(null);
+        int desertIndex = board.getHexTiles() != null ? board.getHexTiles().indexOf("DESERT") : -1;
+        game.setRobberTileIndex(desertIndex >= 0 ? desertIndex + 1 : null);
         game.setTargetVictoryPoints(10);
         game.setStartedAt(java.time.LocalDateTime.now());
         game.setFinishedAt(null);
