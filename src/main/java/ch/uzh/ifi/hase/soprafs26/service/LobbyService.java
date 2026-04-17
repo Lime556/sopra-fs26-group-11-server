@@ -1,5 +1,6 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
@@ -131,15 +132,21 @@ public class LobbyService {
             .toList();
 
         String[] colors = {"RED", "BLUE", "WHITE", "ORANGE"};
+        List<Player> gamePlayers = new ArrayList<>();
 
         for (int i = 0; i < orderedParticipants.size(); i++) {
             Player player = new Player();
             player.setUser(orderedParticipants.get(i).getUser());
             player.setGameId(game.getId());
             player.setColor(colors[i]);
+            player.setName(orderedParticipants.get(i).getUser().getUsername());
             player.setVictoryPoints(0);
-            playerRepository.save(player);
+            Player savedPlayer = playerRepository.save(player);
+            gamePlayers.add(savedPlayer);
         }
+
+        game.setPlayers(gamePlayers);
+        gameRepository.saveAndFlush(game);
 
         lobby.setGameId(game.getId());
         lobbyRepository.saveAndFlush(lobby);
