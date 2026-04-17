@@ -1,8 +1,15 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
-import jakarta.persistence.*;
-
 import java.io.Serializable;
+import java.util.List;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "players")
@@ -37,6 +44,18 @@ public class Player implements Serializable {
     private Boolean hasLongestRoad;
 
     private Boolean hasLargestArmy;
+
+    private List<String> roadsOnEdges;
+
+    private Integer wood;
+
+    private Integer brick;
+
+    private Integer wool;
+
+    private Integer wheat;
+
+    private Integer ore;
 
     public Long getId() {
         return id;
@@ -124,6 +143,54 @@ public class Player implements Serializable {
 
     public void setHasLargestArmy(Boolean hasLargestArmy) {
         this.hasLargestArmy = hasLargestArmy;
+    }
+
+    public List<String> getRoadsOnEdges() {
+        return roadsOnEdges;
+    }
+
+    public void setRoadsOnEdges(List<String> roadsOnEdges) {
+        this.roadsOnEdges = roadsOnEdges;
+    }
+
+    public Integer getWood() {
+        return wood;
+    }
+
+    public void setWood(Integer wood) {
+        this.wood = wood;
+    }
+
+    public Integer getBrick() {
+        return brick;
+    }
+
+    public void setBrick(Integer brick) {
+        this.brick = brick;
+    }
+
+    public Integer getWool() {
+        return wool;
+    }
+
+    public void setWool(Integer wool) {
+        this.wool = wool;
+    }
+
+    public Integer getWheat() {
+        return wheat;
+    }
+
+    public void setWheat(Integer wheat) {
+        this.wheat = wheat;
+    }
+
+    public Integer getOre() {
+        return ore;
+    }
+
+    public void setOre(Integer ore) {
+        this.ore = ore;
     }
 
     public int calculateVictoryPoints() {

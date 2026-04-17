@@ -78,8 +78,47 @@ public class GameController {
     public GameEventDTO publishGameEvent(@PathVariable Long gameId,
             @RequestBody GameEventDTO gameEventDTO,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-        gameService.getGameById(gameId, extractToken(authorizationHeader));
+        String token = extractToken(authorizationHeader);
+        gameService.getGameById(gameId, token);
+        Game updatedGame = null;
+        if ("ROAD_BUILT".equalsIgnoreCase(gameEventDTO.getType())
+                && gameEventDTO.getSourcePlayerId() != null
+                && gameEventDTO.getHexId() != null
+                && gameEventDTO.getEdge() != null) {
+            updatedGame = gameService.addRoadToPlayer(gameId, token, gameEventDTO.getSourcePlayerId(), gameEventDTO.getHexId(), gameEventDTO.getEdge());
+        } else if ("BANK_TRADE".equalsIgnoreCase(gameEventDTO.getType())
+                && gameEventDTO.getSourcePlayerId() != null
+                && gameEventDTO.getGiveResource() != null
+                && gameEventDTO.getReceiveResource() != null
+                && gameEventDTO.getAmount() != null) {
+            updatedGame = gameService.applyBankTrade(
+                gameId,
+                token,
+                gameEventDTO.getSourcePlayerId(),
+                gameEventDTO.getGiveResource(),
+                gameEventDTO.getReceiveResource(),
+                gameEventDTO.getAmount()
+            );
+        } else if ("PLAYER_TRADE".equalsIgnoreCase(gameEventDTO.getType())
+                && gameEventDTO.getSourcePlayerId() != null
+                && gameEventDTO.getTargetPlayerId() != null
+                && gameEventDTO.getGiveResource() != null
+                && gameEventDTO.getReceiveResource() != null
+                && gameEventDTO.getAmount() != null) {
+            updatedGame = gameService.applyPlayerTrade(
+                gameId,
+                token,
+                gameEventDTO.getSourcePlayerId(),
+                gameEventDTO.getTargetPlayerId(),
+                gameEventDTO.getGiveResource(),
+                gameEventDTO.getReceiveResource(),
+                gameEventDTO.getAmount()
+            );
+        }
         messaging.convertAndSend(String.format("/topic/games/%d/events", gameId), gameEventDTO);
+        if (updatedGame != null) {
+            messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), convertGameToDto(updatedGame));
+        }
         return gameEventDTO;
     }
 
@@ -90,6 +129,16 @@ public class GameController {
             @RequestBody GameChatMessageDTO gameChatMessageDTO,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         gameService.getGameById(gameId, extractToken(authorizationHeader));
+
+        String sender = (gameChatMessageDTO.getPlayerName() == null || gameChatMessageDTO.getPlayerName().isBlank())
+                ? "Player"
+                : gameChatMessageDTO.getPlayerName().trim();
+        String text = gameChatMessageDTO.getText() == null ? "" : gameChatMessageDTO.getText().trim();
+        if (!text.isEmpty()) {
+            String formattedMessage = String.format("%s: %s", sender, text);
+            gameService.appendChatMessage(gameId, extractToken(authorizationHeader), formattedMessage);
+        }
+
         messaging.convertAndSend(String.format("/topic/games/%d/chat", gameId), gameChatMessageDTO);
         return gameChatMessageDTO;
     }
@@ -115,6 +164,7 @@ public class GameController {
         dto.setPlayers(convertPlayersToDto(game.getPlayers()));
         dto.setWinner(convertPlayerToDto(game.getWinner()));
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
+        dto.setChatMessages(game.getChatMessages());
         return dto;
     }
 
@@ -154,6 +204,12 @@ public class GameController {
         dto.setDevelopmentCardVictoryPoints(player.getDevelopmentCardVictoryPoints());
         dto.setHasLongestRoad(player.getHasLongestRoad());
         dto.setHasLargestArmy(player.getHasLargestArmy());
+        dto.setRoadsOnEdges(player.getRoadsOnEdges());
+        dto.setWood(player.getWood());
+        dto.setBrick(player.getBrick());
+        dto.setWool(player.getWool());
+        dto.setWheat(player.getWheat());
+        dto.setOre(player.getOre());
         return dto;
     }
 
