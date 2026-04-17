@@ -74,9 +74,17 @@ public class GameService {
                 game.setRobberTileIndex(gamePostDTO.getRobberTileIndex());
             }
 
-            game.setPlayers(convertPlayerDtosToEntity(gamePostDTO.getPlayers()));
-            game.setCurrentTurnIndex(gamePostDTO.getCurrentTurnIndex());
-            game.setDiceValue(gamePostDTO.getDiceValue());
+            if (gamePostDTO.getPlayers() != null) {
+                game.setPlayers(convertPlayerDtosToEntity(gamePostDTO.getPlayers()));
+            }
+
+            if (gamePostDTO.getCurrentTurnIndex() != null) {
+                game.setCurrentTurnIndex(gamePostDTO.getCurrentTurnIndex());
+            }
+
+            if (gamePostDTO.getDiceValue() != null) {
+                game.setDiceValue(gamePostDTO.getDiceValue());
+            }
 
             if (gamePostDTO.getTargetVictoryPoints() != null) {
                 game.setTargetVictoryPoints(gamePostDTO.getTargetVictoryPoints());
