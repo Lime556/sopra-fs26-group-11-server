@@ -1,21 +1,13 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
-import ch.uzh.ifi.hase.soprafs26.entity.Board;
-import ch.uzh.ifi.hase.soprafs26.entity.Boat;
-import ch.uzh.ifi.hase.soprafs26.entity.Game;
-import ch.uzh.ifi.hase.soprafs26.entity.Player;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
-import java.util.Comparator;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import ch.uzh.ifi.hase.soprafs26.service.GameService;
+
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,13 +18,28 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import ch.uzh.ifi.hase.soprafs26.entity.Board;
+import ch.uzh.ifi.hase.soprafs26.entity.Boat;
+import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Player;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameChatMessageDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
+import ch.uzh.ifi.hase.soprafs26.service.GameService;
+
 @RestController
 public class GameController {
 
     private final GameService gameService;
+    private final SimpMessagingTemplate messaging;
 
-    public GameController(GameService gameService) {
+    public GameController(GameService gameService, SimpMessagingTemplate messaging) {
         this.gameService = gameService;
+        this.messaging = messaging;
     }
 
     @PostMapping("/games")
@@ -60,7 +67,31 @@ public class GameController {
             @RequestBody(required = false) GamePostDTO gamePostDTO,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game updatedGame = gameService.updateGameState(gameId, extractToken(authorizationHeader), gamePostDTO);
-        return convertGameToDto(updatedGame);
+        GameGetDTO dto = convertGameToDto(updatedGame);
+        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
+        return dto;
+    }
+
+    @PostMapping("/games/{gameId}/events")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @ResponseBody
+    public GameEventDTO publishGameEvent(@PathVariable Long gameId,
+            @RequestBody GameEventDTO gameEventDTO,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        gameService.getGameById(gameId, extractToken(authorizationHeader));
+        messaging.convertAndSend(String.format("/topic/games/%d/events", gameId), gameEventDTO);
+        return gameEventDTO;
+    }
+
+    @PostMapping("/games/{gameId}/chat")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @ResponseBody
+    public GameChatMessageDTO publishGameChatMessage(@PathVariable Long gameId,
+            @RequestBody GameChatMessageDTO gameChatMessageDTO,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        gameService.getGameById(gameId, extractToken(authorizationHeader));
+        messaging.convertAndSend(String.format("/topic/games/%d/chat", gameId), gameChatMessageDTO);
+        return gameChatMessageDTO;
     }
 
     @GetMapping("/games/{gameId}/board")

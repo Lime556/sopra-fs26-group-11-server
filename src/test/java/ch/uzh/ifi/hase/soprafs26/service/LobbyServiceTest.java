@@ -1,8 +1,21 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
-import java.util.List;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
@@ -13,18 +26,6 @@ import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.PlayerRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.MockitoAnnotations;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class LobbyServiceTest {
 
@@ -280,5 +281,46 @@ public class LobbyServiceTest {
                 () -> lobbyService.getLobbyById(1L, "invalid-token"));
 
         assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+    }
+
+    @Test
+    public void startGame_validLobby_initializesGamePlayers() {
+        host.setUsername("hostUser");
+        user.setUsername("guestUser");
+
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setLobby(lobby);
+        hostParticipant.setUser(host);
+        hostParticipant.setBot(false);
+
+        LobbyParticipant guestParticipant = new LobbyParticipant();
+        guestParticipant.setId(101L);
+        guestParticipant.setLobby(lobby);
+        guestParticipant.setUser(user);
+        guestParticipant.setBot(false);
+
+        lobby.getParticipants().add(hostParticipant);
+        lobby.getParticipants().add(guestParticipant);
+        lobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.of(lobby));
+        Mockito.when(playerRepository.save(Mockito.any(Player.class))).thenAnswer(invocation -> {
+            Player player = invocation.getArgument(0);
+            if (player.getId() == null) {
+                player.setId(System.nanoTime());
+            }
+            return player;
+        });
+
+        Game game = lobbyService.startGame(1L, "valid-token");
+
+        assertNotNull(game.getPlayers());
+        assertEquals(2, game.getPlayers().size());
+        assertTrue(game.getPlayers().stream().allMatch(player -> player.getGameId().equals(game.getId())));
+        assertTrue(game.getPlayers().stream().anyMatch(player -> "hostUser".equals(player.getName())));
+        assertTrue(game.getPlayers().stream().anyMatch(player -> "guestUser".equals(player.getName())));
+        assertEquals(game.getId(), lobby.getGameId());
     }
 }
