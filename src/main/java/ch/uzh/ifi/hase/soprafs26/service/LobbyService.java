@@ -141,6 +141,11 @@ public class LobbyService {
             player.setColor(colors[i]);
             player.setName(orderedParticipants.get(i).getUser().getUsername());
             player.setVictoryPoints(0);
+            player.setWood(0);
+            player.setBrick(0);
+            player.setWool(0);
+            player.setWheat(0);
+            player.setOre(0);
             Player savedPlayer = playerRepository.save(player);
             gamePlayers.add(savedPlayer);
         }

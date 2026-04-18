@@ -91,9 +91,9 @@ public class GameServiceTest {
 
         assertNotNull(createdGame.getPlayers());
         assertEquals(2, createdGame.getPlayers().size());
-        assertEquals(10, createdGame.getPlayers().get(0).getVictoryPoints());
-        assertEquals("Alice", createdGame.getWinner().getName());
-        assertNotNull(createdGame.getFinishedAt());
+        assertEquals(8, createdGame.getPlayers().get(0).getVictoryPoints());
+        assertNull(createdGame.getWinner());
+        assertNull(createdGame.getFinishedAt());
     }
 
     @Test

@@ -8,6 +8,8 @@ public class GameEventDTO {
     private String giveResource;
     private String receiveResource;
     private Integer amount;
+    private Integer hexId;
+    private Integer edge;
     private String message;
 
     public String getType() {
@@ -56,6 +58,22 @@ public class GameEventDTO {
 
     public void setAmount(Integer amount) {
         this.amount = amount;
+    }
+
+    public Integer getHexId() {
+        return hexId;
+    }
+
+    public void setHexId(Integer hexId) {
+        this.hexId = hexId;
+    }
+
+    public Integer getEdge() {
+        return edge;
+    }
+
+    public void setEdge(Integer edge) {
+        this.edge = edge;
     }
 
     public String getMessage() {

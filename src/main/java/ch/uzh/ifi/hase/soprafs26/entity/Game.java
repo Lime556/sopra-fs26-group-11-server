@@ -72,7 +72,8 @@ public class Game{
     @Transient
     private List<String> eventLog;
 
-    @Transient
+    @Convert(converter = StringListJsonConverter.class)
+    @Column(columnDefinition = "CLOB")
     private List<String> chatMessages;
 
 	public Long getId() {
