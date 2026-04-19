@@ -9,6 +9,7 @@ public class GamePostDTO {
     private List<PlayerGetDTO> players;
     private BoardGetDTO board;
     private Integer currentTurnIndex;
+    private String turnPhase;
     private PlayerGetDTO currentPlayer;
     private RobberGetDTO robber;
     private DiceGetDTO dice;
@@ -54,6 +55,14 @@ public class GamePostDTO {
 
     public void setCurrentTurnIndex(Integer currentTurnIndex) {
         this.currentTurnIndex = currentTurnIndex;
+    }
+
+    public String getTurnPhase() {
+        return turnPhase;
+    }
+
+    public void setTurnPhase(String turnPhase) {
+        this.turnPhase = turnPhase;
     }
 
     public PlayerGetDTO getCurrentPlayer() {

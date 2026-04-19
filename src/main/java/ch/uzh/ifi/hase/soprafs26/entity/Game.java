@@ -30,6 +30,9 @@ public class Game{
     @Column
     private Integer currentTurnIndex;
 
+    @Column
+    private String turnPhase;
+
     @Transient
     private Player currentPlayer;
 
@@ -106,6 +109,18 @@ public class Game{
 
     public void setCurrentTurnIndex(Integer currentTurnIndex) {
         this.currentTurnIndex = currentTurnIndex;
+    }
+
+    public String getTurnPhase() {
+        return turnPhase != null ? turnPhase : TurnPhase.ROLL_DICE.toString();
+    }
+
+    public void setTurnPhase(String turnPhase) {
+        this.turnPhase = turnPhase;
+    }
+
+    public void setTurnPhase(TurnPhase turnPhase) {
+        this.turnPhase = turnPhase != null ? turnPhase.toString() : TurnPhase.ROLL_DICE.toString();
     }
 
     public Player getCurrentPlayer() {
