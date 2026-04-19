@@ -153,4 +153,64 @@ public class GameServiceTest {
         assertNull(updatedGame.getWinner());
         assertNull(updatedGame.getFinishedAt());
     }
+
+    @Test
+    public void endTurn_resetsGameStateAndClearsDiceValue() {
+        Game testGame = new Game();
+        testGame.setId(150L);
+        testGame.setCurrentTurnIndex(0);
+        testGame.setTurnPhase("ACTION");
+        testGame.setDiceValue(7);
+
+        Player alice = new Player();
+        alice.setId(30L);
+        alice.setName("Alice");
+
+        Player bob = new Player();
+        bob.setId(31L);
+        bob.setName("Bob");
+
+        testGame.setPlayers(List.of(alice, bob));
+
+        Mockito.when(gameRepository.findById(150L)).thenReturn(Optional.of(testGame));
+
+        Game updatedGame = gameService.endTurn(150L, "valid-token");
+
+        assertEquals(1, updatedGame.getCurrentTurnIndex());
+        assertEquals("ROLL_DICE", updatedGame.getTurnPhase());
+        assertNull(updatedGame.getDiceValue());
+        assertEquals(31L, gameService.getCurrentPlayer(updatedGame).getId());
+    }
+
+    @Test
+    public void endTurn_withMultiplePlayers_transitionsCorrectly() {
+        Game testGame = new Game();
+        testGame.setId(151L);
+        testGame.setCurrentTurnIndex(1);
+        testGame.setTurnPhase("ACTION");
+        testGame.setDiceValue(9);
+
+        Player alice = new Player();
+        alice.setId(40L);
+        alice.setName("Alice");
+
+        Player bob = new Player();
+        bob.setId(41L);
+        bob.setName("Bob");
+
+        Player charlie = new Player();
+        charlie.setId(42L);
+        charlie.setName("Charlie");
+
+        testGame.setPlayers(List.of(alice, bob, charlie));
+
+        Mockito.when(gameRepository.findById(151L)).thenReturn(Optional.of(testGame));
+
+        Game updatedGame = gameService.endTurn(151L, "valid-token");
+
+        assertEquals(2, updatedGame.getCurrentTurnIndex());
+        assertEquals("ROLL_DICE", updatedGame.getTurnPhase());
+        assertNull(updatedGame.getDiceValue());
+        assertEquals(42L, gameService.getCurrentPlayer(updatedGame).getId());
+    }
 }
