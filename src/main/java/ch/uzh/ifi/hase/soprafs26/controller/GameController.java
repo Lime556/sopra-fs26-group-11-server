@@ -28,6 +28,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.GameChatMessageDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
 
@@ -151,11 +152,70 @@ public class GameController {
         return convertBoardToDto(gameService.getBoardById(gameId, extractToken(authorizationHeader)));
     }
 
+    @GetMapping("/games/{gameId}/state")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameStateDTO getGameState(@PathVariable Long gameId,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Game game = gameService.getGameById(gameId, extractToken(authorizationHeader));
+        Player currentPlayer = gameService.getCurrentPlayer(game);
+        return new GameStateDTO(
+            game.getId(),
+            game.getCurrentTurnIndex(),
+            game.getTurnPhase(),
+            game.getDiceValue(),
+            currentPlayer != null ? currentPlayer.getId() : null,
+            currentPlayer != null ? currentPlayer.getName() : null,
+            game.getFinishedAt() != null && game.getWinner() != null
+        );
+    }
+
+    @PostMapping("/games/{gameId}/actions/roll-dice")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameStateDTO rollDice(@PathVariable Long gameId,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Game game = gameService.rollDice(gameId, extractToken(authorizationHeader));
+        Player currentPlayer = gameService.getCurrentPlayer(game);
+        GameStateDTO stateDTO = new GameStateDTO(
+            game.getId(),
+            game.getCurrentTurnIndex(),
+            game.getTurnPhase(),
+            game.getDiceValue(),
+            currentPlayer != null ? currentPlayer.getId() : null,
+            currentPlayer != null ? currentPlayer.getName() : null,
+            game.getFinishedAt() != null && game.getWinner() != null
+        );
+        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), stateDTO);
+        return stateDTO;
+    }
+
+    @PostMapping("/games/{gameId}/actions/end-turn")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameStateDTO endTurn(@PathVariable Long gameId,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Game game = gameService.endTurn(gameId, extractToken(authorizationHeader));
+        Player currentPlayer = gameService.getCurrentPlayer(game);
+        GameStateDTO stateDTO = new GameStateDTO(
+            game.getId(),
+            game.getCurrentTurnIndex(),
+            game.getTurnPhase(),
+            game.getDiceValue(),
+            currentPlayer != null ? currentPlayer.getId() : null,
+            currentPlayer != null ? currentPlayer.getName() : null,
+            game.getFinishedAt() != null && game.getWinner() != null
+        );
+        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), stateDTO);
+        return stateDTO;
+    }
+
     private GameGetDTO convertGameToDto(Game game) {
         GameGetDTO dto = new GameGetDTO();
         dto.setId(game.getId());
         dto.setBoard(convertBoardToDto(game.getBoard()));
         dto.setCurrentTurnIndex(game.getCurrentTurnIndex());
+        dto.setTurnPhase(game.getTurnPhase());
         dto.setDiceValue(game.getDiceValue());
         dto.setRobberTileIndex(game.getRobberTileIndex());
         dto.setTargetVictoryPoints(game.getTargetVictoryPoints());

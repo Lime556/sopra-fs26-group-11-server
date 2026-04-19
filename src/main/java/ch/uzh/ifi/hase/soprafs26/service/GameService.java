@@ -19,6 +19,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Boat;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
+import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
@@ -67,6 +68,9 @@ public class GameService {
         game.setBoard(board);
         game.setPlayers(convertPlayerDtosToEntity(gamePostDTO == null ? null : gamePostDTO.getPlayers()));
         game.setCurrentTurnIndex(gamePostDTO == null ? null : gamePostDTO.getCurrentTurnIndex());
+        game.setTurnPhase(gamePostDTO == null || gamePostDTO.getTurnPhase() == null 
+            ? TurnPhase.ROLL_DICE.toString() 
+            : gamePostDTO.getTurnPhase());
         game.setDiceValue(gamePostDTO == null ? null : gamePostDTO.getDiceValue());
         game.setRobberTileIndex(resolveRobberTileIndex(board, gamePostDTO));
         game.setTargetVictoryPoints(resolveTargetVictoryPoints(gamePostDTO));
@@ -104,6 +108,10 @@ public class GameService {
 
             if (gamePostDTO.getCurrentTurnIndex() != null) {
                 game.setCurrentTurnIndex(gamePostDTO.getCurrentTurnIndex());
+            }
+
+            if (gamePostDTO.getTurnPhase() != null) {
+                game.setTurnPhase(gamePostDTO.getTurnPhase());
             }
 
             if (gamePostDTO.getDiceValue() != null) {
@@ -310,6 +318,74 @@ public class GameService {
 
         game.setPlayers(players);
         return gameRepository.save(game);
+    }
+
+    public Game rollDice(Long gameId, String playerToken) {
+        authenticate(playerToken);
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        Player currentPlayer = getCurrentPlayer(game);
+        if (currentPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No current player found.");
+        }
+
+        String currentPhase = game.getTurnPhase();
+        if (!TurnPhase.ROLL_DICE.toString().equals(currentPhase)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Cannot roll dice. Current phase is: " + currentPhase + ". Must be in ROLL_DICE phase.");
+        }
+
+        int die1 = 1 + (int) (Math.random() * 6);
+        int die2 = 1 + (int) (Math.random() * 6);
+        int diceSum = die1 + die2;
+
+        game.setDiceValue(diceSum);
+        game.setTurnPhase(TurnPhase.ACTION);
+
+        recalculateVictoryState(game);
+        return gameRepository.save(game);
+    }
+
+    public Game endTurn(Long gameId, String playerToken) {
+        authenticate(playerToken);
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        Player currentPlayer = getCurrentPlayer(game);
+        if (currentPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No current player found.");
+        }
+
+        List<Player> players = game.getPlayers();
+        if (players == null || players.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Game has no players.");
+        }
+
+        Integer nextTurnIndex = (game.getCurrentTurnIndex() + 1) % players.size();
+        game.setCurrentTurnIndex(nextTurnIndex);
+        game.setTurnPhase(TurnPhase.ROLL_DICE);
+        game.setDiceValue(null);
+
+        recalculateVictoryState(game);
+        return gameRepository.save(game);
+    }
+
+    public Player getCurrentPlayer(Game game) {
+        if (game == null || game.getPlayers() == null || game.getPlayers().isEmpty()) {
+            return null;
+        }
+
+        Integer turnIndex = game.getCurrentTurnIndex();
+        if (turnIndex == null || turnIndex < 0 || turnIndex >= game.getPlayers().size()) {
+            return null;
+        }
+
+        return game.getPlayers().get(turnIndex);
     }
 
     private void updateLongestRoadOwnership(List<Player> players) {
