@@ -1,7 +1,5 @@
 package ch.uzh.ifi.hase.soprafs26.rest.dto;
 
-import java.util.List;
-
 public class PlayerGetDTO {
     private Long id;
     private String name;
@@ -11,7 +9,6 @@ public class PlayerGetDTO {
     private Integer developmentCardVictoryPoints;
     private Boolean hasLongestRoad;
     private Boolean hasLargestArmy;
-    private List<String> roadsOnEdges;
     private Integer wood;
     private Integer brick;
     private Integer wool;
@@ -80,14 +77,6 @@ public class PlayerGetDTO {
 
     public void setHasLargestArmy(Boolean hasLargestArmy) {
         this.hasLargestArmy = hasLargestArmy;
-    }
-
-    public List<String> getRoadsOnEdges() {
-        return roadsOnEdges;
-    }
-
-    public void setRoadsOnEdges(List<String> roadsOnEdges) {
-        this.roadsOnEdges = roadsOnEdges;
     }
 
     public Integer getWood() {

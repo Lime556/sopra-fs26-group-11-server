@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -17,8 +18,14 @@ import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Boat;
+import ch.uzh.ifi.hase.soprafs26.entity.Building;
+import ch.uzh.ifi.hase.soprafs26.entity.City;
+import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
+import ch.uzh.ifi.hase.soprafs26.entity.Road;
+import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
@@ -32,27 +39,8 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 @Transactional
 public class GameService {
 
-    private static final double HEX_SIZE = 58.0;
-    private static final double SQRT_3 = Math.sqrt(3.0);
-    private static final double ORIGIN_X = 150.0;
-    private static final double ORIGIN_Y = 130.0;
-    private static final double HEX_SPACING_X = HEX_SIZE * SQRT_3;
-    private static final double HEX_SPACING_Y = HEX_SIZE * 1.5;
-
     private final GameRepository gameRepository;
     private final UserRepository userRepository;
-
-    private static final class RoadSegment {
-        private final String from;
-        private final String to;
-        private final String key;
-
-        private RoadSegment(String from, String to) {
-            this.from = from;
-            this.to = to;
-            this.key = from + "|" + to;
-        }
-    }
 
     public GameService(@Qualifier("gameRepository") GameRepository gameRepository,
                        @Qualifier("userRepository") UserRepository userRepository) {
@@ -163,8 +151,12 @@ public class GameService {
         gameRepository.save(game);
     }
 
-    public Game addRoadToPlayer(Long gameId, String playerToken, Long playerId, Integer hexId, Integer edge) {
+    public Game addRoadToPlayer(Long gameId, String playerToken, Long playerId, Integer edgeId) {
         authenticate(playerToken);
+
+        if (playerId == null || edgeId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Player id and edge id are required.");
+        }    
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -175,80 +167,188 @@ public class GameService {
             return game;
         }
 
-        String roadKey = String.format("%d:%d", hexId, edge);
-        boolean occupied = players.stream()
-            .filter(Objects::nonNull)
-            .flatMap(player -> Optional.ofNullable(player.getRoadsOnEdges()).orElse(Collections.emptyList()).stream())
-            .anyMatch(roadKey::equals);
-        if (occupied) {
+        Edge targetEdge = findEdgeById(game, edgeId);
+        if (targetEdge == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Edge with id " + edgeId + " was not found.");
+        }
+
+        if (targetEdge.isOccupied()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Road edge is already occupied.");
         }
 
-        boolean changed = false;
-
-        for (Player player : players) {
-            if (player == null || player.getId() == null || !playerId.equals(player.getId())) {
-                continue;
-            }
-
-            if (!isConnectedToExistingRoad(player, hexId, edge)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Road must connect to one of your existing roads.");
-            }
-
-            int wood = resourceValue(player.getWood());
-            int brick = resourceValue(player.getBrick());
-            if (wood < 1 || brick < 1) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources to build a road.");
-            }
-
-            List<String> roads = new ArrayList<>(
-                Optional.ofNullable(player.getRoadsOnEdges()).orElse(Collections.emptyList())
-            );
-            if (!roads.contains(roadKey)) {
-                roads.add(roadKey);
-                player.setRoadsOnEdges(roads);
-                player.setWood(wood - 1);
-                player.setBrick(brick - 1);
-                changed = true;
-            }
-            break;
+        Player player = findPlayerById(players, playerId);
+        if (player == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player with id " + playerId + " was not found.");
         }
 
-        if (changed) {
-            game.setPlayers(players);
-            recalculateVictoryState(game);
-            game = gameRepository.save(game);
+        boolean connectedToOwnBuilding =
+            hasOwnBuildingAtIntersection(game, targetEdge.getIntersectionAId(), playerId)
+            || hasOwnBuildingAtIntersection(game, targetEdge.getIntersectionBId(), playerId);
+        
+        boolean connectedToOwnRoad =
+            hasOwnRoadAtIntersection(game, targetEdge.getIntersectionAId(), playerId)
+            || hasOwnRoadAtIntersection(game, targetEdge.getIntersectionBId(), playerId);
+        
+        if (!connectedToOwnBuilding && !connectedToOwnRoad) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Road must connect to one of the player's buildings or roads.");
         }
 
-        return game;
+        int wood = resourceValue(player.getWood());
+        int brick = resourceValue(player.getBrick());
+        if (wood < 1 || brick < 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources to build a road.");
+        }
+
+        Road road = new Road();
+        road.setOwnerPlayerId(playerId);
+        road.setEdgeId(edgeId);
+    
+        targetEdge.setRoad(road);
+        player.setWood(wood - 1);
+        player.setBrick(brick - 1);
+    
+        game.setPlayers(players);
+        recalculateVictoryState(game);
+    
+        return gameRepository.save(game);
     }
 
-    private boolean isConnectedToExistingRoad(Player player, int hexId, int edge) {
-        List<String> existingRoads = Optional.ofNullable(player.getRoadsOnEdges()).orElse(Collections.emptyList());
-        if (existingRoads.isEmpty()) {
-            return false;
+    public Game addSettlementToPlayer(Long gameId, String playerToken, Long playerId, Integer intersectionId) {
+        authenticate(playerToken);
+    
+        if (playerId == null || intersectionId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Player id and intersection id are required.");
+        }
+    
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+    
+        List<Player> players = game.getPlayers();
+        if (players == null || players.isEmpty()) {
+            return game;
+        }
+    
+        Intersection intersection = findIntersectionById(game, intersectionId);
+        if (intersection == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Intersection with id " + intersectionId + " was not found.");
+        }
+    
+        if (intersection.isOccupied()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Intersection is already occupied.");
         }
 
-        String[] targetEndpoints = getCanonicalRoadEndpoints(hexId, edge);
-        String targetFrom = targetEndpoints[0];
-        String targetTo = targetEndpoints[1];
-
-        for (String roadEntry : existingRoads) {
-            RoadSegment segment = parseRoadSegment(roadEntry);
-            if (segment == null) {
-                continue;
-            }
-
-            if (segment.from.equals(targetFrom)
-                    || segment.from.equals(targetTo)
-                    || segment.to.equals(targetFrom)
-                    || segment.to.equals(targetTo)) {
-                return true;
-            }
+        if (hasAdjacentBuilding(game, intersectionId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "A settlement cannot be built next to another building.");
+        }
+    
+        Player player = findPlayerById(players, playerId);
+        if (player == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Player with id " + playerId + " was not found.");
         }
 
-        return false;
+        if (!hasOwnRoadLeadingToIntersection(game, intersectionId, playerId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Settlement must connect to one of the player's roads.");
+        }
+    
+        int wood = resourceValue(player.getWood());
+        int brick = resourceValue(player.getBrick());
+        int wool = resourceValue(player.getWool());
+        int wheat = resourceValue(player.getWheat());
+    
+        if (wood < 1 || brick < 1 || wool < 1 || wheat < 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Not enough resources to build a settlement.");
+        }
+    
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(playerId);
+        settlement.setIntersectionId(intersectionId);
+    
+        intersection.setBuilding(settlement);
+    
+        player.setWood(wood - 1);
+        player.setBrick(brick - 1);
+        player.setWool(wool - 1);
+        player.setWheat(wheat - 1);
+        player.setSettlementPoints(safeInt(player.getSettlementPoints(), 0) + 1);
+    
+        game.setPlayers(players);
+        recalculateVictoryState(game);
+    
+        return gameRepository.save(game);
+    }
+
+    public Game upgradeSettlementToCity(Long gameId, String playerToken, Long playerId, Integer intersectionId) {
+        authenticate(playerToken);
+    
+        if (playerId == null || intersectionId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Player id and intersection id are required.");
+        }
+    
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+    
+        List<Player> players = game.getPlayers();
+        if (players == null || players.isEmpty()) {
+            return game;
+        }
+    
+        Intersection intersection = findIntersectionById(game, intersectionId);
+        if (intersection == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Intersection with id " + intersectionId + " was not found.");
+        }
+    
+        if (!(intersection.getBuilding() instanceof Settlement)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "There is no settlement to upgrade at this intersection.");
+        }
+    
+        Settlement settlement = (Settlement) intersection.getBuilding();
+        if (settlement.getOwnerPlayerId() == null || !settlement.getOwnerPlayerId().equals(playerId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "The settlement at this intersection does not belong to this player.");
+        }
+    
+        Player player = findPlayerById(players, playerId);
+        if (player == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Player with id " + playerId + " was not found.");
+        }
+    
+        int wheat = resourceValue(player.getWheat());
+        int ore = resourceValue(player.getOre());
+    
+        if (wheat < 2 || ore < 3) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Not enough resources to build a city.");
+        }
+    
+        City city = new City();
+        city.setOwnerPlayerId(playerId);
+        city.setIntersectionId(intersectionId);
+    
+        intersection.setBuilding(city);
+    
+        player.setWheat(wheat - 2);
+        player.setOre(ore - 3);
+        player.setSettlementPoints(Math.max(0, safeInt(player.getSettlementPoints(), 0) - 1));
+        player.setCityPoints(safeInt(player.getCityPoints(), 0) + 1);
+    
+        game.setPlayers(players);
+        recalculateVictoryState(game);
+    
+        return gameRepository.save(game);
     }
 
     public Game applyBankTrade(Long gameId, String playerToken, Long sourcePlayerId,
@@ -388,22 +488,23 @@ public class GameService {
         return game.getPlayers().get(turnIndex);
     }
 
-    private void updateLongestRoadOwnership(List<Player> players) {
+    private void updateLongestRoadOwnership(Game game) {
+        List<Player> players = game.getPlayers();
         if (players == null || players.isEmpty()) {
             return;
         }
-
+    
         Player currentHolder = players.stream()
             .filter(player -> player != null && Boolean.TRUE.equals(player.getHasLongestRoad()))
             .findFirst()
             .orElse(null);
-
+    
         int highestRoadCount = players.stream()
             .filter(Objects::nonNull)
-            .mapToInt(this::longestRoadLength)
+            .mapToInt(player -> longestRoadLength(game, player))
             .max()
             .orElse(0);
-
+    
         if (highestRoadCount < 5) {
             players.forEach(player -> {
                 if (player != null) {
@@ -412,164 +513,149 @@ public class GameService {
             });
             return;
         }
-
+    
         List<Player> leaders = players.stream()
-            .filter(player -> player != null && longestRoadLength(player) == highestRoadCount)
+            .filter(player -> player != null && longestRoadLength(game, player) == highestRoadCount)
             .collect(Collectors.toList());
-
+    
         Player holder = null;
-        if (currentHolder != null && longestRoadLength(currentHolder) == highestRoadCount) {
+        if (currentHolder != null && longestRoadLength(game, currentHolder) == highestRoadCount) {
             holder = currentHolder;
         } else if (leaders.size() == 1) {
             holder = leaders.get(0);
         }
-
+    
         final Long holderId = holder == null ? null : holder.getId();
         players.forEach(player -> {
-            if (player == null) {
-                return;
+            if (player != null) {
+                player.setHasLongestRoad(holderId != null && holderId.equals(player.getId()));
             }
-
-            player.setHasLongestRoad(holderId != null && holderId.equals(player.getId()));
         });
     }
 
-    private int longestRoadLength(Player player) {
-        if (player == null) {
+    private int longestRoadLength(Game game, Player player) {
+        if (game == null || player == null || player.getId() == null) {
             return 0;
         }
-
-        List<String> roadEntries = Optional.ofNullable(player.getRoadsOnEdges()).orElse(Collections.emptyList());
-        if (roadEntries.isEmpty()) {
+    
+        if (game.getBoard() == null || game.getBoard().getEdges() == null) {
             return 0;
         }
-
-        List<RoadSegment> segments = new ArrayList<>();
-        for (String roadEntry : roadEntries) {
-            RoadSegment segment = parseRoadSegment(roadEntry);
-            if (segment != null && segments.stream().noneMatch(existing -> existing.key.equals(segment.key))) {
-                segments.add(segment);
-            }
-        }
-
-        if (segments.isEmpty()) {
+    
+        List<Edge> playerEdges = game.getBoard().getEdges().stream()
+            .filter(Objects::nonNull)
+            .filter(edge -> edge.getRoad() != null)
+            .filter(edge -> edge.getRoad().getOwnerPlayerId() != null)
+            .filter(edge -> edge.getRoad().getOwnerPlayerId().equals(player.getId()))
+            .filter(edge -> edge.getIntersectionAId() != null && edge.getIntersectionBId() != null)
+            .toList();
+    
+        if (playerEdges.isEmpty()) {
             return 0;
         }
-
-        List<String> nodes = new ArrayList<>();
-        for (RoadSegment segment : segments) {
-            if (!nodes.contains(segment.from)) {
-                nodes.add(segment.from);
-            }
-            if (!nodes.contains(segment.to)) {
-                nodes.add(segment.to);
-            }
+    
+        Map<Integer, List<Edge>> adjacency = new java.util.HashMap<>();
+    
+        for (Edge edge : playerEdges) {
+            adjacency.computeIfAbsent(edge.getIntersectionAId(), key -> new ArrayList<>()).add(edge);
+            adjacency.computeIfAbsent(edge.getIntersectionBId(), key -> new ArrayList<>()).add(edge);
         }
-
-        boolean[] used = new boolean[segments.size()];
+    
         int longest = 0;
-        for (String node : nodes) {
-            longest = Math.max(longest, depthFirstRoadLength(node, segments, used));
+    
+        for (Integer startIntersectionId : adjacency.keySet()) {
+            longest = Math.max(
+                longest,
+                longestRoadFromIntersection(game, startIntersectionId, player.getId(), adjacency, new ArrayList<>())
+            );
         }
-
+    
         return longest;
     }
 
-    private int depthFirstRoadLength(String node, List<RoadSegment> segments, boolean[] used) {
+    private int longestRoadFromIntersection(Game game, Integer currentIntersectionId, Long playerId,
+        Map<Integer, List<Edge>> adjacency, List<Integer> usedEdgeIds) {
+
+        if (currentIntersectionId == null) {
+            return 0;
+        }
+
         int best = 0;
+        List<Edge> connectedEdges = adjacency.getOrDefault(currentIntersectionId, Collections.emptyList());
 
-        for (int i = 0; i < segments.size(); i++) {
-            if (used[i]) {
+        for (Edge edge : connectedEdges) {
+            if (edge == null || edge.getId() == null) {
                 continue;
             }
 
-            RoadSegment segment = segments.get(i);
-            if (!segment.from.equals(node) && !segment.to.equals(node)) {
+            if (usedEdgeIds.contains(edge.getId())) {
                 continue;
             }
 
-            used[i] = true;
-            String nextNode = segment.from.equals(node) ? segment.to : segment.from;
-            best = Math.max(best, 1 + depthFirstRoadLength(nextNode, segments, used));
-            used[i] = false;
+            Integer nextIntersectionId = getOtherIntersectionId(edge, currentIntersectionId);
+            if (nextIntersectionId == null) {
+                continue;
+            }
+
+            List<Integer> nextUsedEdgeIds = new ArrayList<>(usedEdgeIds);
+            nextUsedEdgeIds.add(edge.getId());
+
+            int candidateLength = 1;
+
+            if (!isBlockedByOpponentBuilding(game, nextIntersectionId, playerId)) {
+                candidateLength += longestRoadFromIntersection(
+                    game,
+                    nextIntersectionId,
+                    playerId,
+                    adjacency,
+                    nextUsedEdgeIds
+                );
+            }
+
+            best = Math.max(best, candidateLength);
         }
 
         return best;
     }
 
-    private RoadSegment parseRoadSegment(String roadEntry) {
-        if (roadEntry == null || roadEntry.isBlank()) {
+    private Integer getOtherIntersectionId(Edge edge, Integer currentIntersectionId) {
+        if (edge == null || currentIntersectionId == null) {
             return null;
         }
-
-        String[] parts = roadEntry.split(":");
-        if (parts.length != 2) {
-            return null;
+    
+        if (currentIntersectionId.equals(edge.getIntersectionAId())) {
+            return edge.getIntersectionBId();
         }
-
-        try {
-            int hexId = Integer.parseInt(parts[0]);
-            int edge = Integer.parseInt(parts[1]);
-            String[] endpoints = getCanonicalRoadEndpoints(hexId, edge);
-            return new RoadSegment(endpoints[0], endpoints[1]);
-        } catch (NumberFormatException exception) {
-            return null;
+    
+        if (currentIntersectionId.equals(edge.getIntersectionBId())) {
+            return edge.getIntersectionAId();
         }
+    
+        return null;
     }
 
-    private String[] getCanonicalRoadEndpoints(int hexId, int edge) {
-        double[] center = toPixel(hexId);
-        double[] point1 = getCornerPoint(center[0], center[1], edge);
-        double[] point2 = getCornerPoint(center[0], center[1], (edge + 1) % 6);
-
-        String a = formatPoint(point1[0], point1[1]);
-        String b = formatPoint(point2[0], point2[1]);
-        return a.compareTo(b) < 0 ? new String[] { a, b } : new String[] { b, a };
+    private boolean isBlockedByOpponentBuilding(Game game, Integer intersectionId, Long playerId) {
+        Intersection intersection = findIntersectionById(game, intersectionId);
+    
+        if (intersection == null || intersection.getBuilding() == null) {
+            return false;
+        }
+    
+        Building building = intersection.getBuilding();
+        Long ownerPlayerId = building.getOwnerPlayerId();
+    
+        return ownerPlayerId != null && !ownerPlayerId.equals(playerId);
     }
 
-    private double[] toPixel(int hexId) {
-        double[] coordinates = boardCoordinatesForHex(hexId);
-        return new double[] {
-            ORIGIN_X + coordinates[0] * HEX_SPACING_X,
-            ORIGIN_Y + coordinates[1] * HEX_SPACING_Y
-        };
-    }
-
-    private double[] boardCoordinatesForHex(int hexId) {
-        return switch (hexId) {
-            case 1 -> new double[] {1, 0};
-            case 2 -> new double[] {2, 0};
-            case 3 -> new double[] {3, 0};
-            case 4 -> new double[] {0.5, 1};
-            case 5 -> new double[] {1.5, 1};
-            case 6 -> new double[] {2.5, 1};
-            case 7 -> new double[] {3.5, 1};
-            case 8 -> new double[] {0, 2};
-            case 9 -> new double[] {1, 2};
-            case 10 -> new double[] {2, 2};
-            case 11 -> new double[] {3, 2};
-            case 12 -> new double[] {4, 2};
-            case 13 -> new double[] {0.5, 3};
-            case 14 -> new double[] {1.5, 3};
-            case 15 -> new double[] {2.5, 3};
-            case 16 -> new double[] {3.5, 3};
-            case 17 -> new double[] {1, 4};
-            case 18 -> new double[] {2, 4};
-            case 19 -> new double[] {3, 4};
-            default -> throw new IllegalArgumentException("Unsupported hex id: " + hexId);
-        };
-    }
-
-    private double[] getCornerPoint(double centerX, double centerY, int cornerIndex) {
-        double angle = (Math.PI / 3.0) * cornerIndex + Math.PI / 6.0;
-        return new double[] {
-            centerX + HEX_SIZE * Math.cos(angle),
-            centerY + HEX_SIZE * Math.sin(angle)
-        };
-    }
-
-    private String formatPoint(double x, double y) {
-        return Math.round(x) + ":" + Math.round(y);
+    private boolean hasOwnBuildingAtIntersection(Game game, Integer intersectionId, Long playerId) {
+        Intersection intersection = findIntersectionById(game, intersectionId);
+    
+        if (intersection == null || intersection.getBuilding() == null || playerId == null) {
+            return false;
+        }
+    
+        Long ownerPlayerId = intersection.getBuilding().getOwnerPlayerId();
+        return ownerPlayerId != null && ownerPlayerId.equals(playerId);
     }
 
     private void ensureBoardInitialized(Game game) {
@@ -672,7 +758,6 @@ public class GameService {
         player.setDevelopmentCardVictoryPoints(playerDto.getDevelopmentCardVictoryPoints());
         player.setHasLongestRoad(playerDto.getHasLongestRoad());
         player.setHasLargestArmy(playerDto.getHasLargestArmy());
-        player.setRoadsOnEdges(playerDto.getRoadsOnEdges());
         player.setWood(playerDto.getWood());
         player.setBrick(playerDto.getBrick());
         player.setWool(playerDto.getWool());
@@ -690,7 +775,7 @@ public class GameService {
             return;
         }
 
-        updateLongestRoadOwnership(players);
+        updateLongestRoadOwnership(game);
 
         players.forEach(player -> {
             if (player != null) {
@@ -750,7 +835,7 @@ public class GameService {
     }
 
     private int resourceValue(Integer value) {
-        return Optional.ofNullable(value).orElse(10);
+        return Optional.ofNullable(value).orElse(0);
     }
 
     private int getResourceByName(Player player, String resource) {
@@ -778,5 +863,87 @@ public class GameService {
 
     private String normalizeResourceName(String resource) {
         return resource == null ? "" : resource.trim().toLowerCase();
+    }
+
+    private Intersection findIntersectionById(Game game, Integer intersectionId) {
+        if (game == null || intersectionId == null || game.getBoard() == null || game.getBoard().getIntersections() == null) {
+            return null;
+        }
+    
+        return game.getBoard().getIntersections().stream()
+                .filter(Objects::nonNull)
+                .filter(intersection -> intersectionId.equals(intersection.getId()))
+                .findFirst()
+                .orElse(null);
+    }
+    
+    private Edge findEdgeById(Game game, Integer edgeId) {
+        if (game == null || edgeId == null || game.getBoard() == null || game.getBoard().getEdges() == null) {
+            return null;
+        }
+    
+        return game.getBoard().getEdges().stream()
+                .filter(Objects::nonNull)
+                .filter(edge -> edgeId.equals(edge.getId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean hasAdjacentBuilding(Game game, Integer intersectionId) {
+        if (game == null || intersectionId == null || game.getBoard() == null || game.getBoard().getEdges() == null) {
+            return false;
+        }
+    
+        for (Edge edge : game.getBoard().getEdges()) {
+            if (edge == null || edge.getIntersectionAId() == null || edge.getIntersectionBId() == null) {
+                continue;
+            }
+    
+            Integer neighborId = null;
+    
+            if (intersectionId.equals(edge.getIntersectionAId())) {
+                neighborId = edge.getIntersectionBId();
+            } else if (intersectionId.equals(edge.getIntersectionBId())) {
+                neighborId = edge.getIntersectionAId();
+            }
+    
+            if (neighborId == null) {
+                continue;
+            }
+    
+            Intersection neighbor = findIntersectionById(game, neighborId);
+            if (neighbor != null && neighbor.getBuilding() != null) {
+                return true;
+            }
+        }
+    
+        return false;
+    }
+
+    private boolean hasOwnRoadAtIntersection(Game game, Integer intersectionId, Long playerId) {
+        if (game == null || intersectionId == null || playerId == null
+            || game.getBoard() == null || game.getBoard().getEdges() == null) {
+            return false;
+        }
+    
+        for (Edge edge : game.getBoard().getEdges()) {
+            if (edge == null || edge.getRoad() == null) {
+                continue;
+            }
+    
+            if (!playerId.equals(edge.getRoad().getOwnerPlayerId())) {
+                continue;
+            }
+    
+            if (intersectionId.equals(edge.getIntersectionAId()) || intersectionId.equals(edge.getIntersectionBId())) {
+                return true;
+            }
+        }
+    
+        return false;
+    }
+
+    private boolean hasOwnRoadLeadingToIntersection(Game game, Integer intersectionId, Long playerId) {
+        return hasOwnRoadAtIntersection(game, intersectionId, playerId);
     }
 }
