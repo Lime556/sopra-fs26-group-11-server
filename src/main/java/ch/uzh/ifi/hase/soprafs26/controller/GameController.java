@@ -1,9 +1,6 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
@@ -83,10 +80,32 @@ public class GameController {
         gameService.getGameById(gameId, token);
         Game updatedGame = null;
         if ("ROAD_BUILT".equalsIgnoreCase(gameEventDTO.getType())
-                && gameEventDTO.getSourcePlayerId() != null
-                && gameEventDTO.getHexId() != null
-                && gameEventDTO.getEdge() != null) {
-            updatedGame = gameService.addRoadToPlayer(gameId, token, gameEventDTO.getSourcePlayerId(), gameEventDTO.getHexId(), gameEventDTO.getEdge());
+            && gameEventDTO.getSourcePlayerId() != null
+            && gameEventDTO.getEdge() != null) {
+            updatedGame = gameService.addRoadToPlayer(
+                gameId,
+                token,
+                gameEventDTO.getSourcePlayerId(),
+                gameEventDTO.getEdge()
+            );
+        } else if ("SETTLEMENT_BUILT".equalsIgnoreCase(gameEventDTO.getType())
+            && gameEventDTO.getSourcePlayerId() != null
+            && gameEventDTO.getIntersectionId() != null) {
+            updatedGame = gameService.addSettlementToPlayer(
+                gameId,
+                token,
+                gameEventDTO.getSourcePlayerId(),
+                gameEventDTO.getIntersectionId()
+            );
+        } else if ("CITY_BUILT".equalsIgnoreCase(gameEventDTO.getType())
+            && gameEventDTO.getSourcePlayerId() != null
+            && gameEventDTO.getIntersectionId() != null) {
+            updatedGame = gameService.upgradeSettlementToCity(
+                gameId,
+                token,
+                gameEventDTO.getSourcePlayerId(),
+                gameEventDTO.getIntersectionId()
+            );
         } else if ("BANK_TRADE".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null
                 && gameEventDTO.getGiveResource() != null
@@ -228,20 +247,6 @@ public class GameController {
         return dto;
     }
 
-    private List<Player> sortedPlayers(List<Player> players) {
-        if (players == null) {
-            return Collections.emptyList();
-        }
-
-        return players.stream()
-                .sorted(Comparator
-                .comparingInt((Player player) -> safeInt(player == null ? null : player.getVictoryPoints(), 0))
-                .thenComparingInt(player -> safeInt(player == null ? null : player.getCityPoints(), 0))
-                .thenComparingInt(player -> safeInt(player == null ? null : player.getSettlementPoints(), 0))
-                        .reversed())
-                .collect(Collectors.toList());
-    }
-
     private List<PlayerGetDTO> convertPlayersToDto(List<Player> players) {
         if (players == null) {
             return Collections.emptyList();
@@ -264,7 +269,6 @@ public class GameController {
         dto.setDevelopmentCardVictoryPoints(player.getDevelopmentCardVictoryPoints());
         dto.setHasLongestRoad(player.getHasLongestRoad());
         dto.setHasLargestArmy(player.getHasLargestArmy());
-        dto.setRoadsOnEdges(player.getRoadsOnEdges());
         dto.setWood(player.getWood());
         dto.setBrick(player.getBrick());
         dto.setWool(player.getWool());
@@ -314,9 +318,5 @@ public class GameController {
             return authorizationHeader.substring("Bearer ".length()).trim();
         }
         return authorizationHeader.trim();
-    }
-
-    private int safeInt(Integer value, int fallback) {
-        return Optional.ofNullable(value).orElse(fallback);
     }
 }

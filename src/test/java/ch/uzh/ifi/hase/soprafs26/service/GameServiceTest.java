@@ -1,7 +1,11 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import ch.uzh.ifi.hase.soprafs26.entity.Board;
+import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
+import ch.uzh.ifi.hase.soprafs26.entity.Road;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
@@ -212,5 +216,233 @@ public class GameServiceTest {
         assertEquals("ROLL_DICE", updatedGame.getTurnPhase());
         assertNull(updatedGame.getDiceValue());
         assertEquals(42L, gameService.getCurrentPlayer(updatedGame).getId());
+    }
+
+    @Test
+    public void recalculateVictoryState_fiveConnectedRoads_setsLongestRoad() {
+        Game game = new Game();
+        game.setId(1L);
+        game.setTargetVictoryPoints(10);
+    
+        Player playerA = new Player();
+        playerA.setId(1L);
+        playerA.setSettlementPoints(0);
+        playerA.setCityPoints(0);
+        playerA.setDevelopmentCardVictoryPoints(0);
+        playerA.setHasLongestRoad(false);
+        playerA.setHasLargestArmy(false);
+    
+        Player playerB = new Player();
+        playerB.setId(2L);
+        playerB.setSettlementPoints(0);
+        playerB.setCityPoints(0);
+        playerB.setDevelopmentCardVictoryPoints(0);
+        playerB.setHasLongestRoad(false);
+        playerB.setHasLargestArmy(false);
+    
+        Board board = new Board();
+        board.generateBoard();
+    
+        placeRoad(findEdge(board, 0, 1), 1L);
+        placeRoad(findEdge(board, 1, 2), 1L);
+        placeRoad(findEdge(board, 2, 3), 1L);
+        placeRoad(findEdge(board, 3, 4), 1L);
+        placeRoad(findEdge(board, 4, 5), 1L);
+    
+        game.setBoard(board);
+        game.setPlayers(List.of(playerA, playerB));
+    
+        Mockito.when(gameRepository.findById(1L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+    
+        Game result = gameService.updateGameState(1L, "valid-token", new GamePostDTO());
+    
+        Player updatedA = result.getPlayers().get(0);
+        Player updatedB = result.getPlayers().get(1);
+    
+        assertEquals(true, updatedA.getHasLongestRoad());
+        assertEquals(false, updatedB.getHasLongestRoad());
+        assertEquals(2, updatedA.getVictoryPoints());
+    }
+
+    @Test
+    public void recalculateVictoryState_fourConnectedRoads_doesNotSetLongestRoad() {
+        Game game = new Game();
+        game.setId(2L);
+        game.setTargetVictoryPoints(10);
+    
+        Player playerA = new Player();
+        playerA.setId(1L);
+        playerA.setSettlementPoints(0);
+        playerA.setCityPoints(0);
+        playerA.setDevelopmentCardVictoryPoints(0);
+        playerA.setHasLongestRoad(false);
+    
+        Player playerB = new Player();
+        playerB.setId(2L);
+        playerB.setSettlementPoints(0);
+        playerB.setCityPoints(0);
+        playerB.setDevelopmentCardVictoryPoints(0);
+        playerB.setHasLongestRoad(false);
+    
+        Board board = new Board();
+        board.generateBoard();
+    
+        placeRoad(findEdge(board, 0, 1), 1L);
+        placeRoad(findEdge(board, 1, 2), 1L);
+        placeRoad(findEdge(board, 2, 3), 1L);
+        placeRoad(findEdge(board, 3, 4), 1L);
+    
+        game.setBoard(board);
+        game.setPlayers(List.of(playerA, playerB));
+    
+        Mockito.when(gameRepository.findById(2L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+    
+        Game result = gameService.updateGameState(2L, "valid-token", new GamePostDTO());
+    
+        Player updatedA = result.getPlayers().get(0);
+        Player updatedB = result.getPlayers().get(1);
+    
+        assertEquals(false, updatedA.getHasLongestRoad());
+        assertEquals(false, updatedB.getHasLongestRoad());
+        assertEquals(0, updatedA.getVictoryPoints());
+    }
+
+    @Test
+    public void recalculateVictoryState_branchingRoadNetwork_countsLongestPathNotAllEdges() {
+        Game game = new Game();
+        game.setId(3L);
+        game.setTargetVictoryPoints(10);
+    
+        Player playerA = new Player();
+        playerA.setId(1L);
+        playerA.setSettlementPoints(0);
+        playerA.setCityPoints(0);
+        playerA.setDevelopmentCardVictoryPoints(0);
+        playerA.setHasLongestRoad(false);
+    
+        Player playerB = new Player();
+        playerB.setId(2L);
+        playerB.setSettlementPoints(0);
+        playerB.setCityPoints(0);
+        playerB.setDevelopmentCardVictoryPoints(0);
+        playerB.setHasLongestRoad(false);
+    
+        Board board = new Board();
+        board.generateBoard();
+    
+        // branch at intersection 1:
+        // 0-1-2 and 1-14-19
+        // total roads = 4, but longest simple path = 3
+        placeRoad(findEdge(board, 0, 1), 1L);
+        placeRoad(findEdge(board, 1, 2), 1L);
+        placeRoad(findEdge(board, 1, 14), 1L);
+        placeRoad(findEdge(board, 14, 19), 1L);
+    
+        game.setBoard(board);
+        game.setPlayers(List.of(playerA, playerB));
+    
+        Mockito.when(gameRepository.findById(3L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+    
+        Game result = gameService.updateGameState(3L, "valid-token", new GamePostDTO());
+    
+        Player updatedA = result.getPlayers().get(0);
+        Player updatedB = result.getPlayers().get(1);
+    
+        assertEquals(false, updatedA.getHasLongestRoad());
+        assertEquals(false, updatedB.getHasLongestRoad());
+        assertEquals(0, updatedA.getVictoryPoints());
+    }
+
+    @Test
+    public void recalculateVictoryState_opponentBuildingBlocksRoadContinuation() {
+        Game game = new Game();
+        game.setId(4L);
+        game.setTargetVictoryPoints(10);
+    
+        Player playerA = new Player();
+        playerA.setId(1L);
+        playerA.setSettlementPoints(0);
+        playerA.setCityPoints(0);
+        playerA.setDevelopmentCardVictoryPoints(0);
+        playerA.setHasLongestRoad(false);
+    
+        Player playerB = new Player();
+        playerB.setId(2L);
+        playerB.setSettlementPoints(0);
+        playerB.setCityPoints(0);
+        playerB.setDevelopmentCardVictoryPoints(0);
+        playerB.setHasLongestRoad(false);
+    
+        Board board = new Board();
+        board.generateBoard();
+    
+        // full chain would be 0-1-2-3-4-5
+        placeRoad(findEdge(board, 0, 1), 1L);
+        placeRoad(findEdge(board, 1, 2), 1L);
+        placeRoad(findEdge(board, 2, 3), 1L);
+        placeRoad(findEdge(board, 3, 4), 1L);
+        placeRoad(findEdge(board, 4, 5), 1L);
+    
+        // opponent building at intersection 3 blocks continuation through that node
+        Intersection blockedIntersection = findIntersection(board, 3);
+        ch.uzh.ifi.hase.soprafs26.entity.Settlement blockingSettlement =
+            new ch.uzh.ifi.hase.soprafs26.entity.Settlement();
+        blockingSettlement.setOwnerPlayerId(2L);
+        blockingSettlement.setIntersectionId(3);
+        blockedIntersection.setBuilding(blockingSettlement);
+    
+        game.setBoard(board);
+        game.setPlayers(List.of(playerA, playerB));
+    
+        Mockito.when(gameRepository.findById(4L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+    
+        Game result = gameService.updateGameState(4L, "valid-token", new GamePostDTO());
+    
+        Player updatedA = result.getPlayers().get(0);
+        Player updatedB = result.getPlayers().get(1);
+    
+        assertEquals(false, updatedA.getHasLongestRoad());
+        assertEquals(false, updatedB.getHasLongestRoad());
+        assertEquals(0, updatedA.getVictoryPoints());
+    }
+
+    private Edge findEdge(Board board, int intersectionAId, int intersectionBId) {
+        int min = Math.min(intersectionAId, intersectionBId);
+        int max = Math.max(intersectionAId, intersectionBId);
+
+        return board.getEdges().stream()
+            .filter(edge -> edge != null)
+            .filter(edge -> edge.getIntersectionAId() != null && edge.getIntersectionBId() != null)
+            .filter(edge -> edge.getIntersectionAId() == min && edge.getIntersectionBId() == max)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError(
+                "No edge found between intersections " + min + " and " + max
+            ));
+    }
+
+    private void placeRoad(Edge edge, long ownerPlayerId) {
+        Road road = new Road();
+        road.setOwnerPlayerId(ownerPlayerId);
+        road.setEdgeId(edge.getId());
+        edge.setRoad(road);
+    }
+
+    private Intersection findIntersection(Board board, int intersectionId) {
+        return board.getIntersections().stream()
+            .filter(intersection -> intersection != null)
+            .filter(intersection -> intersection.getId() != null)
+            .filter(intersection -> intersection.getId() == intersectionId)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError(
+                "No intersection found with id " + intersectionId
+            ));
     }
 }

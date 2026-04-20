@@ -3,6 +3,8 @@ package ch.uzh.ifi.hase.soprafs26.board;
 import org.junit.jupiter.api.Test;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
+import ch.uzh.ifi.hase.soprafs26.entity.Edge;
+import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 
 import java.util.Arrays;
 import java.util.List;
@@ -54,12 +56,12 @@ public class BoardGenerationTest {
 		assertEquals(54, board.getIntersections().size());
 		assertEquals(72, board.getEdges().size());
 
-		for (Boolean intersection : board.getIntersections()) {
-			assertFalse(intersection);
+		for (Intersection intersection : board.getIntersections()) {
+			assertFalse(intersection.isOccupied());
 		}
 
-		for (Boolean edge : board.getEdges()) {
-			assertFalse(edge);
+		for (Edge edge : board.getEdges()) {
+			assertFalse(edge.isOccupied());
 		}
 	}
 

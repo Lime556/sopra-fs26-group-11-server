@@ -10,6 +10,7 @@ public class GameEventDTO {
     private Integer amount;
     private Integer hexId;
     private Integer edge;
+    private Integer intersectionId;
     private String message;
 
     public String getType() {
@@ -74,6 +75,14 @@ public class GameEventDTO {
 
     public void setEdge(Integer edge) {
         this.edge = edge;
+    }
+
+    public Integer getIntersectionId() {
+        return intersectionId;
+    }
+
+    public void setIntersectionId(Integer intersectionId) {
+        this.intersectionId = intersectionId;
     }
 
     public String getMessage() {

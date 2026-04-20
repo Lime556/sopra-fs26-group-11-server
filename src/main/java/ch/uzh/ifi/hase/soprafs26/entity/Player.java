@@ -1,15 +1,8 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
 import java.io.Serializable;
-import java.util.List;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 
 @Entity
 @Table(name = "players")
@@ -44,8 +37,6 @@ public class Player implements Serializable {
     private Boolean hasLongestRoad;
 
     private Boolean hasLargestArmy;
-
-    private List<String> roadsOnEdges;
 
     private Integer wood;
 
@@ -143,14 +134,6 @@ public class Player implements Serializable {
 
     public void setHasLargestArmy(Boolean hasLargestArmy) {
         this.hasLargestArmy = hasLargestArmy;
-    }
-
-    public List<String> getRoadsOnEdges() {
-        return roadsOnEdges;
-    }
-
-    public void setRoadsOnEdges(List<String> roadsOnEdges) {
-        this.roadsOnEdges = roadsOnEdges;
     }
 
     public Integer getWood() {

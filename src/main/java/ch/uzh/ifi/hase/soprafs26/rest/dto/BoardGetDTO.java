@@ -2,11 +2,14 @@ package ch.uzh.ifi.hase.soprafs26.rest.dto;
 
 import java.util.List;
 
+import ch.uzh.ifi.hase.soprafs26.entity.Edge;
+import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
+
 public class BoardGetDTO {
     private Long id;
     private List<String> hexTiles;
-    private List<Boolean> intersections;
-    private List<Boolean> edges;
+    private List<Intersection> intersections;
+    private List<Edge> edges;
     private List<String> ports;
     private List<BoatGetDTO> boats;
     private List<Integer> hexTile_DiceNumbers;
@@ -27,19 +30,19 @@ public class BoardGetDTO {
         this.hexTiles = hexTiles;
     }
 
-    public List<Boolean> getIntersections() {
+    public List<Intersection> getIntersections() {
         return intersections;
     }
 
-    public void setIntersections(List<Boolean> intersections) {
+    public void setIntersections(List<Intersection> intersections) {
         this.intersections = intersections;
     }
 
-    public List<Boolean> getEdges() {
+    public List<Edge> getEdges() {
         return edges;
     }
 
-    public void setEdges(List<Boolean> edges) {
+    public void setEdges(List<Edge> edges) {
         this.edges = edges;
     }
 
