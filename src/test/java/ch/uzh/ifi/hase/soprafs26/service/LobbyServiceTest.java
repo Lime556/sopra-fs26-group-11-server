@@ -102,6 +102,16 @@ public class LobbyServiceTest {
     }
 
     @Test
+    public void createLobby_privateLobby_setsPassword_success() {
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+
+        Lobby createdLobby = lobbyService.createLobby("valid-token", 4, "secret", "Private Lobby");
+
+        assertEquals("Private Lobby", createdLobby.getName());
+        assertEquals("secret", createdLobby.getPassword());
+    }
+
+    @Test
     public void createLobby_invalidCapacity_throwsBadRequest() {
         Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
 
@@ -141,6 +151,19 @@ public class LobbyServiceTest {
         Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
 
         Lobby updatedLobby = lobbyService.joinLobby(1L, "valid-token", null);
+
+        Mockito.verify(lobbyParticipantRepository, Mockito.times(1))
+                .saveAndFlush(Mockito.any(LobbyParticipant.class));
+        assertEquals(lobby.getId(), updatedLobby.getId());
+    }
+
+    @Test
+    public void joinLobby_protectedLobby_correctPassword_success() {
+        lobby.setPassword("secret");
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        Lobby updatedLobby = lobbyService.joinLobby(1L, "valid-token", "secret");
 
         Mockito.verify(lobbyParticipantRepository, Mockito.times(1))
                 .saveAndFlush(Mockito.any(LobbyParticipant.class));

@@ -1,13 +1,5 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
-import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
-import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
-import ch.uzh.ifi.hase.soprafs26.entity.User;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
-import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
 import java.util.HashSet;
 import java.util.List;
 
@@ -29,6 +21,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.web.server.ResponseStatusException;
 
+import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
+import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
+import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+
 @WebMvcTest(LobbyController.class)
 public class LobbyControllerTest {
 
@@ -47,6 +48,7 @@ public class LobbyControllerTest {
         first.setId(1L);
         first.setName("First");
         first.setCapacity(4);
+        first.setPassword("secret");
 
         Lobby second = new Lobby();
         second.setId(2L);
@@ -60,8 +62,10 @@ public class LobbyControllerTest {
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].id", is(1)))
                 .andExpect(jsonPath("$[0].name", is("First")))
+                .andExpect(jsonPath("$[0].privateLobby", is(true)))
                 .andExpect(jsonPath("$[1].id", is(2)))
-                .andExpect(jsonPath("$[1].name", is("Second")));
+                .andExpect(jsonPath("$[1].name", is("Second")))
+                .andExpect(jsonPath("$[1].privateLobby", is(false)));
     }
 
     @Test
@@ -184,6 +188,44 @@ public class LobbyControllerTest {
                 .content(asJsonString(lobbyJoinDTO));
 
         mockMvc.perform(postRequest).andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void joinLobby_protectedLobby_correctPassword_success() throws Exception {
+        Lobby lobby = new Lobby();
+        lobby.setId(1L);
+        lobby.setCapacity(4);
+        lobby.setName("Private Lobby");
+        lobby.setPassword("secret");
+
+        User user = new User();
+        user.setId(10L);
+        user.setUsername("testUser");
+
+        LobbyParticipant participant = new LobbyParticipant();
+        participant.setId(100L);
+        participant.setUser(user);
+        participant.setBot(false);
+        participant.setLobby(lobby);
+
+        lobby.setParticipants(new HashSet<>(List.of(participant)));
+        lobby.setHostParticipant(participant);
+
+        LobbyJoinDTO lobbyJoinDTO = new LobbyJoinDTO();
+        lobbyJoinDTO.setLobbyId(1L);
+        lobbyJoinDTO.setPassword("secret");
+
+        given(lobbyService.joinLobby(1L, "token-123", "secret")).willReturn(lobby);
+
+        MockHttpServletRequestBuilder postRequest = post("/lobbies/1/join")
+                .header("Authorization", "token-123")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(asJsonString(lobbyJoinDTO));
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(1)))
+                .andExpect(jsonPath("$.privateLobby", is(true)));
     }
 
     @Test
