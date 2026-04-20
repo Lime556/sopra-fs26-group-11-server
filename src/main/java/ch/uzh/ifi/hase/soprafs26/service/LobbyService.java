@@ -1,6 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
@@ -269,6 +270,22 @@ public class LobbyService {
         LobbyParticipant newHostParticipant = findParticipantByUserIdOrThrow(lobby, newHostUserId);
         lobby.setHostParticipant(newHostParticipant);
         return lobbyRepository.saveAndFlush(lobby);
+    }
+
+    public void closeLobby(Long lobbyId, String playerToken) {
+        User requester = userService.authenticate(playerToken);
+        Lobby lobby = lobbyRepository.findByIdWithLock(lobbyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lobby with id " + lobbyId + " was not found."));
+
+        LobbyParticipant requesterParticipant = findParticipantByUserOrThrow(lobby, requester);
+        ensureRequesterIsHost(lobby, requesterParticipant);
+
+        for (LobbyParticipant participant : new HashSet<>(lobby.getParticipants())) {
+            lobbyParticipantRepository.delete(participant);
+        }
+        lobby.getParticipants().clear();
+        lobbyRepository.delete(lobby);
     }
 
 

@@ -430,6 +430,32 @@ public class LobbyServiceTest {
     }
 
     @Test
+    public void closeLobby_hostClosesLobby_success() {
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setUser(host);
+        hostParticipant.setLobby(lobby);
+
+        LobbyParticipant guestParticipant = new LobbyParticipant();
+        guestParticipant.setId(101L);
+        guestParticipant.setUser(user);
+        guestParticipant.setLobby(lobby);
+
+        lobby.getParticipants().add(hostParticipant);
+        lobby.getParticipants().add(guestParticipant);
+        lobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        lobbyService.closeLobby(1L, "valid-token");
+
+        Mockito.verify(lobbyParticipantRepository).delete(hostParticipant);
+        Mockito.verify(lobbyParticipantRepository).delete(guestParticipant);
+        Mockito.verify(lobbyRepository).delete(lobby);
+    }
+
+    @Test
     public void startGame_validLobby_initializesGamePlayers() {
         host.setUsername("hostUser");
         user.setUsername("guestUser");

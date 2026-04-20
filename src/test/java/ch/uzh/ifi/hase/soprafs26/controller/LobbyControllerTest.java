@@ -366,6 +366,16 @@ public class LobbyControllerTest {
     }
 
     @Test
+    public void closeLobby_validInput_returnsNoContent() throws Exception {
+        MockHttpServletRequestBuilder postRequest = post("/lobbies/1/close")
+                .header("Authorization", "token-123")
+                .contentType(MediaType.APPLICATION_JSON);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
     public void kickParticipant_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);

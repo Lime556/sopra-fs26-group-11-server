@@ -118,6 +118,16 @@ public class LobbyController {
         messaging.convertAndSend("/topic/lobbies", lobbyId);
     }
 
+    @PostMapping("/lobbies/{lobbyId}/close")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void closeLobby(
+        @PathVariable Long lobbyId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        lobbyService.closeLobby(lobbyId, authorizationHeader);
+        messaging.convertAndSend("/topic/lobbies", lobbyId);
+    }
+
     @PostMapping("/lobbies/{lobbyId}/participants/{participantId}/kick")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
