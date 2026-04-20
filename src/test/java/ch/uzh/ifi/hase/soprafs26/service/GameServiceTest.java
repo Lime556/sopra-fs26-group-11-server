@@ -341,6 +341,12 @@ public class GameServiceTest {
         board.generateBoard();
     
         Edge targetEdge = findEdge(board, 0, 1);
+
+        Intersection ownedIntersection = findIntersection(board, 0);
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(10L);
+        settlement.setIntersectionId(0);
+        ownedIntersection.setBuilding(settlement);
     
         game.setBoard(board);
         game.setPlayers(List.of(player));
@@ -377,6 +383,8 @@ public class GameServiceTest {
     
         Board board = new Board();
         board.generateBoard();
+
+        placeRoad(findEdge(board, 2, 3), 10L);
 
         game.setBoard(board);
         game.setPlayers(List.of(player));

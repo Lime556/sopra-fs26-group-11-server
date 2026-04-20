@@ -181,6 +181,19 @@ public class GameService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player with id " + playerId + " was not found.");
         }
 
+        boolean connectedToOwnBuilding =
+            hasOwnBuildingAtIntersection(game, targetEdge.getIntersectionAId(), playerId)
+            || hasOwnBuildingAtIntersection(game, targetEdge.getIntersectionBId(), playerId);
+        
+        boolean connectedToOwnRoad =
+            hasOwnRoadAtIntersection(game, targetEdge.getIntersectionAId(), playerId)
+            || hasOwnRoadAtIntersection(game, targetEdge.getIntersectionBId(), playerId);
+        
+        if (!connectedToOwnBuilding && !connectedToOwnRoad) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Road must connect to one of the player's buildings or roads.");
+        }
+
         int wood = resourceValue(player.getWood());
         int brick = resourceValue(player.getBrick());
         if (wood < 1 || brick < 1) {
@@ -238,6 +251,11 @@ public class GameService {
         if (player == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Player with id " + playerId + " was not found.");
+        }
+
+        if (!hasOwnRoadLeadingToIntersection(game, intersectionId, playerId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Settlement must connect to one of the player's roads.");
         }
     
         int wood = resourceValue(player.getWood());
@@ -629,6 +647,17 @@ public class GameService {
         return ownerPlayerId != null && !ownerPlayerId.equals(playerId);
     }
 
+    private boolean hasOwnBuildingAtIntersection(Game game, Integer intersectionId, Long playerId) {
+        Intersection intersection = findIntersectionById(game, intersectionId);
+    
+        if (intersection == null || intersection.getBuilding() == null || playerId == null) {
+            return false;
+        }
+    
+        Long ownerPlayerId = intersection.getBuilding().getOwnerPlayerId();
+        return ownerPlayerId != null && ownerPlayerId.equals(playerId);
+    }
+
     private void ensureBoardInitialized(Game game) {
         Board board = game.getBoard();
         if (board != null
@@ -889,5 +918,32 @@ public class GameService {
         }
     
         return false;
+    }
+
+    private boolean hasOwnRoadAtIntersection(Game game, Integer intersectionId, Long playerId) {
+        if (game == null || intersectionId == null || playerId == null
+            || game.getBoard() == null || game.getBoard().getEdges() == null) {
+            return false;
+        }
+    
+        for (Edge edge : game.getBoard().getEdges()) {
+            if (edge == null || edge.getRoad() == null) {
+                continue;
+            }
+    
+            if (!playerId.equals(edge.getRoad().getOwnerPlayerId())) {
+                continue;
+            }
+    
+            if (intersectionId.equals(edge.getIntersectionAId()) || intersectionId.equals(edge.getIntersectionBId())) {
+                return true;
+            }
+        }
+    
+        return false;
+    }
+
+    private boolean hasOwnRoadLeadingToIntersection(Game game, Integer intersectionId, Long playerId) {
+        return hasOwnRoadAtIntersection(game, intersectionId, playerId);
     }
 }
