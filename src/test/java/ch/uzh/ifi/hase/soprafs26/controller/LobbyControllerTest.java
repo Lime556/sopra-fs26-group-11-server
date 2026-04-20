@@ -26,6 +26,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyHostTransferDTO;
 import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -351,6 +352,81 @@ public class LobbyControllerTest {
 
         mockMvc.perform(getRequest)
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void leaveLobby_validInput_returnsNoContent() throws Exception {
+        MockHttpServletRequestBuilder postRequest = post("/lobbies/1/leave")
+                .header("Authorization", "token-123")
+                .contentType(MediaType.APPLICATION_JSON);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    public void kickParticipant_validInput_success() throws Exception {
+        Lobby lobby = new Lobby();
+        lobby.setId(1L);
+        lobby.setName("Kick Test");
+        lobby.setCapacity(4);
+
+        User host = new User();
+        host.setId(10L);
+        host.setUsername("host");
+
+        LobbyParticipant participant = new LobbyParticipant();
+        participant.setId(100L);
+        participant.setUser(host);
+        participant.setBot(false);
+        participant.setLobby(lobby);
+        lobby.setParticipants(new HashSet<>(List.of(participant)));
+        lobby.setHostParticipant(participant);
+
+        given(lobbyService.kickParticipant(1L, "token-123", 100L)).willReturn(lobby);
+
+        MockHttpServletRequestBuilder postRequest = post("/lobbies/1/participants/100/kick")
+                .header("Authorization", "token-123")
+                .contentType(MediaType.APPLICATION_JSON);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(1)));
+    }
+
+    @Test
+    public void transferHost_validInput_success() throws Exception {
+        Lobby lobby = new Lobby();
+        lobby.setId(1L);
+        lobby.setName("Transfer Test");
+        lobby.setCapacity(4);
+
+        User newHostUser = new User();
+        newHostUser.setId(11L);
+        newHostUser.setUsername("newHost");
+
+        LobbyParticipant newHostParticipant = new LobbyParticipant();
+        newHostParticipant.setId(200L);
+        newHostParticipant.setUser(newHostUser);
+        newHostParticipant.setBot(false);
+        newHostParticipant.setLobby(lobby);
+
+        lobby.setParticipants(new HashSet<>(List.of(newHostParticipant)));
+        lobby.setHostParticipant(newHostParticipant);
+
+        LobbyHostTransferDTO transferDTO = new LobbyHostTransferDTO();
+        transferDTO.setNewHostParticipantId(200L);
+
+        given(lobbyService.transferHost(1L, "token-123", 200L)).willReturn(lobby);
+
+        MockHttpServletRequestBuilder postRequest = post("/lobbies/1/host/transfer")
+                .header("Authorization", "token-123")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(asJsonString(transferDTO));
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hostParticipantId", is(200)));
     }
 
     private String asJsonString(final Object object) {

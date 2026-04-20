@@ -307,6 +307,77 @@ public class LobbyServiceTest {
     }
 
     @Test
+    public void leaveLobby_participantLeaves_success() {
+        LobbyParticipant existingParticipant = new LobbyParticipant();
+        existingParticipant.setId(100L);
+        existingParticipant.setUser(user);
+        existingParticipant.setLobby(lobby);
+        existingParticipant.setBot(false);
+        lobby.getParticipants().add(existingParticipant);
+        lobby.setHostParticipant(existingParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        lobbyService.leaveLobby(1L, "valid-token");
+
+        Mockito.verify(lobbyParticipantRepository, Mockito.times(1)).delete(existingParticipant);
+        Mockito.verify(lobbyRepository, Mockito.times(1)).delete(lobby);
+    }
+
+    @Test
+    public void kickParticipant_hostKicksOther_success() {
+        User guest = new User();
+        guest.setId(12L);
+
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setUser(host);
+        hostParticipant.setLobby(lobby);
+
+        LobbyParticipant guestParticipant = new LobbyParticipant();
+        guestParticipant.setId(101L);
+        guestParticipant.setUser(guest);
+        guestParticipant.setLobby(lobby);
+
+        lobby.getParticipants().add(hostParticipant);
+        lobby.getParticipants().add(guestParticipant);
+        lobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        Lobby updatedLobby = lobbyService.kickParticipant(1L, "valid-token", 101L);
+
+        assertEquals(1, updatedLobby.getCurrentParticipants());
+        Mockito.verify(lobbyParticipantRepository).delete(guestParticipant);
+    }
+
+    @Test
+    public void transferHost_hostTransfers_success() {
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setUser(host);
+        hostParticipant.setLobby(lobby);
+
+        LobbyParticipant guestParticipant = new LobbyParticipant();
+        guestParticipant.setId(101L);
+        guestParticipant.setUser(user);
+        guestParticipant.setLobby(lobby);
+
+        lobby.getParticipants().add(hostParticipant);
+        lobby.getParticipants().add(guestParticipant);
+        lobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        Lobby updatedLobby = lobbyService.transferHost(1L, "valid-token", 101L);
+
+        assertEquals(101L, updatedLobby.getHostParticipant().getId());
+    }
+
+    @Test
     public void startGame_validLobby_initializesGamePlayers() {
         host.setUsername("hostUser");
         user.setUsername("guestUser");

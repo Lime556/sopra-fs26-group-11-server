@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStartGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyHostTransferDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.mapper.DTOMapper;
@@ -104,6 +105,48 @@ public class LobbyController {
         return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(
             lobbyService.getLobbyById(lobbyId, authorizationHeader)
         );
+    }
+
+    @PostMapping("/lobbies/{lobbyId}/leave")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void leaveLobby(
+        @PathVariable Long lobbyId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        lobbyService.leaveLobby(lobbyId, authorizationHeader);
+        messaging.convertAndSend("/topic/lobbies", lobbyId);
+    }
+
+    @PostMapping("/lobbies/{lobbyId}/participants/{participantId}/kick")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public LobbyGetDTO kickParticipant(
+        @PathVariable Long lobbyId,
+        @PathVariable Long participantId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        Lobby updatedLobby = lobbyService.kickParticipant(lobbyId, authorizationHeader, participantId);
+        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        messaging.convertAndSend("/topic/lobbies", updatedDTO);
+        return updatedDTO;
+    }
+
+    @PostMapping("/lobbies/{lobbyId}/host/transfer")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public LobbyGetDTO transferHost(
+        @PathVariable Long lobbyId,
+        @RequestBody LobbyHostTransferDTO transferDTO,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        Lobby updatedLobby = lobbyService.transferHost(
+            lobbyId,
+            authorizationHeader,
+            transferDTO == null ? null : transferDTO.getNewHostParticipantId()
+        );
+        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        messaging.convertAndSend("/topic/lobbies", updatedDTO);
+        return updatedDTO;
     }
     
 

@@ -164,6 +164,71 @@ public class LobbyService {
         return findLobbyOrThrow(lobbyId);
     }
 
+    public void leaveLobby(Long lobbyId, String playerToken) {
+        User user = userService.authenticate(playerToken);
+        Lobby lobby = lobbyRepository.findByIdWithLock(lobbyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lobby with id " + lobbyId + " was not found."));
+
+        LobbyParticipant participant = lobby.getParticipants().stream()
+                .filter(p -> p.getUser() != null && p.getUser().getId().equals(user.getId()))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this lobby"));
+
+        lobby.getParticipants().remove(participant);
+        lobbyParticipantRepository.delete(participant);
+
+        if (lobby.getParticipants().isEmpty()) {
+            lobbyRepository.delete(lobby);
+            return;
+        }
+
+        if (lobby.getHostParticipant() != null && lobby.getHostParticipant().getId().equals(participant.getId())) {
+            LobbyParticipant newHost = lobby.getParticipants().iterator().next();
+            lobby.setHostParticipant(newHost);
+        }
+
+        lobbyRepository.saveAndFlush(lobby);
+    }
+
+    public Lobby kickParticipant(Long lobbyId, String playerToken, Long participantId) {
+        User requester = userService.authenticate(playerToken);
+        Lobby lobby = lobbyRepository.findByIdWithLock(lobbyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lobby with id " + lobbyId + " was not found."));
+
+        LobbyParticipant requesterParticipant = findParticipantByUserOrThrow(lobby, requester);
+        ensureRequesterIsHost(lobby, requesterParticipant);
+
+        LobbyParticipant targetParticipant = findParticipantByIdOrThrow(lobby, participantId);
+        if (requesterParticipant.getId().equals(targetParticipant.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Host cannot kick themselves.");
+        }
+
+        lobby.getParticipants().remove(targetParticipant);
+        lobbyParticipantRepository.delete(targetParticipant);
+
+        return lobbyRepository.saveAndFlush(lobby);
+    }
+
+    public Lobby transferHost(Long lobbyId, String playerToken, Long newHostParticipantId) {
+        if (newHostParticipantId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "newHostParticipantId is required.");
+        }
+
+        User requester = userService.authenticate(playerToken);
+        Lobby lobby = lobbyRepository.findByIdWithLock(lobbyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lobby with id " + lobbyId + " was not found."));
+
+        LobbyParticipant requesterParticipant = findParticipantByUserOrThrow(lobby, requester);
+        ensureRequesterIsHost(lobby, requesterParticipant);
+
+        LobbyParticipant newHostParticipant = findParticipantByIdOrThrow(lobby, newHostParticipantId);
+        lobby.setHostParticipant(newHostParticipant);
+        return lobbyRepository.saveAndFlush(lobby);
+    }
+
 
     private int resolveCapacity(Integer capacity) {
         int resolved = capacity == null ? DEFAULT_LOBBY_CAPACITY : capacity;
@@ -240,6 +305,20 @@ public class LobbyService {
                         HttpStatus.FORBIDDEN,
                         "User is not part of this lobby"
                 ));
+    }
+
+    private LobbyParticipant findParticipantByIdOrThrow(Lobby lobby, Long participantId) {
+        return lobby.getParticipants().stream()
+                .filter(participant -> participant.getId() != null && participant.getId().equals(participantId))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Participant not found in lobby."));
+    }
+
+    private void ensureRequesterIsHost(Lobby lobby, LobbyParticipant requesterParticipant) {
+        if (lobby.getHostParticipant() == null || requesterParticipant.getId() == null
+                || !requesterParticipant.getId().equals(lobby.getHostParticipant().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the host can manage lobby participants.");
+        }
     }
 
     
