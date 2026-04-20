@@ -228,6 +228,11 @@ public class GameService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Intersection is already occupied.");
         }
+
+        if (hasAdjacentBuilding(game, intersectionId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "A settlement cannot be built next to another building.");
+        }
     
         Player player = findPlayerById(players, playerId);
         if (player == null) {
@@ -853,5 +858,36 @@ public class GameService {
                 .filter(edge -> edgeId.equals(edge.getId()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private boolean hasAdjacentBuilding(Game game, Integer intersectionId) {
+        if (game == null || intersectionId == null || game.getBoard() == null || game.getBoard().getEdges() == null) {
+            return false;
+        }
+    
+        for (Edge edge : game.getBoard().getEdges()) {
+            if (edge == null || edge.getIntersectionAId() == null || edge.getIntersectionBId() == null) {
+                continue;
+            }
+    
+            Integer neighborId = null;
+    
+            if (intersectionId.equals(edge.getIntersectionAId())) {
+                neighborId = edge.getIntersectionBId();
+            } else if (intersectionId.equals(edge.getIntersectionBId())) {
+                neighborId = edge.getIntersectionAId();
+            }
+    
+            if (neighborId == null) {
+                continue;
+            }
+    
+            Intersection neighbor = findIntersectionById(game, neighborId);
+            if (neighbor != null && neighbor.getBuilding() != null) {
+                return true;
+            }
+        }
+    
+        return false;
     }
 }

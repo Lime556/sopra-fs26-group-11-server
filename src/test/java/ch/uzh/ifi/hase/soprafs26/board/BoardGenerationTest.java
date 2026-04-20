@@ -11,6 +11,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class BoardGenerationTest {
@@ -93,5 +94,48 @@ public class BoardGenerationTest {
 		assertEquals(1, negativeOneCount);
 		assertTrue(desertIndex >= 0);
 		assertEquals(desertIndex, negativeOneIndex);
+	}
+
+	@Test
+	public void generateBoard_intersections_haveStableIds() {
+		Board board = new Board();
+		board.generateBoard();
+
+		assertEquals(54, board.getIntersections().size());
+
+		for (int i = 0; i < board.getIntersections().size(); i++) {
+			assertEquals(i, board.getIntersections().get(i).getId());
+			assertFalse(board.getIntersections().get(i).isOccupied());
+		}
+	}
+
+	@Test
+	public void generateBoard_edges_haveStableTopology() {
+		Board board = new Board();
+		board.generateBoard();
+
+		assertEquals(72, board.getEdges().size());
+
+		assertEquals(0, board.getEdges().get(0).getId());
+		assertEquals(0, board.getEdges().get(0).getIntersectionAId());
+		assertEquals(1, board.getEdges().get(0).getIntersectionBId());
+
+		assertEquals(1, board.getEdges().get(1).getId());
+		assertEquals(1, board.getEdges().get(1).getIntersectionAId());
+		assertEquals(2, board.getEdges().get(1).getIntersectionBId());
+
+		assertEquals(5, board.getEdges().get(5).getId());
+		assertEquals(0, board.getEdges().get(5).getIntersectionAId());
+		assertEquals(5, board.getEdges().get(5).getIntersectionBId());
+
+		assertEquals(71, board.getEdges().get(71).getId());
+		assertEquals(46, board.getEdges().get(71).getIntersectionAId());
+		assertEquals(52, board.getEdges().get(71).getIntersectionBId());
+
+		for (Edge edge : board.getEdges()) {
+			assertFalse(edge.isOccupied());
+			assertNotNull(edge.getIntersectionAId());
+			assertNotNull(edge.getIntersectionBId());
+		}
 	}
 }

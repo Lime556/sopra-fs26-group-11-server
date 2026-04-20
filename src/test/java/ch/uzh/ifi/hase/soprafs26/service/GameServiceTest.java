@@ -6,6 +6,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.Road;
+import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
@@ -218,6 +219,238 @@ public class GameServiceTest {
         assertEquals(42L, gameService.getCurrentPlayer(updatedGame).getId());
     }
 
+
+
+
+
+
+
+    // Tests for settlement placement and city upgrade logic
+    @Test
+    public void addSettlementToPlayer_adjacentBuilding_throwsConflict() {
+        Game game = new Game();
+        game.setId(5L);
+    
+        Player player = new Player();
+        player.setId(1L);
+        player.setWood(1);
+        player.setBrick(1);
+        player.setWool(1);
+        player.setWheat(1);
+    
+        Board board = new Board();
+        board.generateBoard();
+    
+        // build already exists at neighboring intersection 1
+        Intersection occupiedNeighbor = findIntersection(board, 1);
+        ch.uzh.ifi.hase.soprafs26.entity.Settlement existingSettlement =
+            new ch.uzh.ifi.hase.soprafs26.entity.Settlement();
+        existingSettlement.setOwnerPlayerId(2L);
+        existingSettlement.setIntersectionId(1);
+        occupiedNeighbor.setBuilding(existingSettlement);
+    
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+    
+        Mockito.when(gameRepository.findById(5L)).thenReturn(Optional.of(game));
+    
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.addSettlementToPlayer(5L, "valid-token", 1L, 0)
+        );
+    
+        assertEquals(409, exception.getStatusCode().value());
+    }
+
+    @Test
+    public void upgradeSettlementToCity_withoutSettlement_throwsConflict() {
+        Game game = new Game();
+        game.setId(201L);
+    
+        Player player = new Player();
+        player.setId(10L);
+        player.setWheat(2);
+        player.setOre(3);
+        player.setSettlementPoints(0);
+        player.setCityPoints(0);
+    
+        Board board = new Board();
+        board.generateBoard();
+    
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+    
+        Mockito.when(gameRepository.findById(201L)).thenReturn(Optional.of(game));
+    
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.upgradeSettlementToCity(201L, "valid-token", 10L, 3)
+        );
+    
+        assertEquals(409, exception.getStatusCode().value());
+    }
+
+    @Test
+    public void upgradeSettlementToCity_notEnoughResources_throwsConflict() {
+    Game game = new Game();
+    game.setId(202L);
+
+    Player player = new Player();
+    player.setId(10L);
+    player.setWheat(1);
+    player.setOre(2);
+    player.setSettlementPoints(1);
+    player.setCityPoints(0);
+
+    Board board = new Board();
+    board.generateBoard();
+
+    Intersection intersection = findIntersection(board, 3);
+    Settlement settlement = new Settlement();
+    settlement.setOwnerPlayerId(10L);
+    settlement.setIntersectionId(3);
+    intersection.setBuilding(settlement);
+
+    game.setBoard(board);
+    game.setPlayers(List.of(player));
+
+    Mockito.when(gameRepository.findById(202L)).thenReturn(Optional.of(game));
+
+    ResponseStatusException exception = assertThrows(
+        ResponseStatusException.class,
+        () -> gameService.upgradeSettlementToCity(202L, "valid-token", 10L, 3)
+    );
+
+    assertEquals(409, exception.getStatusCode().value());
+    }
+
+    @Test
+    public void addRoadToPlayer_validRequest_deductsResourcesAndPlacesRoad() {
+        Game game = new Game();
+        game.setId(210L);
+    
+        Player player = new Player();
+        player.setId(10L);
+        player.setWood(2);
+        player.setBrick(2);
+        player.setSettlementPoints(0);
+        player.setCityPoints(0);
+        player.setDevelopmentCardVictoryPoints(0);
+    
+        Board board = new Board();
+        board.generateBoard();
+    
+        Edge targetEdge = findEdge(board, 0, 1);
+    
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+    
+        Mockito.when(gameRepository.findById(210L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+    
+        Game result = gameService.addRoadToPlayer(210L, "valid-token", 10L, targetEdge.getId());
+    
+        Player updatedPlayer = result.getPlayers().get(0);
+        Edge updatedEdge = findEdge(result.getBoard(), 0, 1);
+    
+        assertEquals(1, updatedPlayer.getWood());
+        assertEquals(1, updatedPlayer.getBrick());
+        assertNotNull(updatedEdge.getRoad());
+        assertEquals(10L, updatedEdge.getRoad().getOwnerPlayerId());
+    }
+    
+    @Test
+    public void addSettlementToPlayer_validRequest_deductsResourcesAndPlacesSettlement() {
+        Game game = new Game();
+        game.setId(220L);
+    
+        Player player = new Player();
+        player.setId(10L);
+        player.setWood(2);
+        player.setBrick(2);
+        player.setWool(2);
+        player.setWheat(2);
+        player.setSettlementPoints(0);
+        player.setCityPoints(0);
+        player.setDevelopmentCardVictoryPoints(0);
+    
+        Board board = new Board();
+        board.generateBoard();
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+    
+        Mockito.when(gameRepository.findById(220L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+    
+        Game result = gameService.addSettlementToPlayer(220L, "valid-token", 10L, 3);
+    
+        Player updatedPlayer = result.getPlayers().get(0);
+        Intersection updatedIntersection = findIntersection(result.getBoard(), 3);
+    
+        assertEquals(1, updatedPlayer.getWood());
+        assertEquals(1, updatedPlayer.getBrick());
+        assertEquals(1, updatedPlayer.getWool());
+        assertEquals(1, updatedPlayer.getWheat());
+        assertEquals(1, updatedPlayer.getSettlementPoints());
+        assertNotNull(updatedIntersection.getBuilding());
+        assertEquals("Settlement", updatedIntersection.getBuilding().getClass().getSimpleName());
+    }
+
+    @Test
+    public void upgradeSettlementToCity_validRequest_updatesResourcesAndPoints() {
+        Game game = new Game();
+        game.setId(200L);
+    
+        Player player = new Player();
+        player.setId(10L);
+        player.setSettlementPoints(1);
+        player.setCityPoints(0);
+        player.setDevelopmentCardVictoryPoints(0);
+        player.setWheat(3);
+        player.setOre(4);
+    
+        Board board = new Board();
+        board.generateBoard();
+    
+        Intersection intersection = findIntersection(board, 3);
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(10L);
+        settlement.setIntersectionId(3);
+        intersection.setBuilding(settlement);
+    
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+    
+        Mockito.when(gameRepository.findById(200L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+    
+        Game result = gameService.upgradeSettlementToCity(200L, "valid-token", 10L, 3);
+    
+        Player updatedPlayer = result.getPlayers().get(0);
+        Intersection updatedIntersection = findIntersection(result.getBoard(), 3);
+    
+        assertEquals(1, updatedPlayer.getWheat());
+        assertEquals(1, updatedPlayer.getOre());
+        assertEquals(0, updatedPlayer.getSettlementPoints());
+        assertEquals(1, updatedPlayer.getCityPoints());
+        assertNotNull(updatedIntersection.getBuilding());
+        assertEquals("City", updatedIntersection.getBuilding().getClass().getSimpleName());
+    }
+    
+
+
+
+
+
+
+
+
+
+    // Tests for longest road and victory point recalculation logic
     @Test
     public void recalculateVictoryState_fiveConnectedRoads_setsLongestRoad() {
         Game game = new Game();
@@ -414,6 +647,15 @@ public class GameServiceTest {
         assertEquals(0, updatedA.getVictoryPoints());
     }
 
+
+
+
+
+
+
+
+
+    // Helper methods
     private Edge findEdge(Board board, int intersectionAId, int intersectionBId) {
         int min = Math.min(intersectionAId, intersectionBId);
         int max = Math.max(intersectionAId, intersectionBId);

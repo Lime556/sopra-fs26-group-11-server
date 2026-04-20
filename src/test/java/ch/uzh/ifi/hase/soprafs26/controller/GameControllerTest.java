@@ -1,7 +1,5 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
@@ -185,12 +183,87 @@ public class GameControllerTest {
                 .andExpect(jsonPath("$.gameFinished", is(true)));
     }
 
-    private String asJsonString(final Object object) {
-        try {
-            return new ObjectMapper().writeValueAsString(object);
-        } catch (JacksonException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    String.format("The request body could not be created.%s", e.toString()));
-        }
+    @Test
+    public void publishGameEvent_roadBuilt_callsServiceAndReturnsAccepted() throws Exception {
+        Game updatedGame = new Game();
+        updatedGame.setId(1L);
+    
+        given(gameService.getGameById(1L, "token-123")).willReturn(new Game());
+        given(gameService.addRoadToPlayer(1L, "token-123", 10L, 7)).willReturn(updatedGame);
+    
+        String body = """
+            {
+              "type": "ROAD_BUILT",
+              "sourcePlayerId": 10,
+              "edge": 7
+            }
+            """;
+    
+        MockHttpServletRequestBuilder postRequest = post("/games/1/events")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+    
+        mockMvc.perform(postRequest)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.type", is("ROAD_BUILT")))
+                .andExpect(jsonPath("$.sourcePlayerId", is(10)))
+                .andExpect(jsonPath("$.edge", is(7)));
+    }
+    
+    @Test
+    public void publishGameEvent_settlementBuilt_callsServiceAndReturnsAccepted() throws Exception {
+        Game updatedGame = new Game();
+        updatedGame.setId(1L);
+    
+        given(gameService.getGameById(1L, "token-123")).willReturn(new Game());
+        given(gameService.addSettlementToPlayer(1L, "token-123", 10L, 3)).willReturn(updatedGame);
+    
+        String body = """
+            {
+              "type": "SETTLEMENT_BUILT",
+              "sourcePlayerId": 10,
+              "intersectionId": 3
+            }
+            """;
+    
+        MockHttpServletRequestBuilder postRequest = post("/games/1/events")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+    
+        mockMvc.perform(postRequest)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.type", is("SETTLEMENT_BUILT")))
+                .andExpect(jsonPath("$.sourcePlayerId", is(10)))
+                .andExpect(jsonPath("$.intersectionId", is(3)));
+    }
+    
+    @Test
+    public void publishGameEvent_cityBuilt_callsServiceAndReturnsAccepted() throws Exception {
+        Game updatedGame = new Game();
+        updatedGame.setId(1L);
+    
+        given(gameService.getGameById(1L, "token-123")).willReturn(new Game());
+        given(gameService.upgradeSettlementToCity(1L, "token-123", 10L, 3)).willReturn(updatedGame);
+    
+        String body = """
+            {
+              "type": "CITY_BUILT",
+              "sourcePlayerId": 10,
+              "intersectionId": 3
+            }
+            """;
+    
+        MockHttpServletRequestBuilder postRequest = post("/games/1/events")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+    
+        mockMvc.perform(postRequest)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.type", is("CITY_BUILT")))
+                .andExpect(jsonPath("$.sourcePlayerId", is(10)))
+                .andExpect(jsonPath("$.intersectionId", is(3)));
     }
 }
