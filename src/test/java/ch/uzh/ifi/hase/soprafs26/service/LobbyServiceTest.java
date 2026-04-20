@@ -378,6 +378,58 @@ public class LobbyServiceTest {
     }
 
     @Test
+    public void kickPlayer_hostKicksByUserId_success() {
+        User guest = new User();
+        guest.setId(12L);
+
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setUser(host);
+        hostParticipant.setLobby(lobby);
+
+        LobbyParticipant guestParticipant = new LobbyParticipant();
+        guestParticipant.setId(101L);
+        guestParticipant.setUser(guest);
+        guestParticipant.setLobby(lobby);
+
+        lobby.getParticipants().add(hostParticipant);
+        lobby.getParticipants().add(guestParticipant);
+        lobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        Lobby updatedLobby = lobbyService.kickPlayer(1L, "valid-token", 12L);
+
+        assertEquals(1, updatedLobby.getCurrentParticipants());
+        Mockito.verify(lobbyParticipantRepository).delete(guestParticipant);
+    }
+
+    @Test
+    public void transferHostToUser_hostTransfersByUserId_success() {
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setUser(host);
+        hostParticipant.setLobby(lobby);
+
+        LobbyParticipant guestParticipant = new LobbyParticipant();
+        guestParticipant.setId(101L);
+        guestParticipant.setUser(user);
+        guestParticipant.setLobby(lobby);
+
+        lobby.getParticipants().add(hostParticipant);
+        lobby.getParticipants().add(guestParticipant);
+        lobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        Lobby updatedLobby = lobbyService.transferHostToUser(1L, "valid-token", 11L);
+
+        assertEquals(101L, updatedLobby.getHostParticipant().getId());
+    }
+
+    @Test
     public void startGame_validLobby_initializesGamePlayers() {
         host.setUsername("hostUser");
         user.setUsername("guestUser");

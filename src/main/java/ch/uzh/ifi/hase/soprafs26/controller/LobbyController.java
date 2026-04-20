@@ -19,6 +19,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStartGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyHostTransferDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyKickDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.mapper.DTOMapper;
 import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
@@ -143,6 +144,42 @@ public class LobbyController {
             lobbyId,
             authorizationHeader,
             transferDTO == null ? null : transferDTO.getNewHostParticipantId()
+        );
+        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        messaging.convertAndSend("/topic/lobbies", updatedDTO);
+        return updatedDTO;
+    }
+
+    @PostMapping("/lobbies/{lobbyId}/kick")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public LobbyGetDTO kickPlayer(
+        @PathVariable Long lobbyId,
+        @RequestBody LobbyKickDTO kickDTO,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        Lobby updatedLobby = lobbyService.kickPlayer(
+            lobbyId,
+            authorizationHeader,
+            kickDTO == null ? null : kickDTO.getUserId()
+        );
+        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        messaging.convertAndSend("/topic/lobbies", updatedDTO);
+        return updatedDTO;
+    }
+
+    @PostMapping("/lobbies/{lobbyId}/host-transfer")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public LobbyGetDTO transferHostByUser(
+        @PathVariable Long lobbyId,
+        @RequestBody LobbyHostTransferDTO transferDTO,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        Lobby updatedLobby = lobbyService.transferHostToUser(
+            lobbyId,
+            authorizationHeader,
+            transferDTO == null ? null : transferDTO.getUserId()
         );
         LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
         messaging.convertAndSend("/topic/lobbies", updatedDTO);
