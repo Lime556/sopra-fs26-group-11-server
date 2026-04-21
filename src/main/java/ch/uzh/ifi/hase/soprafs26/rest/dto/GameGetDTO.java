@@ -10,6 +10,7 @@ public class GameGetDTO {
     private BoardGetDTO board;
     private Integer currentTurnIndex;
     private String turnPhase;
+    private String gamePhase;
     private PlayerGetDTO currentPlayer;
     private RobberGetDTO robber;
     private DiceGetDTO dice;
@@ -65,6 +66,14 @@ public class GameGetDTO {
 
     public void setTurnPhase(String turnPhase) {
         this.turnPhase = turnPhase;
+    }
+
+    public String getGamePhase() {
+        return gamePhase;
+    }
+
+    public void setGamePhase(String gamePhase) {
+        this.gamePhase = gamePhase;
     }
 
     public PlayerGetDTO getCurrentPlayer() {

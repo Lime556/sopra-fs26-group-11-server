@@ -229,12 +229,76 @@ public class GameController {
         return stateDTO;
     }
 
+    @PostMapping("/games/{gameId}/actions/build-settlement")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameGetDTO buildSettlement(
+            @PathVariable Long gameId,
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Long playerId = ((Number) body.get("playerId")).longValue();
+        Integer intersectionId = ((Number) body.get("intersectionId")).intValue();
+        Game game = gameService.getGameById(gameId, extractToken(authorizationHeader));
+        Game updatedGame;
+
+        if (game.isSetupPhase()) {
+            updatedGame = gameService.placeInitialSettlement(
+                    gameId,
+                    extractToken(authorizationHeader),
+                    playerId,
+                    intersectionId
+            );
+        } else {
+            updatedGame = gameService.addSettlementToPlayer(
+                    gameId,
+                    extractToken(authorizationHeader),
+                    playerId,
+                    intersectionId
+            );
+        }
+        GameGetDTO dto = convertGameToDto(updatedGame);
+        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
+        return dto;
+    }
+
+    @PostMapping("/games/{gameId}/actions/build-road")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameGetDTO buildRoad(
+            @PathVariable Long gameId,
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Long playerId = ((Number) body.get("playerId")).longValue();
+        Integer edgeId = ((Number) body.get("edgeId")).intValue();
+        Game game = gameService.getGameById(gameId, extractToken(authorizationHeader));
+        Game updatedGame;
+        if (game.isSetupPhase()) {
+            updatedGame = gameService.placeInitialRoad(
+                    gameId,
+                    extractToken(authorizationHeader),
+                    playerId,
+                    edgeId
+            );
+        } else {
+            updatedGame = gameService.addRoadToPlayer(
+                    gameId,
+                    extractToken(authorizationHeader),
+                    playerId,
+                    edgeId
+            );
+        }
+        GameGetDTO dto = convertGameToDto(updatedGame);
+        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
+        return dto;
+    }
+
     private GameGetDTO convertGameToDto(Game game) {
         GameGetDTO dto = new GameGetDTO();
         dto.setId(game.getId());
         dto.setBoard(convertBoardToDto(game.getBoard()));
         dto.setCurrentTurnIndex(game.getCurrentTurnIndex());
         dto.setTurnPhase(game.getTurnPhase());
+        dto.setGamePhase(game.getGamePhase());
         dto.setDiceValue(game.getDiceValue());
         dto.setRobberTileIndex(game.getRobberTileIndex());
         dto.setTargetVictoryPoints(game.getTargetVictoryPoints());
