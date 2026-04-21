@@ -137,6 +137,15 @@ public class TurnSystemTest {
     }
 
     @Test
+    public void rollDice_setsDiceRolledAtTimestamp() {
+        assertEquals(null, testGame.getDiceRolledAt());
+
+        Game updatedGame = gameService.rollDice(100L, "valid-token");
+
+        assertNotNull(updatedGame.getDiceRolledAt());
+    }
+
+    @Test
     public void distributeResourcesForDiceValue_settlement_grantsResources() {
         Board board = createUniformWoodBoardWithDice(8);
         Intersection intersection = board.getIntersections().get(0);
