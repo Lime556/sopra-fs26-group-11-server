@@ -48,6 +48,21 @@ public class Game{
     @Column
     private Integer robberTileIndex;
 
+    @Column
+    private Integer developmentKnightRemaining;
+
+    @Column
+    private Integer developmentVictoryPointRemaining;
+
+    @Column
+    private Integer developmentRoadBuildingRemaining;
+
+    @Column
+    private Integer developmentYearOfPlentyRemaining;
+
+    @Column
+    private Integer developmentMonopolyRemaining;
+
     @Transient
     private DevelopmentDeck developmentDeck;
 
@@ -161,6 +176,46 @@ public class Game{
 
     public void setRobberTileIndex(Integer robberTileIndex) {
         this.robberTileIndex = robberTileIndex;
+    }
+
+    public Integer getDevelopmentKnightRemaining() {
+        return developmentKnightRemaining;
+    }
+
+    public void setDevelopmentKnightRemaining(Integer developmentKnightRemaining) {
+        this.developmentKnightRemaining = developmentKnightRemaining;
+    }
+
+    public Integer getDevelopmentVictoryPointRemaining() {
+        return developmentVictoryPointRemaining;
+    }
+
+    public void setDevelopmentVictoryPointRemaining(Integer developmentVictoryPointRemaining) {
+        this.developmentVictoryPointRemaining = developmentVictoryPointRemaining;
+    }
+
+    public Integer getDevelopmentRoadBuildingRemaining() {
+        return developmentRoadBuildingRemaining;
+    }
+
+    public void setDevelopmentRoadBuildingRemaining(Integer developmentRoadBuildingRemaining) {
+        this.developmentRoadBuildingRemaining = developmentRoadBuildingRemaining;
+    }
+
+    public Integer getDevelopmentYearOfPlentyRemaining() {
+        return developmentYearOfPlentyRemaining;
+    }
+
+    public void setDevelopmentYearOfPlentyRemaining(Integer developmentYearOfPlentyRemaining) {
+        this.developmentYearOfPlentyRemaining = developmentYearOfPlentyRemaining;
+    }
+
+    public Integer getDevelopmentMonopolyRemaining() {
+        return developmentMonopolyRemaining;
+    }
+
+    public void setDevelopmentMonopolyRemaining(Integer developmentMonopolyRemaining) {
+        this.developmentMonopolyRemaining = developmentMonopolyRemaining;
     }
 
     public DevelopmentDeck getDevelopmentDeck() {
