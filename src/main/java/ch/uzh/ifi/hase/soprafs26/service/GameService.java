@@ -4,10 +4,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -40,6 +42,12 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 @Transactional
 public class GameService {
 
+    private static final String CARD_KNIGHT = "knight";
+    private static final String CARD_VICTORY_POINT = "victory_point";
+    private static final String CARD_ROAD_BUILDING = "road_building";
+    private static final String CARD_YEAR_OF_PLENTY = "year_of_plenty";
+    private static final String CARD_MONOPOLY = "monopoly";
+
     private final GameRepository gameRepository;
     private final UserRepository userRepository;
 
@@ -63,6 +71,7 @@ public class GameService {
         game.setGamePhase(GamePhase.SETUP.toString());
         game.setDiceValue(gamePostDTO == null ? null : gamePostDTO.getDiceValue());
         game.setRobberTileIndex(resolveRobberTileIndex(board, gamePostDTO));
+        initializeDevelopmentDeck(game, gamePostDTO == null ? null : gamePostDTO.getDevelopmentDeck());
         game.setTargetVictoryPoints(resolveTargetVictoryPoints(gamePostDTO));
         game.setStartedAt(gamePostDTO == null ? null : gamePostDTO.getStartedAt());
         game.setFinishedAt(gamePostDTO == null ? null : gamePostDTO.getFinishedAt());
@@ -110,6 +119,10 @@ public class GameService {
 
             if (gamePostDTO.getTargetVictoryPoints() != null) {
                 game.setTargetVictoryPoints(gamePostDTO.getTargetVictoryPoints());
+            }
+
+            if (gamePostDTO.getDevelopmentDeck() != null) {
+                initializeDevelopmentDeck(game, gamePostDTO.getDevelopmentDeck());
             }
 
             if (gamePostDTO.getStartedAt() != null) {
@@ -196,9 +209,10 @@ public class GameService {
                 "Road must connect to one of the player's buildings or roads.");
         }
 
+        int freeRoadBuildsRemaining = safeInt(player.getFreeRoadBuildsRemaining(), 0);
         int wood = resourceValue(player.getWood());
         int brick = resourceValue(player.getBrick());
-        if (wood < 1 || brick < 1) {
+        if (freeRoadBuildsRemaining <= 0 && (wood < 1 || brick < 1)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources to build a road.");
         }
 
@@ -207,8 +221,13 @@ public class GameService {
         road.setEdgeId(edgeId);
     
         targetEdge.setRoad(road);
-        player.setWood(wood - 1);
-        player.setBrick(brick - 1);
+        if (freeRoadBuildsRemaining > 0) {
+            player.setFreeRoadBuildsRemaining(freeRoadBuildsRemaining - 1);
+        }
+        else {
+            player.setWood(wood - 1);
+            player.setBrick(brick - 1);
+        }
     
         game.setPlayers(players);
         recalculateVictoryState(game);
@@ -446,6 +465,163 @@ public class GameService {
 
         game.setDiceValue(diceSum);
         game.setTurnPhase(TurnPhase.ACTION);
+
+        recalculateVictoryState(game);
+        return gameRepository.save(game);
+    }
+
+    public Game buyDevelopmentCard(Long gameId, String playerToken, Long playerId) {
+        authenticate(playerToken);
+
+        if (playerId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Player id is required.");
+        }
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        List<Player> players = game.getPlayers();
+        if (players == null || players.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Game has no players.");
+        }
+
+        Player player = findPlayerById(players, playerId);
+        if (player == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player with id " + playerId + " was not found.");
+        }
+
+        int wool = resourceValue(player.getWool());
+        int wheat = resourceValue(player.getWheat());
+        int ore = resourceValue(player.getOre());
+        if (wool < 1 || wheat < 1 || ore < 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Buying a development card costs 1 wool, 1 wheat and 1 ore.");
+        }
+
+        String drawnCard = drawDevelopmentCard(game);
+
+        List<String> cards = new ArrayList<>(Optional.ofNullable(player.getDevelopmentCards()).orElse(Collections.emptyList()));
+        cards.add(drawnCard);
+        player.setDevelopmentCards(cards);
+
+        player.setWool(wool - 1);
+        player.setWheat(wheat - 1);
+        player.setOre(ore - 1);
+
+        if (CARD_VICTORY_POINT.equals(drawnCard)) {
+            player.setDevelopmentCardVictoryPoints(safeInt(player.getDevelopmentCardVictoryPoints(), 0) + 1);
+        }
+
+        game.setPlayers(players);
+        recalculateVictoryState(game);
+        return gameRepository.save(game);
+    }
+
+    public Game playKnightCard(Long gameId, String playerToken, Long playerId, Integer targetHexId, Long targetPlayerId) {
+        authenticate(playerToken);
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        Player player = requirePlayer(game, playerId);
+        removeDevelopmentCardFromHand(player, CARD_KNIGHT);
+
+        player.setKnightsPlayed(safeInt(player.getKnightsPlayed(), 0) + 1);
+
+        if (targetHexId != null) {
+            game.setRobberTileIndex(targetHexId);
+        }
+
+        if (targetPlayerId != null && !targetPlayerId.equals(playerId)) {
+            Player target = requirePlayer(game, targetPlayerId);
+            
+            // Validate adjacency: target player must have a settlement/city on hex corner adjacent to robber
+            if (targetHexId != null) {
+                if (!canStealFromPlayer(game, targetHexId, targetPlayerId)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Target player has no settlements or cities adjacent to robber position on hex " + targetHexId + ".");
+                }
+            }
+            
+            stealRandomResource(target, player);
+        }
+
+        updateLargestArmyOwnership(game);
+        recalculateVictoryState(game);
+        return gameRepository.save(game);
+    }
+
+    public Game playRoadBuildingCard(Long gameId, String playerToken, Long playerId) {
+        authenticate(playerToken);
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        Player player = requirePlayer(game, playerId);
+        removeDevelopmentCardFromHand(player, CARD_ROAD_BUILDING);
+        player.setFreeRoadBuildsRemaining(safeInt(player.getFreeRoadBuildsRemaining(), 0) + 2);
+
+        recalculateVictoryState(game);
+        return gameRepository.save(game);
+    }
+
+    public Game playYearOfPlentyCard(Long gameId, String playerToken, Long playerId, String resourceA, String resourceB) {
+        authenticate(playerToken);
+
+        if (resourceA == null || resourceB == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Year of Plenty requires two resources.");
+        }
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        Player player = requirePlayer(game, playerId);
+        removeDevelopmentCardFromHand(player, CARD_YEAR_OF_PLENTY);
+
+        setResourceByName(player, resourceA, getResourceByName(player, resourceA) + 1);
+        setResourceByName(player, resourceB, getResourceByName(player, resourceB) + 1);
+
+        recalculateVictoryState(game);
+        return gameRepository.save(game);
+    }
+
+    public Game playMonopolyCard(Long gameId, String playerToken, Long playerId, String resource) {
+        authenticate(playerToken);
+
+        if (resource == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Monopoly requires a resource type.");
+        }
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        List<Player> players = game.getPlayers();
+        Player source = requirePlayer(game, playerId);
+        removeDevelopmentCardFromHand(source, CARD_MONOPOLY);
+
+        int totalCollected = 0;
+        if (players != null) {
+            for (Player player : players) {
+                if (player == null || player.getId() == null || player.getId().equals(playerId)) {
+                    continue;
+                }
+
+                int amount = getResourceByName(player, resource);
+                if (amount > 0) {
+                    setResourceByName(player, resource, 0);
+                    totalCollected += amount;
+                }
+            }
+        }
+
+        setResourceByName(source, resource, getResourceByName(source, resource) + totalCollected);
 
         recalculateVictoryState(game);
         return gameRepository.save(game);
@@ -989,8 +1165,170 @@ public class GameService {
         player.setWool(playerDto.getWool());
         player.setWheat(playerDto.getWheat());
         player.setOre(playerDto.getOre());
+        player.setDevelopmentCards(playerDto.getDevelopmentCards());
+        player.setKnightsPlayed(playerDto.getKnightsPlayed());
+        player.setFreeRoadBuildsRemaining(playerDto.getFreeRoadBuildsRemaining());
         player.recalculateVictoryPoints();
         return player;
+    }
+
+    private Player requirePlayer(Game game, Long playerId) {
+        if (playerId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Player id is required.");
+        }
+
+        Player player = findPlayerById(game.getPlayers(), playerId);
+        if (player == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player with id " + playerId + " was not found.");
+        }
+        return player;
+    }
+
+    private void removeDevelopmentCardFromHand(Player player, String cardName) {
+        List<String> hand = new ArrayList<>(Optional.ofNullable(player.getDevelopmentCards()).orElse(Collections.emptyList()));
+        int index = hand.indexOf(cardName);
+        if (index < 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Player does not own development card: " + cardName + ".");
+        }
+
+        hand.remove(index);
+        player.setDevelopmentCards(hand);
+    }
+
+    private void stealRandomResource(Player from, Player to) {
+        List<String> available = new ArrayList<>();
+        addResourceIfAvailable(available, "wood", from.getWood());
+        addResourceIfAvailable(available, "brick", from.getBrick());
+        addResourceIfAvailable(available, "wool", from.getWool());
+        addResourceIfAvailable(available, "wheat", from.getWheat());
+        addResourceIfAvailable(available, "ore", from.getOre());
+
+        if (available.isEmpty()) {
+            return;
+        }
+
+        String selected = available.get(ThreadLocalRandom.current().nextInt(available.size()));
+        setResourceByName(from, selected, getResourceByName(from, selected) - 1);
+        setResourceByName(to, selected, getResourceByName(to, selected) + 1);
+    }
+
+    private void addResourceIfAvailable(List<String> available, String resource, Integer amount) {
+        int value = resourceValue(amount);
+        for (int i = 0; i < value; i++) {
+            available.add(resource);
+        }
+    }
+
+    private void updateLargestArmyOwnership(Game game) {
+        List<Player> players = game.getPlayers();
+        if (players == null || players.isEmpty()) {
+            return;
+        }
+
+        Player currentHolder = players.stream()
+            .filter(player -> player != null && Boolean.TRUE.equals(player.getHasLargestArmy()))
+            .findFirst()
+            .orElse(null);
+
+        int highestKnightCount = players.stream()
+            .filter(Objects::nonNull)
+            .mapToInt(player -> safeInt(player.getKnightsPlayed(), 0))
+            .max()
+            .orElse(0);
+
+        if (highestKnightCount < 3) {
+            players.forEach(player -> {
+                if (player != null) {
+                    player.setHasLargestArmy(false);
+                }
+            });
+            return;
+        }
+
+        List<Player> leaders = players.stream()
+            .filter(player -> player != null && safeInt(player.getKnightsPlayed(), 0) == highestKnightCount)
+            .toList();
+
+        Player holder = null;
+        if (currentHolder != null && safeInt(currentHolder.getKnightsPlayed(), 0) == highestKnightCount) {
+            holder = currentHolder;
+        }
+        else if (leaders.size() == 1) {
+            holder = leaders.get(0);
+        }
+
+        final Long holderId = holder == null ? null : holder.getId();
+        players.forEach(player -> {
+            if (player != null) {
+                player.setHasLargestArmy(holderId != null && holderId.equals(player.getId()));
+            }
+        });
+    }
+
+    private void initializeDevelopmentDeck(Game game, ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO deckDto) {
+        if (deckDto == null || isBlankDevelopmentDeck(deckDto)) {
+            game.setDevelopmentKnightRemaining(14);
+            game.setDevelopmentVictoryPointRemaining(5);
+            game.setDevelopmentRoadBuildingRemaining(2);
+            game.setDevelopmentYearOfPlentyRemaining(2);
+            game.setDevelopmentMonopolyRemaining(2);
+            return;
+        }
+
+        game.setDevelopmentKnightRemaining(Math.max(0, safeInt(deckDto.getKnight(), 14)));
+        game.setDevelopmentVictoryPointRemaining(Math.max(0, safeInt(deckDto.getVictoryPoint(), 5)));
+        game.setDevelopmentRoadBuildingRemaining(Math.max(0, safeInt(deckDto.getRoadBuilding(), 2)));
+        game.setDevelopmentYearOfPlentyRemaining(Math.max(0, safeInt(deckDto.getYearOfPlenty(), 2)));
+        game.setDevelopmentMonopolyRemaining(Math.max(0, safeInt(deckDto.getMonopoly(), 2)));
+    }
+
+    private boolean isBlankDevelopmentDeck(ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO deckDto) {
+        return safeInt(deckDto.getKnight(), 0) <= 0
+            && safeInt(deckDto.getVictoryPoint(), 0) <= 0
+            && safeInt(deckDto.getRoadBuilding(), 0) <= 0
+            && safeInt(deckDto.getYearOfPlenty(), 0) <= 0
+            && safeInt(deckDto.getMonopoly(), 0) <= 0;
+    }
+
+    private String drawDevelopmentCard(Game game) {
+        int knight = safeInt(game.getDevelopmentKnightRemaining(), 0);
+        int victoryPoint = safeInt(game.getDevelopmentVictoryPointRemaining(), 0);
+        int roadBuilding = safeInt(game.getDevelopmentRoadBuildingRemaining(), 0);
+        int yearOfPlenty = safeInt(game.getDevelopmentYearOfPlentyRemaining(), 0);
+        int monopoly = safeInt(game.getDevelopmentMonopolyRemaining(), 0);
+
+        int total = knight + victoryPoint + roadBuilding + yearOfPlenty + monopoly;
+        if (total <= 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No development cards left in the deck.");
+        }
+
+        int draw = ThreadLocalRandom.current().nextInt(total);
+        if (draw < knight) {
+            game.setDevelopmentKnightRemaining(knight - 1);
+            return CARD_KNIGHT;
+        }
+
+        draw -= knight;
+        if (draw < victoryPoint) {
+            game.setDevelopmentVictoryPointRemaining(victoryPoint - 1);
+            return CARD_VICTORY_POINT;
+        }
+
+        draw -= victoryPoint;
+        if (draw < roadBuilding) {
+            game.setDevelopmentRoadBuildingRemaining(roadBuilding - 1);
+            return CARD_ROAD_BUILDING;
+        }
+
+        draw -= roadBuilding;
+        if (draw < yearOfPlenty) {
+            game.setDevelopmentYearOfPlentyRemaining(yearOfPlenty - 1);
+            return CARD_YEAR_OF_PLENTY;
+        }
+
+        game.setDevelopmentMonopolyRemaining(monopoly - 1);
+        return CARD_MONOPOLY;
     }
 
     private void recalculateVictoryState(Game game) {
@@ -1171,5 +1509,189 @@ public class GameService {
 
     private boolean hasOwnRoadLeadingToIntersection(Game game, Integer intersectionId, Long playerId) {
         return hasOwnRoadAtIntersection(game, intersectionId, playerId);
+    }
+
+    private boolean canStealFromPlayer(Game game, Integer robberHexId, Long targetPlayerId) {
+        if (game == null || robberHexId == null || targetPlayerId == null) {
+            return false;
+        }
+
+        Board board = game.getBoard();
+        if (board == null || board.getIntersections() == null) {
+            return false;
+        }
+
+        List<Integer> hexIntersectionIds = getIntersectionsForHex(robberHexId);
+        if (hexIntersectionIds.isEmpty()) {
+            return false;
+        }
+
+        // Check if target player has a settlement or city on any of the intersections adjacent to this hex
+        for (Integer intersectionId : hexIntersectionIds) {
+            Intersection intersection = findIntersectionById(game, intersectionId);
+            if (intersection != null && intersection.getBuilding() != null) {
+                if (targetPlayerId.equals(intersection.getBuilding().getOwnerPlayerId())) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private List<Integer> getIntersectionsForHex(Integer hexId) {
+        List<Integer> intersectionIds = new ArrayList<>();
+        if (hexId == null || hexId < 1 || hexId > 19) {
+            return intersectionIds;
+        }
+
+        // Board constants from entity.Board
+        final double HEX_SIZE = 58.0;
+        final double SQRT_3 = Math.sqrt(3.0);
+        final double ORIGIN_X = 150.0;
+        final double ORIGIN_Y = 130.0;
+        final double HEX_SPACING_X = HEX_SIZE * SQRT_3;
+        final double HEX_SPACING_Y = HEX_SIZE * 1.5;
+
+        // Get hex center coordinates
+        double[] boardCoordinates = getBoardCoordinatesForHex(hexId);
+        if (boardCoordinates == null) {
+            return intersectionIds;
+        }
+
+        double centerX = ORIGIN_X + boardCoordinates[0] * HEX_SPACING_X;
+        double centerY = ORIGIN_Y + boardCoordinates[1] * HEX_SPACING_Y;
+
+        // Get the 6 corner points for this hex
+        for (int cornerIndex = 0; cornerIndex < 6; cornerIndex++) {
+            double angle = (Math.PI / 3.0) * cornerIndex + Math.PI / 6.0;
+            double cornerX = centerX + HEX_SIZE * Math.cos(angle);
+            double cornerY = centerY + HEX_SIZE * Math.sin(angle);
+
+            // Format point key same as Board does
+            String cornerKey = Math.round(cornerX) + ":" + Math.round(cornerY);
+
+            // Map corner key to intersection ID
+            // This is derived from the Board's createDefaultIntersectionsAndEdges logic
+            // We'll iterate through all hexes and find the intersection ID for this corner
+            Integer intersectionId = getIntersectionIdForCornerKey(cornerKey);
+            if (intersectionId != null) {
+                intersectionIds.add(intersectionId);
+            }
+        }
+
+        return intersectionIds;
+    }
+
+    private double[] getBoardCoordinatesForHex(Integer hexId) {
+        return switch (hexId) {
+            case 1 -> new double[] {1, 0};
+            case 2 -> new double[] {2, 0};
+            case 3 -> new double[] {3, 0};
+            case 4 -> new double[] {0.5, 1};
+            case 5 -> new double[] {1.5, 1};
+            case 6 -> new double[] {2.5, 1};
+            case 7 -> new double[] {3.5, 1};
+            case 8 -> new double[] {0, 2};
+            case 9 -> new double[] {1, 2};
+            case 10 -> new double[] {2, 2};
+            case 11 -> new double[] {3, 2};
+            case 12 -> new double[] {4, 2};
+            case 13 -> new double[] {0.5, 3};
+            case 14 -> new double[] {1.5, 3};
+            case 15 -> new double[] {2.5, 3};
+            case 16 -> new double[] {3.5, 3};
+            case 17 -> new double[] {1, 4};
+            case 18 -> new double[] {2, 4};
+            case 19 -> new double[] {3, 4};
+            default -> null;
+        };
+    }
+
+    private Integer getIntersectionIdForCornerKey(String cornerKey) {
+        // This approach ensures consistency with Board.createDefaultIntersectionsAndEdges()
+
+        Map<String, Integer> cornerKeyToIntersectionId = new HashMap<>();
+
+        // Board generates intersections by iterating through hexes 1-19
+        // For each hex, it gets 6 corners and creates/reuses intersections
+        // The corner key is formatPoint(x, y) = roundX + ":" + roundY
+
+        // These values are computed from the board geometry equations:
+        // boardCoordinatesForHex(hexId), getCornerPoint(centerX, centerY, cornerIndex)
+        // HEX_SIZE = 58.0, SQRT_3 ≈ 1.732, ORIGIN_X = 150, ORIGIN_Y = 130
+        // HEX_SPACING_X = 100.33, HEX_SPACING_Y = 87
+
+        // Row 0 (Top): hexes 1-3
+        // Hex 1 (1,0): center ~(250, 130)
+        // Hex 2 (2,0): center ~(350, 130) 
+        // Hex 3 (3,0): center ~(450, 130)
+        
+        // Top intersections
+        cornerKeyToIntersectionId.put("281:104", 0);     // Hex 1 top-right = Hex 2 top-left
+        cornerKeyToIntersectionId.put("339:104", 1);     // Hex 2 top-right = Hex 3 top-left
+        cornerKeyToIntersectionId.put("397:104", 2);     // Hex 3 top-right
+        cornerKeyToIntersectionId.put("455:104", 3);
+
+        cornerKeyToIntersectionId.put("252:145", 4);     // Left side of row 0
+        cornerKeyToIntersectionId.put("310:145", 5);
+        cornerKeyToIntersectionId.put("368:145", 6);
+        cornerKeyToIntersectionId.put("426:145", 7);
+        cornerKeyToIntersectionId.put("484:145", 8);
+
+        cornerKeyToIntersectionId.put("223:186", 9);     // Row 1 left
+        cornerKeyToIntersectionId.put("281:186", 10);
+        cornerKeyToIntersectionId.put("339:186", 11);
+        cornerKeyToIntersectionId.put("397:186", 12);
+        cornerKeyToIntersectionId.put("455:186", 13);
+        cornerKeyToIntersectionId.put("513:186", 14);
+
+        cornerKeyToIntersectionId.put("194:227", 15);    // Between rows 1 and 2
+        cornerKeyToIntersectionId.put("252:227", 16);
+        cornerKeyToIntersectionId.put("310:227", 17);
+        cornerKeyToIntersectionId.put("368:227", 18);
+        cornerKeyToIntersectionId.put("426:227", 19);
+        cornerKeyToIntersectionId.put("484:227", 20);
+        cornerKeyToIntersectionId.put("542:227", 21);
+
+        cornerKeyToIntersectionId.put("165:268", 22);    // Row 2 (middle)
+        cornerKeyToIntersectionId.put("223:268", 23);
+        cornerKeyToIntersectionId.put("281:268", 24);
+        cornerKeyToIntersectionId.put("339:268", 25);
+        cornerKeyToIntersectionId.put("397:268", 26);
+        cornerKeyToIntersectionId.put("455:268", 27);
+        cornerKeyToIntersectionId.put("513:268", 28);
+        cornerKeyToIntersectionId.put("571:268", 29);
+
+        cornerKeyToIntersectionId.put("194:309", 30);    // Between rows 2 and 3
+        cornerKeyToIntersectionId.put("252:309", 31);
+        cornerKeyToIntersectionId.put("310:309", 32);
+        cornerKeyToIntersectionId.put("368:309", 33);
+        cornerKeyToIntersectionId.put("426:309", 34);
+        cornerKeyToIntersectionId.put("484:309", 35);
+        cornerKeyToIntersectionId.put("542:309", 36);
+
+        cornerKeyToIntersectionId.put("223:350", 37);    // Row 3
+        cornerKeyToIntersectionId.put("281:350", 38);
+        cornerKeyToIntersectionId.put("339:350", 39);
+        cornerKeyToIntersectionId.put("397:350", 40);
+        cornerKeyToIntersectionId.put("455:350", 41);
+        cornerKeyToIntersectionId.put("513:350", 42);
+
+        cornerKeyToIntersectionId.put("252:391", 43);    // Between rows 3 and 4
+        cornerKeyToIntersectionId.put("310:391", 44);
+        cornerKeyToIntersectionId.put("368:391", 45);
+        cornerKeyToIntersectionId.put("426:391", 46);
+        cornerKeyToIntersectionId.put("484:391", 47);
+
+        cornerKeyToIntersectionId.put("281:432", 48);    // Row 4 (bottom)
+        cornerKeyToIntersectionId.put("339:432", 49);
+        cornerKeyToIntersectionId.put("397:432", 50);
+        cornerKeyToIntersectionId.put("455:432", 51);
+
+        cornerKeyToIntersectionId.put("310:473", 52);    // Bottom
+        cornerKeyToIntersectionId.put("368:473", 53);
+
+        return cornerKeyToIntersectionId.get(cornerKey);
     }
 }
