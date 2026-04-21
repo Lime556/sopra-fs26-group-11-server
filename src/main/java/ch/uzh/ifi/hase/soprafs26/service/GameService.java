@@ -144,8 +144,7 @@ public class GameService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
 
-            game.setDiceValue(diceSum);
-            game.setDiceRolledAt(java.time.Instant.now());
+        List<String> chatMessages = new ArrayList<>(
             Optional.ofNullable(game.getChatMessages()).orElse(Collections.emptyList())
         );
         chatMessages.add(message);
