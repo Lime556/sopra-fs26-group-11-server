@@ -1,6 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
 import java.io.Serializable;
+import java.util.List;
 
 import jakarta.persistence.*;
 
@@ -47,6 +48,14 @@ public class Player implements Serializable {
     private Integer wheat;
 
     private Integer ore;
+
+    @Convert(converter = StringListJsonConverter.class)
+    @Column(columnDefinition = "CLOB")
+    private List<String> developmentCards;
+
+    private Integer knightsPlayed;
+
+    private Integer freeRoadBuildsRemaining;
 
     public Long getId() {
         return id;
@@ -174,6 +183,30 @@ public class Player implements Serializable {
 
     public void setOre(Integer ore) {
         this.ore = ore;
+    }
+
+    public List<String> getDevelopmentCards() {
+        return developmentCards;
+    }
+
+    public void setDevelopmentCards(List<String> developmentCards) {
+        this.developmentCards = developmentCards;
+    }
+
+    public Integer getKnightsPlayed() {
+        return knightsPlayed;
+    }
+
+    public void setKnightsPlayed(Integer knightsPlayed) {
+        this.knightsPlayed = knightsPlayed;
+    }
+
+    public Integer getFreeRoadBuildsRemaining() {
+        return freeRoadBuildsRemaining;
+    }
+
+    public void setFreeRoadBuildsRemaining(Integer freeRoadBuildsRemaining) {
+        this.freeRoadBuildsRemaining = freeRoadBuildsRemaining;
     }
 
     public int calculateVictoryPoints() {

@@ -1,6 +1,8 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
@@ -21,6 +23,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameChatMessageDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
@@ -135,6 +138,49 @@ public class GameController {
                 gameEventDTO.getReceiveResource(),
                 gameEventDTO.getAmount()
             );
+        } else if ("DEVELOPMENT_CARD_BOUGHT".equalsIgnoreCase(gameEventDTO.getType())
+                && gameEventDTO.getSourcePlayerId() != null) {
+            updatedGame = gameService.buyDevelopmentCard(
+                gameId,
+                token,
+                gameEventDTO.getSourcePlayerId()
+            );
+        } else if ("DEVELOPMENT_CARD_PLAYED_KNIGHT".equalsIgnoreCase(gameEventDTO.getType())
+                && gameEventDTO.getSourcePlayerId() != null) {
+                    updatedGame = gameService.playKnightCard(
+                        gameId,
+                        token,
+                        gameEventDTO.getSourcePlayerId(),
+                        gameEventDTO.getHexId(),
+                        gameEventDTO.getTargetPlayerId()
+                    );
+        } else if ("DEVELOPMENT_CARD_PLAYED_ROAD_BUILDING".equalsIgnoreCase(gameEventDTO.getType())
+                && gameEventDTO.getSourcePlayerId() != null) {
+                    updatedGame = gameService.playRoadBuildingCard(
+                        gameId,
+                        token,
+                        gameEventDTO.getSourcePlayerId()
+            );
+        } else if ("DEVELOPMENT_CARD_PLAYED_YEAR_OF_PLENTY".equalsIgnoreCase(gameEventDTO.getType())
+                && gameEventDTO.getSourcePlayerId() != null
+                && gameEventDTO.getGiveResource() != null
+                && gameEventDTO.getSecondResource() != null) {
+                    updatedGame = gameService.playYearOfPlentyCard(
+                        gameId,
+                        token,
+                        gameEventDTO.getSourcePlayerId(),
+                        gameEventDTO.getGiveResource(),
+                        gameEventDTO.getSecondResource()
+                    );
+        } else if ("DEVELOPMENT_CARD_PLAYED_MONOPOLY".equalsIgnoreCase(gameEventDTO.getType())
+                && gameEventDTO.getSourcePlayerId() != null
+                && gameEventDTO.getGiveResource() != null) {
+                    updatedGame = gameService.playMonopolyCard(
+                        gameId,
+                        token,
+                        gameEventDTO.getSourcePlayerId(),
+                        gameEventDTO.getGiveResource()
+                    );
         }
         messaging.convertAndSend(String.format("/topic/games/%d/events", gameId), gameEventDTO);
         if (updatedGame != null) {
@@ -241,6 +287,7 @@ public class GameController {
         dto.setTargetVictoryPoints(game.getTargetVictoryPoints());
         dto.setStartedAt(game.getStartedAt());
         dto.setFinishedAt(game.getFinishedAt());
+        dto.setDevelopmentDeck(convertDevelopmentDeckToDto(game));
         dto.setPlayers(convertPlayersToDto(game.getPlayers()));
         dto.setWinner(convertPlayerToDto(game.getWinner()));
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
@@ -275,6 +322,27 @@ public class GameController {
         dto.setWool(player.getWool());
         dto.setWheat(player.getWheat());
         dto.setOre(player.getOre());
+        dto.setDevelopmentCards(player.getDevelopmentCards());
+        dto.setKnightsPlayed(player.getKnightsPlayed());
+        dto.setFreeRoadBuildsRemaining(player.getFreeRoadBuildsRemaining());
+        return dto;
+    }
+
+    private DevelopmentDeckGetDTO convertDevelopmentDeckToDto(Game game) {
+        DevelopmentDeckGetDTO dto = new DevelopmentDeckGetDTO();
+        dto.setKnight(game.getDevelopmentKnightRemaining());
+        dto.setVictoryPoint(game.getDevelopmentVictoryPointRemaining());
+        dto.setRoadBuilding(game.getDevelopmentRoadBuildingRemaining());
+        dto.setYearOfPlenty(game.getDevelopmentYearOfPlentyRemaining());
+        dto.setMonopoly(game.getDevelopmentMonopolyRemaining());
+
+        int remaining = Optional.ofNullable(game.getDevelopmentKnightRemaining()).orElse(0)
+            + Optional.ofNullable(game.getDevelopmentVictoryPointRemaining()).orElse(0)
+            + Optional.ofNullable(game.getDevelopmentRoadBuildingRemaining()).orElse(0)
+            + Optional.ofNullable(game.getDevelopmentYearOfPlentyRemaining()).orElse(0)
+            + Optional.ofNullable(game.getDevelopmentMonopolyRemaining()).orElse(0);
+        dto.setRemaining(remaining);
+
         return dto;
     }
 
