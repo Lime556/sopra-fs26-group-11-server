@@ -22,12 +22,12 @@ import ch.uzh.ifi.hase.soprafs26.entity.Building;
 import ch.uzh.ifi.hase.soprafs26.entity.City;
 import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.Road;
 import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
-import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
@@ -489,6 +489,9 @@ public class GameService {
         }
 
         Player currentPlayer = getCurrentPlayer(game);
+        if (currentPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No current player found.");
+        }
         if (!currentPlayer.getId().equals(playerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not your turn.");
         }
@@ -503,6 +506,10 @@ public class GameService {
         }
 
         Intersection intersection = findIntersectionById(game, intersectionId);
+        if (intersection == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Intersection with id " + intersectionId + " was not found.");
+        }
 
         if (intersection.isOccupied()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Intersection occupied.");
@@ -534,9 +541,17 @@ public class GameService {
         }
 
         Player currentPlayer = getCurrentPlayer(game);
+        if (currentPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No current player found.");
+        }
         if (!currentPlayer.getId().equals(playerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not your turn.");
         }
+
+        boolean isSecondSetupRound = game.isSecondSetupRound();
+        Integer secondSetupSettlementIntersectionId = isSecondSetupRound
+            ? findUnconnectedSetupSettlementIntersection(game, playerId)
+            : null;
 
         int roads = countPlayerRoads(game, playerId);
 
@@ -551,6 +566,10 @@ public class GameService {
         }
 
         Edge edge = findEdgeById(game, edgeId);
+        if (edge == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Edge with id " + edgeId + " was not found.");
+        }
         if (edge.isOccupied()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Edge occupied.");
         }
@@ -567,6 +586,10 @@ public class GameService {
         road.setOwnerPlayerId(playerId);
         road.setEdgeId(edgeId);
         edge.setRoad(road);
+
+        if (isSecondSetupRound && secondSetupSettlementIntersectionId != null) {
+            grantInitialSettlementResources(game, currentPlayer, secondSetupSettlementIntersectionId);
+        }
 
         advanceSetupTurn(game);
         return gameRepository.save(game);
@@ -615,6 +638,67 @@ public class GameService {
             .filter(e -> e.getRoad() != null)
             .filter(e -> playerId.equals(e.getRoad().getOwnerPlayerId()))
             .count();
+    }
+
+    private Integer findUnconnectedSetupSettlementIntersection(Game game, Long playerId) {
+        if (game == null || playerId == null || game.getBoard() == null || game.getBoard().getIntersections() == null) {
+            return null;
+        }
+
+        for (Intersection intersection : game.getBoard().getIntersections()) {
+            if (intersection == null || !(intersection.getBuilding() instanceof Settlement)) {
+                continue;
+            }
+
+            Settlement settlement = (Settlement) intersection.getBuilding();
+            if (!playerId.equals(settlement.getOwnerPlayerId())) {
+                continue;
+            }
+
+            if (!hasOwnRoadAtIntersection(game, intersection.getId(), playerId)) {
+                return intersection.getId();
+            }
+        }
+
+        return null;
+    }
+
+    private void grantInitialSettlementResources(Game game, Player player, Integer intersectionId) {
+        if (game == null || player == null || game.getBoard() == null || game.getBoard().getHexTiles() == null) {
+            return;
+        }
+
+        List<Integer> adjacentHexIds = game.getBoard().getAdjacentHexIdsForIntersection(intersectionId);
+        for (Integer hexId : adjacentHexIds) {
+            String tileType = getHexTileType(game, hexId);
+            if (tileType == null || "DESERT".equalsIgnoreCase(tileType)) {
+                continue;
+            }
+
+            switch (tileType.toUpperCase()) {
+                case "WOOD" -> player.setWood(resourceValue(player.getWood()) + 1);
+                case "BRICK" -> player.setBrick(resourceValue(player.getBrick()) + 1);
+                case "SHEEP" -> player.setWool(resourceValue(player.getWool()) + 1);
+                case "WHEAT" -> player.setWheat(resourceValue(player.getWheat()) + 1);
+                case "ORE" -> player.setOre(resourceValue(player.getOre()) + 1);
+                default -> {
+                    // Ignore unknown tile labels.
+                }
+            }
+        }
+    }
+
+    private String getHexTileType(Game game, Integer hexId) {
+        if (game == null || game.getBoard() == null || game.getBoard().getHexTiles() == null || hexId == null) {
+            return null;
+        }
+
+        int index = hexId - 1;
+        if (index < 0 || index >= game.getBoard().getHexTiles().size()) {
+            return null;
+        }
+
+        return game.getBoard().getHexTiles().get(index);
     }
 
     public Player getCurrentPlayer(Game game) {
