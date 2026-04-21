@@ -144,7 +144,8 @@ public class GameService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
 
-        List<String> chatMessages = new ArrayList<>(
+            game.setDiceValue(diceSum);
+            game.setDiceRolledAt(java.time.Instant.now());
             Optional.ofNullable(game.getChatMessages()).orElse(Collections.emptyList())
         );
         chatMessages.add(message);
@@ -445,7 +446,8 @@ public class GameService {
         int die2 = 1 + (int) (Math.random() * 6);
         int diceSum = die1 + die2;
 
-        game.setDiceValue(diceSum);
+            game.setDiceValue(diceSum);
+            game.setDiceRolledAt(java.time.Instant.now());
         if (diceSum == 7) {
             applySevenRollEffects(game);
         } else {

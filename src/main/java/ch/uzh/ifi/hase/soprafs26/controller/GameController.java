@@ -1,3 +1,13 @@
+    @GetMapping("/games/{gameId}/dice")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public ch.uzh.ifi.hase.soprafs26.rest.dto.DiceRollDTO getDiceRoll(@PathVariable Long gameId) {
+        Game game = gameService.getGameById(gameId, null);
+        ch.uzh.ifi.hase.soprafs26.rest.dto.DiceRollDTO dto = new ch.uzh.ifi.hase.soprafs26.rest.dto.DiceRollDTO();
+        dto.setDiceValue(game.getDiceValue());
+        dto.setDiceRolledAt(game.getDiceRolledAt());
+        return dto;
+    }
 package ch.uzh.ifi.hase.soprafs26.controller;
 
 import java.util.*;
