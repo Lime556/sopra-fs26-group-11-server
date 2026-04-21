@@ -11,6 +11,8 @@ public class GameEventDTO {
     private Integer hexId;
     private Integer edge;
     private Integer intersectionId;
+    private String developmentCard;
+    private String secondResource;
     private String message;
 
     public String getType() {
@@ -83,6 +85,22 @@ public class GameEventDTO {
 
     public void setIntersectionId(Integer intersectionId) {
         this.intersectionId = intersectionId;
+    }
+
+    public String getDevelopmentCard() {
+        return developmentCard;
+    }
+
+    public void setDevelopmentCard(String developmentCard) {
+        this.developmentCard = developmentCard;
+    }
+
+    public String getSecondResource() {
+        return secondResource;
+    }
+
+    public void setSecondResource(String secondResource) {
+        this.secondResource = secondResource;
     }
 
     public String getMessage() {

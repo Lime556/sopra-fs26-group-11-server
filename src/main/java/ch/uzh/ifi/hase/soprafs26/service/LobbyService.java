@@ -122,6 +122,11 @@ public class LobbyService {
         game.setDiceValue(null);
         int desertIndex = board.getHexTiles() != null ? board.getHexTiles().indexOf("DESERT") : -1;
         game.setRobberTileIndex(desertIndex >= 0 ? desertIndex + 1 : null);
+        game.setDevelopmentKnightRemaining(14);
+        game.setDevelopmentVictoryPointRemaining(5);
+        game.setDevelopmentRoadBuildingRemaining(2);
+        game.setDevelopmentYearOfPlentyRemaining(2);
+        game.setDevelopmentMonopolyRemaining(2);
         game.setTargetVictoryPoints(10);
         game.setStartedAt(java.time.LocalDateTime.now());
         game.setFinishedAt(null);

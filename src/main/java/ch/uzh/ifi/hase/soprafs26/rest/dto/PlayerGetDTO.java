@@ -1,5 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.rest.dto;
 
+import java.util.List;
+
 public class PlayerGetDTO {
     private Long id;
     private String name;
@@ -14,6 +16,9 @@ public class PlayerGetDTO {
     private Integer wool;
     private Integer wheat;
     private Integer ore;
+    private List<String> developmentCards;
+    private Integer knightsPlayed;
+    private Integer freeRoadBuildsRemaining;
 
     public Long getId() {
         return id;
@@ -117,5 +122,29 @@ public class PlayerGetDTO {
 
     public void setOre(Integer ore) {
         this.ore = ore;
+    }
+
+    public List<String> getDevelopmentCards() {
+        return developmentCards;
+    }
+
+    public void setDevelopmentCards(List<String> developmentCards) {
+        this.developmentCards = developmentCards;
+    }
+
+    public Integer getKnightsPlayed() {
+        return knightsPlayed;
+    }
+
+    public void setKnightsPlayed(Integer knightsPlayed) {
+        this.knightsPlayed = knightsPlayed;
+    }
+
+    public Integer getFreeRoadBuildsRemaining() {
+        return freeRoadBuildsRemaining;
+    }
+
+    public void setFreeRoadBuildsRemaining(Integer freeRoadBuildsRemaining) {
+        this.freeRoadBuildsRemaining = freeRoadBuildsRemaining;
     }
 }
