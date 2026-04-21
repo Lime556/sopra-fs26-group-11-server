@@ -421,7 +421,7 @@ public class GameService {
     }
 
     public Game rollDice(Long gameId, String playerToken) {
-        authenticate(playerToken);
+        User authenticatedUser = authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -431,6 +431,8 @@ public class GameService {
         if (currentPlayer == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No current player found.");
         }
+
+        ensureCurrentPlayerCanRollDice(currentPlayer, authenticatedUser);
 
         String currentPhase = game.getTurnPhase();
         if (!TurnPhase.ROLL_DICE.toString().equals(currentPhase)) {
@@ -813,6 +815,46 @@ public class GameService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authorization token.");
         }
         return user;
+    }
+
+    private void ensureCurrentPlayerCanRollDice(Player currentPlayer, User authenticatedUser) {
+        if (currentPlayer == null || authenticatedUser == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the active player can roll dice.");
+        }
+
+        if (isSameUserById(currentPlayer, authenticatedUser) || isSameUserByName(currentPlayer, authenticatedUser)) {
+            return;
+        }
+
+        if (!hasResolvableCurrentPlayerIdentity(currentPlayer)) {
+            return;
+        }
+
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the active player can roll dice.");
+    }
+
+    private boolean isSameUserById(Player currentPlayer, User authenticatedUser) {
+        if (currentPlayer.getUser() == null || currentPlayer.getUser().getId() == null || authenticatedUser.getId() == null) {
+            return false;
+        }
+
+        return currentPlayer.getUser().getId().equals(authenticatedUser.getId());
+    }
+
+    private boolean isSameUserByName(Player currentPlayer, User authenticatedUser) {
+        if (currentPlayer.getName() == null || authenticatedUser.getUsername() == null) {
+            return false;
+        }
+
+        return currentPlayer.getName().equals(authenticatedUser.getUsername());
+    }
+
+    private boolean hasResolvableCurrentPlayerIdentity(Player currentPlayer) {
+        if (currentPlayer.getUser() != null && currentPlayer.getUser().getId() != null) {
+            return true;
+        }
+
+        return currentPlayer.getName() != null;
     }
 
     private int safeInt(Integer value, int fallback) {

@@ -56,6 +56,7 @@ public class TurnSystemTest {
         testUser = new User();
         testUser.setId(1L);
         testUser.setToken("valid-token");
+        testUser.setUsername("Player1");
         testUser.setEmail("user@email.com");
 
         // Set up test game with 3 players
@@ -128,6 +129,17 @@ public class TurnSystemTest {
         int diceValue = updatedGame.getDiceValue();
         assertTrue(diceValue >= 2 && diceValue <= 12,
                 "Dice value should be between 2 and 12, got: " + diceValue);
+    }
+
+    @Test
+    public void rollDice_notActivePlayer_throwsForbidden() {
+        testUser.setUsername("Player2");
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> gameService.rollDice(100L, "valid-token"));
+
+        assertEquals(403, exception.getStatusCode().value());
+        assertTrue(exception.getReason().contains("active player"));
     }
 
     @Test
