@@ -1,7 +1,11 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Board;
+import ch.uzh.ifi.hase.soprafs26.entity.City;
+import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
+import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
@@ -9,6 +13,7 @@ import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -132,6 +137,111 @@ public class TurnSystemTest {
     }
 
     @Test
+    public void distributeResourcesForDiceValue_settlement_grantsResources() {
+        Board board = createUniformWoodBoardWithDice(8);
+        Intersection intersection = board.getIntersections().get(0);
+
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(1L);
+        settlement.setIntersectionId(intersection.getId());
+        intersection.setBuilding(settlement);
+
+        testGame.setBoard(board);
+
+        int beforeWood = player1.getWood();
+        gameService.distributeResourcesForDiceValue(testGame, 8);
+
+        assertTrue(player1.getWood() > beforeWood);
+        assertEquals(10, player2.getWood());
+        assertEquals(10, player3.getWood());
+    }
+
+    @Test
+    public void distributeResourcesForDiceValue_city_grantsDoubleSettlementResources() {
+        Board settlementBoard = createUniformWoodBoardWithDice(9);
+        Board cityBoard = createUniformWoodBoardWithDice(9);
+
+        Player settlementOwner = new Player();
+        settlementOwner.setId(1L);
+        settlementOwner.setName("SettlementOwner");
+        settlementOwner.setWood(0);
+        settlementOwner.setBrick(0);
+        settlementOwner.setWool(0);
+        settlementOwner.setWheat(0);
+        settlementOwner.setOre(0);
+
+        Player cityOwner = new Player();
+        cityOwner.setId(1L);
+        cityOwner.setName("CityOwner");
+        cityOwner.setWood(0);
+        cityOwner.setBrick(0);
+        cityOwner.setWool(0);
+        cityOwner.setWheat(0);
+        cityOwner.setOre(0);
+
+        Game settlementGame = new Game();
+        settlementGame.setBoard(settlementBoard);
+        settlementGame.setPlayers(List.of(settlementOwner));
+
+        Game cityGame = new Game();
+        cityGame.setBoard(cityBoard);
+        cityGame.setPlayers(List.of(cityOwner));
+
+        Intersection settlementIntersection = settlementBoard.getIntersections().get(0);
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(1L);
+        settlement.setIntersectionId(settlementIntersection.getId());
+        settlementIntersection.setBuilding(settlement);
+
+        Intersection cityIntersection = cityBoard.getIntersections().get(0);
+        City city = new City();
+        city.setOwnerPlayerId(1L);
+        city.setIntersectionId(cityIntersection.getId());
+        cityIntersection.setBuilding(city);
+
+        gameService.distributeResourcesForDiceValue(settlementGame, 9);
+        gameService.distributeResourcesForDiceValue(cityGame, 9);
+
+        int settlementGain = settlementOwner.getWood();
+        int cityGain = cityOwner.getWood();
+
+        assertTrue(settlementGain > 0);
+        assertEquals(settlementGain * 2, cityGain);
+    }
+
+    @Test
+    public void applySevenRollEffects_playerWithMoreThanSeven_discardsHalf() {
+        player1.setWood(3);
+        player1.setBrick(2);
+        player1.setWool(2);
+        player1.setWheat(1);
+        player1.setOre(0);
+
+        int beforeTotal = player1.getWood() + player1.getBrick() + player1.getWool() + player1.getWheat() + player1.getOre();
+        gameService.applySevenRollEffects(testGame);
+        int afterTotal = player1.getWood() + player1.getBrick() + player1.getWool() + player1.getWheat() + player1.getOre();
+
+        assertEquals(8, beforeTotal);
+        assertEquals(4, afterTotal);
+    }
+
+    @Test
+    public void applySevenRollEffects_playerWithSevenOrLess_keepsResources() {
+        player2.setWood(2);
+        player2.setBrick(2);
+        player2.setWool(1);
+        player2.setWheat(1);
+        player2.setOre(1);
+
+        int beforeTotal = player2.getWood() + player2.getBrick() + player2.getWool() + player2.getWheat() + player2.getOre();
+        gameService.applySevenRollEffects(testGame);
+        int afterTotal = player2.getWood() + player2.getBrick() + player2.getWool() + player2.getWheat() + player2.getOre();
+
+        assertEquals(7, beforeTotal);
+        assertEquals(7, afterTotal);
+    }
+
+    @Test
     public void rollDice_notActivePlayer_throwsForbidden() {
         testUser.setUsername("Player2");
 
@@ -235,5 +345,13 @@ public class TurnSystemTest {
         Game afterEndTurn = gameService.endTurn(100L, "valid-token");
         assertEquals(1, afterEndTurn.getCurrentTurnIndex());
         assertEquals(TurnPhase.ROLL_DICE.toString(), afterEndTurn.getTurnPhase());
+    }
+
+    private Board createUniformWoodBoardWithDice(int diceValue) {
+        Board board = new Board();
+        board.generateBoard();
+        board.setHexTiles(Collections.nCopies(19, "WOOD"));
+        board.setHexTile_DiceNumbers(Collections.nCopies(19, diceValue));
+        return board;
     }
 }

@@ -3,9 +3,12 @@ package ch.uzh.ifi.hase.soprafs26.entity;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class Board implements Serializable {
 
@@ -244,6 +247,34 @@ public class Board implements Serializable {
 
     private String formatPoint(double x, double y) {
         return Math.round(x) + ":" + Math.round(y);
+    }
+
+    public Map<Integer, List<Integer>> buildIntersectionToHexIdsMap() {
+        Map<String, Integer> cornerKeyToIntersectionId = new LinkedHashMap<>();
+        Map<Integer, Set<Integer>> adjacentHexIdsByIntersectionId = new LinkedHashMap<>();
+        int nextIntersectionId = 0;
+
+        for (int hexId = 1; hexId <= 19; hexId++) {
+            double[] center = toPixel(hexId);
+            for (int cornerIndex = 0; cornerIndex < 6; cornerIndex++) {
+                double[] cornerPoint = getCornerPoint(center[0], center[1], cornerIndex);
+                String cornerKey = formatPoint(cornerPoint[0], cornerPoint[1]);
+
+                Integer intersectionId = cornerKeyToIntersectionId.get(cornerKey);
+                if (intersectionId == null) {
+                    intersectionId = nextIntersectionId;
+                    cornerKeyToIntersectionId.put(cornerKey, intersectionId);
+                    nextIntersectionId++;
+                }
+
+                adjacentHexIdsByIntersectionId
+                    .computeIfAbsent(intersectionId, key -> new HashSet<>())
+                    .add(hexId);
+            }
+        }
+
+        return adjacentHexIdsByIntersectionId.entrySet().stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, entry -> new ArrayList<>(entry.getValue())));
     }
 
     public List<String> generateBoard() {
