@@ -493,6 +493,11 @@ public class LobbyServiceTest {
         assertTrue(game.getPlayers().stream().allMatch(player -> player.getGameId().equals(game.getId())));
         assertTrue(game.getPlayers().stream().anyMatch(player -> "hostUser".equals(player.getName())));
         assertTrue(game.getPlayers().stream().anyMatch(player -> "guestUser".equals(player.getName())));
+        assertEquals(14, game.getDevelopmentKnightRemaining());
+        assertEquals(5, game.getDevelopmentVictoryPointRemaining());
+        assertEquals(2, game.getDevelopmentRoadBuildingRemaining());
+        assertEquals(2, game.getDevelopmentYearOfPlentyRemaining());
+        assertEquals(2, game.getDevelopmentMonopolyRemaining());
         assertEquals(game.getId(), lobby.getGameId());
     }
 }

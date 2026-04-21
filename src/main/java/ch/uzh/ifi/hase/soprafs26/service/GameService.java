@@ -1041,7 +1041,7 @@ public class GameService {
     }
 
     private void initializeDevelopmentDeck(Game game, ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO deckDto) {
-        if (deckDto == null) {
+        if (deckDto == null || isBlankDevelopmentDeck(deckDto)) {
             game.setDevelopmentKnightRemaining(14);
             game.setDevelopmentVictoryPointRemaining(5);
             game.setDevelopmentRoadBuildingRemaining(2);
@@ -1055,6 +1055,14 @@ public class GameService {
         game.setDevelopmentRoadBuildingRemaining(Math.max(0, safeInt(deckDto.getRoadBuilding(), 2)));
         game.setDevelopmentYearOfPlentyRemaining(Math.max(0, safeInt(deckDto.getYearOfPlenty(), 2)));
         game.setDevelopmentMonopolyRemaining(Math.max(0, safeInt(deckDto.getMonopoly(), 2)));
+    }
+
+    private boolean isBlankDevelopmentDeck(ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO deckDto) {
+        return safeInt(deckDto.getKnight(), 0) <= 0
+            && safeInt(deckDto.getVictoryPoint(), 0) <= 0
+            && safeInt(deckDto.getRoadBuilding(), 0) <= 0
+            && safeInt(deckDto.getYearOfPlenty(), 0) <= 0
+            && safeInt(deckDto.getMonopoly(), 0) <= 0;
     }
 
     private String drawDevelopmentCard(Game game) {

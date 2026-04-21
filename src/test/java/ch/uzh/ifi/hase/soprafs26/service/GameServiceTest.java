@@ -26,6 +26,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 
@@ -61,6 +62,20 @@ public class GameServiceTest {
 
         assertNotNull(createdGame.getBoard());
         assertEquals(19, createdGame.getBoard().getHexTiles().size());
+    }
+
+    @Test
+    public void createGame_withBlankDevelopmentDeck_usesDefaultDeck() {
+        GamePostDTO gamePostDTO = new GamePostDTO();
+        gamePostDTO.setDevelopmentDeck(new DevelopmentDeckGetDTO());
+
+        Game createdGame = gameService.createGame("valid-token", gamePostDTO);
+
+        assertEquals(14, createdGame.getDevelopmentKnightRemaining());
+        assertEquals(5, createdGame.getDevelopmentVictoryPointRemaining());
+        assertEquals(2, createdGame.getDevelopmentRoadBuildingRemaining());
+        assertEquals(2, createdGame.getDevelopmentYearOfPlentyRemaining());
+        assertEquals(2, createdGame.getDevelopmentMonopolyRemaining());
     }
 
     @Test
@@ -866,6 +881,154 @@ public class GameServiceTest {
             // Adjacency check blocked the steal - that's fine for this test
             assertEquals(409, e.getStatusCode().value());
         }
+    }
+
+    @Test
+    public void buyDevelopmentCard_drawsRoadBuildingCard_addsCardAndSpendsResources() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 200L;
+        game.setId(gameId);
+
+        Player player = game.getPlayers().get(0);
+        player.setDevelopmentCards(new ArrayList<>());
+        player.setDevelopmentCardVictoryPoints(0);
+
+        game.setDevelopmentKnightRemaining(0);
+        game.setDevelopmentVictoryPointRemaining(0);
+        game.setDevelopmentRoadBuildingRemaining(1);
+        game.setDevelopmentYearOfPlentyRemaining(0);
+        game.setDevelopmentMonopolyRemaining(0);
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+
+        Game result = gameService.buyDevelopmentCard(gameId, "valid-token", player.getId());
+
+        assertEquals(List.of("road_building"), result.getPlayers().get(0).getDevelopmentCards());
+        assertEquals(5, result.getPlayers().get(0).getWood());
+        assertEquals(4, result.getPlayers().get(0).getWheat());
+        assertEquals(4, result.getPlayers().get(0).getOre());
+        assertEquals(0, result.getPlayers().get(0).getDevelopmentCardVictoryPoints());
+    }
+
+    @Test
+    public void buyDevelopmentCard_drawsVictoryPointCard_increasesVictoryCardPoints() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 201L;
+        game.setId(gameId);
+
+        Player player = game.getPlayers().get(0);
+        player.setDevelopmentCards(new ArrayList<>());
+
+        game.setDevelopmentKnightRemaining(0);
+        game.setDevelopmentVictoryPointRemaining(1);
+        game.setDevelopmentRoadBuildingRemaining(0);
+        game.setDevelopmentYearOfPlentyRemaining(0);
+        game.setDevelopmentMonopolyRemaining(0);
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+
+        Game result = gameService.buyDevelopmentCard(gameId, "valid-token", player.getId());
+
+        assertEquals(List.of("victory_point"), result.getPlayers().get(0).getDevelopmentCards());
+        assertEquals(1, result.getPlayers().get(0).getDevelopmentCardVictoryPoints());
+        assertEquals(1, result.getPlayers().get(0).getVictoryPoints());
+        assertEquals(0, result.getDevelopmentVictoryPointRemaining());
+    }
+
+    @Test
+    public void playRoadBuildingCard_grantsTwoFreeRoadsAndRemovesCard() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 202L;
+        game.setId(gameId);
+
+        Player player = game.getPlayers().get(0);
+        player.setDevelopmentCards(List.of("road_building"));
+        player.setFreeRoadBuildsRemaining(1);
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+
+        Game result = gameService.playRoadBuildingCard(gameId, "valid-token", player.getId());
+
+        assertEquals(List.of(), result.getPlayers().get(0).getDevelopmentCards());
+        assertEquals(3, result.getPlayers().get(0).getFreeRoadBuildsRemaining());
+    }
+
+    @Test
+    public void playYearOfPlentyCard_grantsChosenResourcesAndRemovesCard() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 203L;
+        game.setId(gameId);
+
+        Player player = game.getPlayers().get(0);
+        player.setDevelopmentCards(List.of("year_of_plenty"));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+
+        Game result = gameService.playYearOfPlentyCard(gameId, "valid-token", player.getId(), "wood", "ore");
+
+        assertEquals(List.of(), result.getPlayers().get(0).getDevelopmentCards());
+        assertEquals(6, result.getPlayers().get(0).getWood());
+        assertEquals(6, result.getPlayers().get(0).getOre());
+        assertEquals(5, result.getPlayers().get(0).getWheat());
+    }
+
+    @Test
+    public void playYearOfPlentyCard_missingResource_throwsBadRequest() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 204L;
+        game.setId(gameId);
+
+        Player player = game.getPlayers().get(0);
+        player.setDevelopmentCards(List.of("year_of_plenty"));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.playYearOfPlentyCard(gameId, "valid-token", player.getId(), "wood", null));
+
+        assertEquals(400, exception.getStatusCode().value());
+    }
+
+    @Test
+    public void playMonopolyCard_collectsResourceFromOtherPlayersAndRemovesCard() {
+        Game game = createGameWithPlayers("valid-token", 3);
+        Long gameId = 205L;
+        game.setId(gameId);
+
+        Player source = game.getPlayers().get(0);
+        Player targetA = game.getPlayers().get(1);
+        Player targetB = game.getPlayers().get(2);
+
+        source.setDevelopmentCards(List.of("monopoly"));
+        source.setWheat(1);
+        targetA.setWheat(3);
+        targetB.setWheat(2);
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+
+        Game result = gameService.playMonopolyCard(gameId, "valid-token", source.getId(), "wheat");
+
+        assertEquals(List.of(), result.getPlayers().get(0).getDevelopmentCards());
+        assertEquals(0, result.getPlayers().get(1).getWheat());
+        assertEquals(0, result.getPlayers().get(2).getWheat());
+        assertEquals(6, result.getPlayers().get(0).getWheat());
+    }
+
+    @Test
+    public void playMonopolyCard_missingResource_throwsBadRequest() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 206L;
+        game.setId(gameId);
+
+        Player source = game.getPlayers().get(0);
+        source.setDevelopmentCards(List.of("monopoly"));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.playMonopolyCard(gameId, "valid-token", source.getId(), null));
+
+        assertEquals(400, exception.getStatusCode().value());
     }
 
     // ============ Helper Methods ============
