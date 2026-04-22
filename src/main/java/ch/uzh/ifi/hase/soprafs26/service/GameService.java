@@ -702,6 +702,7 @@ public class GameService {
         currentPlayer.setSettlementPoints(
             safeInt(currentPlayer.getSettlementPoints(), 0) + 1
         );
+        currentPlayer.setLastPlacedSetupSettlementIntersectionId(intersectionId);
         return gameRepository.save(game);
     }
 
@@ -723,7 +724,13 @@ public class GameService {
         if (!currentPlayer.getId().equals(playerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not your turn.");
         }
-
+        
+        Integer settlementId = currentPlayer.getLastPlacedSetupSettlementIntersectionId();
+        if (settlementId == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "You must place a settlement before placing a road.");
+        }
+        
         boolean isSecondSetupRound = game.isSecondSetupRound();
         Integer secondSetupSettlementIntersectionId = isSecondSetupRound
             ? findUnconnectedSetupSettlementIntersection(game, playerId)
@@ -755,7 +762,15 @@ public class GameService {
             hasOwnBuildingAtIntersection(game, edge.getIntersectionBId(), playerId);
         if (!connectedToOwnSettlement) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "Road must connect to your settlement.");
+                "Road must connect to your own settlement.");
+        }
+
+        boolean connectedToNewSettlement =
+            edge.getIntersectionAId().equals(settlementId) ||
+            edge.getIntersectionBId().equals(settlementId);
+        if (!connectedToNewSettlement) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Road must connect to your newly placed settlement.");
         }
 
         Road road = new Road();
@@ -767,6 +782,7 @@ public class GameService {
             grantInitialSettlementResources(game, currentPlayer, secondSetupSettlementIntersectionId);
         }
 
+        currentPlayer.setLastPlacedSetupSettlementIntersectionId(null);
         advanceSetupTurn(game);
         return gameRepository.save(game);
     }
