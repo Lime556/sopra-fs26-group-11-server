@@ -773,6 +773,7 @@ public class GameServiceTest {
 
         Player player = new Player();
         player.setId(10L);
+        player.setLastPlacedSetupSettlementIntersectionId(0);
 
         Board board = new Board();
         board.generateBoard();
@@ -809,6 +810,7 @@ public class GameServiceTest {
 
         Player player = new Player();
         player.setId(10L);
+        player.setLastPlacedSetupSettlementIntersectionId(0);
 
         Board board = new Board();
         board.generateBoard();
@@ -826,7 +828,52 @@ public class GameServiceTest {
             () -> gameService.placeInitialRoad(311L, "valid-token", 10L, roadEdge.getId())
         );
 
-        assertEquals("Road must connect to your settlement.", exception.getReason());
+        assertEquals("Road must connect to your own settlement.", exception.getReason());
+    }
+
+    @Test
+    public void placeInitialRoad_notConnectedToNewSettlement_throwsBadRequest() {
+        Game game = new Game();
+        game.setId(311L);
+        game.setGamePhase("SETUP");
+
+        Player player = new Player();
+        player.setId(10L);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+        game.setCurrentTurnIndex(0);
+
+        Mockito.when(gameRepository.findById(311L)).thenReturn(Optional.of(game));
+
+        Intersection oldSettlementIntersection = findIntersection(board, 2);
+        Settlement oldSettlement = new Settlement();
+        oldSettlement.setOwnerPlayerId(10L);
+        oldSettlement.setIntersectionId(2);
+        oldSettlementIntersection.setBuilding(oldSettlement);
+
+        Intersection newSettlementIntersection = findIntersection(board, 0);
+        Settlement newSettlement = new Settlement();
+        newSettlement.setOwnerPlayerId(10L);
+        newSettlement.setIntersectionId(0);
+        newSettlementIntersection.setBuilding(newSettlement);
+
+        player.setLastPlacedSetupSettlementIntersectionId(0);
+
+        Edge roadEdge = findEdge(board, 2, 3);
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.placeInitialRoad(311L, "valid-token", 10L, roadEdge.getId())
+        );
+
+        assertEquals(
+            "Road must connect to your newly placed settlement.",
+            exception.getReason()
+        );
     }
 
     @Test
@@ -837,9 +884,11 @@ public class GameServiceTest {
 
         Player player1 = new Player();
         player1.setId(10L);
+        player1.setLastPlacedSetupSettlementIntersectionId(0);
 
         Player player2 = new Player();
         player2.setId(11L);
+        player2.setLastPlacedSetupSettlementIntersectionId(0);
 
         Board board = new Board();
         board.generateBoard();
@@ -883,6 +932,7 @@ public class GameServiceTest {
         player.setWool(0);
         player.setWheat(0);
         player.setOre(0);
+        player.setLastPlacedSetupSettlementIntersectionId(0);
 
         Board board = new Board();
         board.generateBoard();
@@ -907,6 +957,7 @@ public class GameServiceTest {
         secondSettlement.setOwnerPlayerId(10L);
         secondSettlement.setIntersectionId(secondIntersectionId);
         secondSettlementIntersection.setBuilding(secondSettlement);
+        player.setLastPlacedSetupSettlementIntersectionId(secondIntersectionId);
 
         Edge secondRoadEdge = board.getEdges().stream()
             .filter(edge -> edge != null)
@@ -963,8 +1014,10 @@ public class GameServiceTest {
 
         Player playerA = new Player();
         playerA.setId(10L);
+        
         Player playerB = new Player();
         playerB.setId(11L);
+        playerB.setLastPlacedSetupSettlementIntersectionId(0);
 
         Board board = new Board();
         board.generateBoard();
@@ -1001,6 +1054,7 @@ public class GameServiceTest {
         secondSettlement.setOwnerPlayerId(11L);
         secondSettlement.setIntersectionId(secondIntersectionId);
         findIntersection(board, secondIntersectionId).setBuilding(secondSettlement);
+        playerB.setLastPlacedSetupSettlementIntersectionId(secondIntersectionId);
 
         Edge secondRoundRoad = board.getEdges().stream()
             .filter(edge -> edge != null)
