@@ -33,6 +33,9 @@ public class Game{
     @Column
     private String turnPhase;
 
+    @Column
+    private String gamePhase;
+
     @Transient
     private Player currentPlayer;
 
@@ -136,6 +139,18 @@ public class Game{
 
     public void setTurnPhase(TurnPhase turnPhase) {
         this.turnPhase = turnPhase != null ? turnPhase.toString() : TurnPhase.ROLL_DICE.toString();
+    }
+
+    public String getGamePhase() {
+        return gamePhase != null ? gamePhase : "SETUP";
+    }
+
+    public void setGamePhase(String gamePhase) {
+        this.gamePhase = gamePhase;
+    }
+
+    public void setGamePhase(GamePhase gamePhase) {
+        this.gamePhase = gamePhase != null ? gamePhase.toString() : "SETUP";
     }
 
     public Player getCurrentPlayer() {
@@ -273,6 +288,20 @@ public class Game{
     public void setWinnerPlayerId(Long winnerPlayerId) {
         this.winnerPlayerId = winnerPlayerId;
     }
+
+    public boolean isSetupPhase() {
+        return "SETUP".equals(gamePhase)
+            || "SETUP_SECOND_ROUND".equals(gamePhase);
+    }
+
+    public boolean isFirstSetupRound() {
+        return "SETUP".equals(gamePhase);
+    }
+
+    public boolean isSecondSetupRound() {
+        return "SETUP_SECOND_ROUND".equals(gamePhase);
+    }
+
 
     public Player getWinner() {
         if (winner == null && winnerPlayerId != null && players != null) {

@@ -24,6 +24,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Building;
 import ch.uzh.ifi.hase.soprafs26.entity.City;
 import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.Road;
@@ -67,6 +68,7 @@ public class GameService {
         game.setTurnPhase(gamePostDTO == null || gamePostDTO.getTurnPhase() == null 
             ? TurnPhase.ROLL_DICE.toString() 
             : gamePostDTO.getTurnPhase());
+        game.setGamePhase(GamePhase.SETUP.toString());
         game.setDiceValue(gamePostDTO == null ? null : gamePostDTO.getDiceValue());
         game.setRobberTileIndex(resolveRobberTileIndex(board, gamePostDTO));
         initializeDevelopmentDeck(game, gamePostDTO == null ? null : gamePostDTO.getDevelopmentDeck());
@@ -649,6 +651,230 @@ public class GameService {
 
         recalculateVictoryState(game);
         return gameRepository.save(game);
+    }
+
+    public Game placeInitialSettlement(Long gameId, String token, Long playerId, Integer intersectionId) {
+        authenticate(token);
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+        
+        if (!game.isSetupPhase()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not in setup phase.");
+        }
+
+        Player currentPlayer = getCurrentPlayer(game);
+        if (currentPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No current player found.");
+        }
+        if (!currentPlayer.getId().equals(playerId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not your turn.");
+        }
+
+        int settlements = countPlayerSettlements(game, playerId);
+
+        if (game.isFirstSetupRound() && settlements >= 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Already placed first settlement.");
+        }
+        if (game.isSecondSetupRound() && settlements >= 2) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Already placed second settlement.");
+        }
+
+        Intersection intersection = findIntersectionById(game, intersectionId);
+        if (intersection == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Intersection with id " + intersectionId + " was not found.");
+        }
+
+        if (intersection.isOccupied()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Intersection occupied.");
+        }
+        if (hasAdjacentBuilding(game, intersectionId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Too close to another building.");
+        }
+
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(playerId);
+        settlement.setIntersectionId(intersectionId);
+        intersection.setBuilding(settlement);
+
+        currentPlayer.setSettlementPoints(
+            safeInt(currentPlayer.getSettlementPoints(), 0) + 1
+        );
+        return gameRepository.save(game);
+    }
+
+    public Game placeInitialRoad(Long gameId, String token, Long playerId, Integer edgeId) {
+        authenticate(token);
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        if (!game.isSetupPhase()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not in setup phase.");
+        }
+
+        Player currentPlayer = getCurrentPlayer(game);
+        if (currentPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No current player found.");
+        }
+        if (!currentPlayer.getId().equals(playerId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not your turn.");
+        }
+
+        boolean isSecondSetupRound = game.isSecondSetupRound();
+        Integer secondSetupSettlementIntersectionId = isSecondSetupRound
+            ? findUnconnectedSetupSettlementIntersection(game, playerId)
+            : null;
+
+        int roads = countPlayerRoads(game, playerId);
+
+        if (game.isFirstSetupRound() && roads >= 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Already placed road in first setup round.");
+        }
+
+        if (game.isSecondSetupRound() && roads >= 2) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Already placed road in second setup round.");
+        }
+
+        Edge edge = findEdgeById(game, edgeId);
+        if (edge == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Edge with id " + edgeId + " was not found.");
+        }
+        if (edge.isOccupied()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Edge occupied.");
+        }
+
+        boolean connectedToOwnSettlement =
+            hasOwnBuildingAtIntersection(game, edge.getIntersectionAId(), playerId) ||
+            hasOwnBuildingAtIntersection(game, edge.getIntersectionBId(), playerId);
+        if (!connectedToOwnSettlement) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Road must connect to your settlement.");
+        }
+
+        Road road = new Road();
+        road.setOwnerPlayerId(playerId);
+        road.setEdgeId(edgeId);
+        edge.setRoad(road);
+
+        if (isSecondSetupRound && secondSetupSettlementIntersectionId != null) {
+            grantInitialSettlementResources(game, currentPlayer, secondSetupSettlementIntersectionId);
+        }
+
+        advanceSetupTurn(game);
+        return gameRepository.save(game);
+    }
+
+    private void advanceSetupTurn(Game game) {
+        List<Player> players = game.getPlayers();
+        int current = game.getCurrentTurnIndex();
+
+        if (game.isFirstSetupRound()) {
+            int next = current + 1;
+            if (next >= players.size()) {
+                game.setGamePhase("SETUP_SECOND_ROUND");
+                game.setCurrentTurnIndex(players.size() - 1);
+            } else {
+                game.setCurrentTurnIndex(next);
+            }
+        }
+        else if (game.isSecondSetupRound()) {
+            int next = current - 1;
+            if (next < 0) {
+                game.setGamePhase("ACTIVE");
+                game.setCurrentTurnIndex(0);
+                game.setTurnPhase(TurnPhase.ROLL_DICE.toString());
+            } else {
+                game.setCurrentTurnIndex(next);
+            }
+        }
+    }
+
+    private boolean isSetupPhase(Game game) {
+        return GamePhase.SETUP.toString().equals(game.getGamePhase()) ||
+            GamePhase.SETUP_SECOND_ROUND.toString().equals(game.getGamePhase());
+    }
+
+    private int countPlayerSettlements(Game game, Long playerId) {
+        return (int) game.getBoard().getIntersections().stream()
+            .filter(i -> i.getBuilding() instanceof Settlement)
+            .map(i -> (Settlement) i.getBuilding())
+            .filter(s -> playerId.equals(s.getOwnerPlayerId()))
+            .count();
+    }
+
+    private int countPlayerRoads(Game game, Long playerId) {
+        return (int) game.getBoard().getEdges().stream()
+            .filter(e -> e.getRoad() != null)
+            .filter(e -> playerId.equals(e.getRoad().getOwnerPlayerId()))
+            .count();
+    }
+
+    private Integer findUnconnectedSetupSettlementIntersection(Game game, Long playerId) {
+        if (game == null || playerId == null || game.getBoard() == null || game.getBoard().getIntersections() == null) {
+            return null;
+        }
+
+        for (Intersection intersection : game.getBoard().getIntersections()) {
+            if (intersection == null || !(intersection.getBuilding() instanceof Settlement)) {
+                continue;
+            }
+
+            Settlement settlement = (Settlement) intersection.getBuilding();
+            if (!playerId.equals(settlement.getOwnerPlayerId())) {
+                continue;
+            }
+
+            if (!hasOwnRoadAtIntersection(game, intersection.getId(), playerId)) {
+                return intersection.getId();
+            }
+        }
+
+        return null;
+    }
+
+    private void grantInitialSettlementResources(Game game, Player player, Integer intersectionId) {
+        if (game == null || player == null || game.getBoard() == null || game.getBoard().getHexTiles() == null) {
+            return;
+        }
+
+        List<Integer> adjacentHexIds = game.getBoard().getAdjacentHexIdsForIntersection(intersectionId);
+        for (Integer hexId : adjacentHexIds) {
+            String tileType = getHexTileType(game, hexId);
+            if (tileType == null || "DESERT".equalsIgnoreCase(tileType)) {
+                continue;
+            }
+
+            switch (tileType.toUpperCase()) {
+                case "WOOD" -> player.setWood(resourceValue(player.getWood()) + 1);
+                case "BRICK" -> player.setBrick(resourceValue(player.getBrick()) + 1);
+                case "SHEEP" -> player.setWool(resourceValue(player.getWool()) + 1);
+                case "WHEAT" -> player.setWheat(resourceValue(player.getWheat()) + 1);
+                case "ORE" -> player.setOre(resourceValue(player.getOre()) + 1);
+                default -> {
+                    // Ignore unknown tile labels.
+                }
+            }
+        }
+    }
+
+    private String getHexTileType(Game game, Integer hexId) {
+        if (game == null || game.getBoard() == null || game.getBoard().getHexTiles() == null || hexId == null) {
+            return null;
+        }
+
+        int index = hexId - 1;
+        if (index < 0 || index >= game.getBoard().getHexTiles().size()) {
+            return null;
+        }
+
+        return game.getBoard().getHexTiles().get(index);
     }
 
     public Player getCurrentPlayer(Game game) {

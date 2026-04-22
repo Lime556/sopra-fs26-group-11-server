@@ -3,6 +3,7 @@ package ch.uzh.ifi.hase.soprafs26.entity;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -244,6 +245,45 @@ public class Board implements Serializable {
 
     private String formatPoint(double x, double y) {
         return Math.round(x) + ":" + Math.round(y);
+    }
+
+    public List<Integer> getAdjacentHexIdsForIntersection(Integer intersectionId) {
+        if (intersectionId == null) {
+            return Collections.emptyList();
+        }
+
+        Map<Integer, List<Integer>> intersectionToHexIds = buildIntersectionToHexMap();
+        return intersectionToHexIds.getOrDefault(intersectionId, Collections.emptyList());
+    }
+
+    private Map<Integer, List<Integer>> buildIntersectionToHexMap() {
+        Map<String, Integer> intersectionKeyToId = new LinkedHashMap<>();
+        Map<Integer, List<Integer>> intersectionToHexIds = new LinkedHashMap<>();
+        int nextIntersectionId = 0;
+
+        for (int hexId = 1; hexId <= 19; hexId++) {
+            double[] center = toPixel(hexId);
+
+            for (int cornerIndex = 0; cornerIndex < 6; cornerIndex++) {
+                double[] point = getCornerPoint(center[0], center[1], cornerIndex);
+                String cornerKey = formatPoint(point[0], point[1]);
+
+                Integer intersectionId = intersectionKeyToId.get(cornerKey);
+                if (intersectionId == null) {
+                    intersectionId = nextIntersectionId;
+                    intersectionKeyToId.put(cornerKey, nextIntersectionId);
+                    intersectionToHexIds.put(nextIntersectionId, new ArrayList<>());
+                    nextIntersectionId++;
+                }
+
+                List<Integer> adjacentHexIds = intersectionToHexIds.get(intersectionId);
+                if (adjacentHexIds != null && !adjacentHexIds.contains(hexId)) {
+                    adjacentHexIds.add(hexId);
+                }
+            }
+        }
+
+        return intersectionToHexIds;
     }
 
     public List<String> generateBoard() {
