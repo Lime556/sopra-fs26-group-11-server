@@ -290,8 +290,16 @@ public class Game{
     }
 
     public boolean isSetupPhase() {
-        return "SETUP".equals(gamePhase)
-            || "SETUP_SECOND_ROUND".equals(gamePhase);
+        // 1. Use getGamePhase() instead of the raw field to catch the default "SETUP"
+        String phase = getGamePhase(); 
+        
+        if (phase == null) return true; // Default to setup if null
+        
+        // 2. Trim whitespace and ignore case
+        String cleanPhase = phase.trim().toUpperCase();
+    
+        return "SETUP".equals(cleanPhase) || "SETUP_SECOND_ROUND".equals(cleanPhase);
+
     }
 
     public boolean isFirstSetupRound() {
