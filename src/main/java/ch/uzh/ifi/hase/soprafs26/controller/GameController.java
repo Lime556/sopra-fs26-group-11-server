@@ -464,6 +464,7 @@ public class GameController {
         dto.setDiceValue(game.getDiceValue());
         dto.setDiceRolledAt(game.getDiceRolledAt());
         return dto;
+    }
     private static Long readRequiredLong(Map<String, Object> body, String key) {
         Object value = body == null ? null : body.get(key);
         if (!(value instanceof Number number)) {
