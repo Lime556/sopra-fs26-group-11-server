@@ -644,10 +644,24 @@ public class GameService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Game has no players.");
         }
 
-        Integer nextTurnIndex = (game.getCurrentTurnIndex() + 1) % players.size();
-        game.setCurrentTurnIndex(nextTurnIndex);
-        game.setTurnPhase(TurnPhase.ROLL_DICE);
-        game.setDiceValue(null);
+        if (game.isSetupPhase()) {
+            int settlements = countPlayerSettlements(game, currentPlayer.getId());
+            int roads = countPlayerRoads(game, currentPlayer.getId());
+
+            boolean round1Done = game.isFirstSetupRound() && settlements >= 1 && roads >= 1;
+            boolean round2Done = game.isSecondSetupRound() && settlements >= 2 && roads >= 2;
+
+            if (!round1Done && !round2Done) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, 
+                    "You must place a settlement and a road before ending your turn.");
+            }
+            advanceSetupTurn(game);
+        } else {
+            Integer nextTurnIndex = (game.getCurrentTurnIndex() + 1) % players.size();
+            game.setCurrentTurnIndex(nextTurnIndex);
+            game.setTurnPhase(TurnPhase.ROLL_DICE.toString());
+            game.setDiceValue(null);
+        }
 
         recalculateVictoryState(game);
         return gameRepository.save(game);
@@ -783,7 +797,6 @@ public class GameService {
         }
 
         currentPlayer.setLastPlacedSetupSettlementIntersectionId(null);
-        advanceSetupTurn(game);
         return gameRepository.save(game);
     }
 
@@ -810,11 +823,6 @@ public class GameService {
                 game.setCurrentTurnIndex(next);
             }
         }
-    }
-
-    private boolean isSetupPhase(Game game) {
-        return GamePhase.SETUP.toString().equals(game.getGamePhase()) ||
-            GamePhase.SETUP_SECOND_ROUND.toString().equals(game.getGamePhase());
     }
 
     private int countPlayerSettlements(Game game, Long playerId) {
@@ -870,7 +878,7 @@ public class GameService {
             switch (tileType.toUpperCase()) {
                 case "WOOD" -> player.setWood(resourceValue(player.getWood()) + 1);
                 case "BRICK" -> player.setBrick(resourceValue(player.getBrick()) + 1);
-                case "SHEEP" -> player.setWool(resourceValue(player.getWool()) + 1);
+                case "SHEEP", "WOOL" -> player.setWool(resourceValue(player.getWool()) + 1);
                 case "WHEAT" -> player.setWheat(resourceValue(player.getWheat()) + 1);
                 case "ORE" -> player.setOre(resourceValue(player.getOre()) + 1);
                 default -> {

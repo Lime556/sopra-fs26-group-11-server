@@ -303,11 +303,13 @@ public class Game{
     }
 
     public boolean isFirstSetupRound() {
-        return "SETUP".equals(gamePhase);
+        String phase = getGamePhase();
+        return phase != null && "SETUP".equalsIgnoreCase(phase.trim());
     }
 
     public boolean isSecondSetupRound() {
-        return "SETUP_SECOND_ROUND".equals(gamePhase);
+        String phase = getGamePhase();
+        return phase != null && "SETUP_SECOND_ROUND".equalsIgnoreCase(phase.trim());
     }
 
 

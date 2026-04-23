@@ -128,6 +128,7 @@ public class LobbyService {
         game.setDevelopmentYearOfPlentyRemaining(2);
         game.setDevelopmentMonopolyRemaining(2);
         game.setTargetVictoryPoints(10);
+        game.setGamePhase("SETUP");
         game.setStartedAt(java.time.LocalDateTime.now());
         game.setFinishedAt(null);
         game = gameRepository.saveAndFlush(game);

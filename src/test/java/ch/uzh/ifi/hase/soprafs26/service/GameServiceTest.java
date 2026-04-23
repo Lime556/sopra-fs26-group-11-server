@@ -1429,6 +1429,73 @@ public class GameServiceTest {
         assertEquals(400, exception.getStatusCode().value());
     }
 
+    @Test
+    public void endTurn_lastPlayerSecondSetupRound_transitionsToActivePhase() {
+        Game game = new Game();
+        game.setId(400L);
+        game.setGamePhase("SETUP_SECOND_ROUND"); // Start in second setup round
+        game.setCurrentTurnIndex(0); // Last player in reverse order (assuming 2 players)
+
+        Player player1 = new Player();
+        player1.setId(10L);
+        player1.setName("Player1");
+        player1.setWood(0); player1.setBrick(0); player1.setWool(0); player1.setWheat(0); player1.setOre(0);
+
+        Player player2 = new Player();
+        player2.setId(11L);
+        player2.setName("Player2");
+        player2.setWood(0); player2.setBrick(0); player2.setWool(0); player2.setWheat(0); player2.setOre(0);
+
+        game.setPlayers(List.of(player1, player2));
+
+        Board board = new Board();
+        board.generateBoard();
+
+        // Add 2 settlements for player1
+        Intersection int1_p1 = findIntersection(board, 0);
+        Settlement s1_p1 = new Settlement(); s1_p1.setOwnerPlayerId(10L); s1_p1.setIntersectionId(0);
+        int1_p1.setBuilding(s1_p1);
+        Intersection int2_p1 = findIntersection(board, 2);
+        Settlement s2_p1 = new Settlement(); s2_p1.setOwnerPlayerId(10L); s2_p1.setIntersectionId(2);
+        int2_p1.setBuilding(s2_p1);
+
+        // Add 2 roads for player1
+        Edge edge1_p1 = findEdge(board, 0, 1);
+        Road r1_p1 = new Road(); r1_p1.setOwnerPlayerId(10L); r1_p1.setEdgeId(edge1_p1.getId());
+        edge1_p1.setRoad(r1_p1);
+        Edge edge2_p1 = findEdge(board, 2, 3);
+        Road r2_p1 = new Road(); r2_p1.setOwnerPlayerId(10L); r2_p1.setEdgeId(edge2_p1.getId());
+        edge2_p1.setRoad(r2_p1);
+
+        // Add 2 settlements for player2 (to ensure game is ready for transition)
+        Intersection int1_p2 = findIntersection(board, 4);
+        Settlement s1_p2 = new Settlement(); s1_p2.setOwnerPlayerId(11L); s1_p2.setIntersectionId(4);
+        int1_p2.setBuilding(s1_p2);
+        Intersection int2_p2 = findIntersection(board, 6);
+        Settlement s2_p2 = new Settlement(); s2_p2.setOwnerPlayerId(11L); s2_p2.setIntersectionId(6);
+        int2_p2.setBuilding(s2_p2);
+
+        // Add 2 roads for player2
+        Edge edge1_p2 = findEdge(board, 4, 5);
+        Road r1_p2 = new Road(); r1_p2.setOwnerPlayerId(11L); r1_p2.setEdgeId(edge1_p2.getId());
+        edge1_p2.setRoad(r1_p2);
+        Edge edge2_p2 = findEdge(board, 6, 7);
+        Road r2_p2 = new Road(); r2_p2.setOwnerPlayerId(11L); r2_p2.setEdgeId(edge2_p2.getId());
+        edge2_p2.setRoad(r2_p2);
+
+        game.setBoard(board);
+
+        Mockito.when(gameRepository.findById(400L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game updatedGame = gameService.endTurn(400L, "valid-token");
+
+        assertEquals("ACTIVE", updatedGame.getGamePhase());
+        assertEquals("ROLL_DICE", updatedGame.getTurnPhase());
+        assertEquals(0, updatedGame.getCurrentTurnIndex());
+    }
+
     // ============ Helper Methods ============
 
     private Game createGameWithPlayers(String token, int playerCount) {
