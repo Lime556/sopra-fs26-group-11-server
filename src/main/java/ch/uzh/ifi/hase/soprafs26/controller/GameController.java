@@ -2,6 +2,7 @@ package ch.uzh.ifi.hase.soprafs26.controller;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Boat;
@@ -276,12 +278,76 @@ public class GameController {
         return stateDTO;
     }
 
+    @PostMapping("/games/{gameId}/actions/build-settlement")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameGetDTO buildSettlement(
+            @PathVariable Long gameId,
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Long playerId = readRequiredLong(body, "playerId");
+        Integer intersectionId = readRequiredInteger(body, "intersectionId");
+        Game game = gameService.getGameById(gameId, extractToken(authorizationHeader));
+        Game updatedGame;
+
+        if (game.isSetupPhase()) {
+            updatedGame = gameService.placeInitialSettlement(
+                    gameId,
+                    extractToken(authorizationHeader),
+                    playerId,
+                    intersectionId
+            );
+        } else {
+            updatedGame = gameService.addSettlementToPlayer(
+                    gameId,
+                    extractToken(authorizationHeader),
+                    playerId,
+                    intersectionId
+            );
+        }
+        GameGetDTO dto = convertGameToDto(updatedGame);
+        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
+        return dto;
+    }
+
+    @PostMapping("/games/{gameId}/actions/build-road")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameGetDTO buildRoad(
+            @PathVariable Long gameId,
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Long playerId = readRequiredLong(body, "playerId");
+        Integer edgeId = readRequiredInteger(body, "edgeId");
+        Game game = gameService.getGameById(gameId, extractToken(authorizationHeader));
+        Game updatedGame;
+        if (game.isSetupPhase()) {
+            updatedGame = gameService.placeInitialRoad(
+                    gameId,
+                    extractToken(authorizationHeader),
+                    playerId,
+                    edgeId
+            );
+        } else {
+            updatedGame = gameService.addRoadToPlayer(
+                    gameId,
+                    extractToken(authorizationHeader),
+                    playerId,
+                    edgeId
+            );
+        }
+        GameGetDTO dto = convertGameToDto(updatedGame);
+        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
+        return dto;
+    }
+
     private GameGetDTO convertGameToDto(Game game) {
         GameGetDTO dto = new GameGetDTO();
         dto.setId(game.getId());
         dto.setBoard(convertBoardToDto(game.getBoard()));
         dto.setCurrentTurnIndex(game.getCurrentTurnIndex());
         dto.setTurnPhase(game.getTurnPhase());
+        dto.setGamePhase(game.getGamePhase());
         dto.setDiceValue(game.getDiceValue());
         dto.setRobberTileIndex(game.getRobberTileIndex());
         dto.setTargetVictoryPoints(game.getTargetVictoryPoints());
@@ -398,5 +464,19 @@ public class GameController {
         dto.setDiceValue(game.getDiceValue());
         dto.setDiceRolledAt(game.getDiceRolledAt());
         return dto;
+    private static Long readRequiredLong(Map<String, Object> body, String key) {
+        Object value = body == null ? null : body.get(key);
+        if (!(value instanceof Number number)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing or invalid field: " + key);
+        }
+        return number.longValue();
+    }
+
+    private static Integer readRequiredInteger(Map<String, Object> body, String key) {
+        Object value = body == null ? null : body.get(key);
+        if (!(value instanceof Number number)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing or invalid field: " + key);
+        }
+        return number.intValue();
     }
 }

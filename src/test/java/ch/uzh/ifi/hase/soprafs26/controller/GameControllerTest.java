@@ -346,4 +346,200 @@ public class GameControllerTest {
                 .andExpect(jsonPath("$.sourcePlayerId", is(10)))
                 .andExpect(jsonPath("$.intersectionId", is(3)));
     }
+
+    @Test
+    public void getGameState_setupPhase_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setCurrentTurnIndex(0);
+        game.setGamePhase("SETUP");
+
+        Player currentPlayer = new Player();
+        currentPlayer.setId(10L);
+        currentPlayer.setName("Player1");
+
+        game.setPlayers(List.of(currentPlayer));
+
+        given(gameService.getGameById(1L, "valid-token")).willReturn(game);
+        given(gameService.getCurrentPlayer(game)).willReturn(currentPlayer);
+
+        MockHttpServletRequestBuilder getRequest = get("/games/1/state")
+                .header("Authorization", "valid-token");
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gameId", is(1)))
+                .andExpect(jsonPath("$.currentTurnIndex", is(0)))
+                .andExpect(jsonPath("$.currentPlayerId", is(10)))
+                .andExpect(jsonPath("$.currentPlayerName", is("Player1")))
+                .andExpect(jsonPath("$.gameFinished", is(false)));
+    }
+
+    @Test
+    public void buildSettlement_setupPhase_validPlacement_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setGamePhase("SETUP");
+        game.setCurrentTurnIndex(0);
+
+        Player player1 = new Player();
+        player1.setId(10L);
+        player1.setName("Player1");
+
+        game.setPlayers(List.of(player1));
+
+        given(gameService.getGameById(1L, "valid-token")).willReturn(game);
+        given(gameService.placeInitialSettlement(1L, "valid-token", 10L, 0))
+                .willReturn(game);
+
+        String body = """
+            {
+              "playerId": 10,
+              "intersectionId": 0
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/build-settlement")
+                .header("Authorization", "valid-token")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void buildSettlement_invalidPlacement_occupied_badRequest() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setGamePhase("SETUP");
+
+        given(gameService.getGameById(1L, "valid-token")).willReturn(game);
+        given(gameService.placeInitialSettlement(1L, "valid-token", 10L, 0))
+                .willThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Intersection is already occupied."));
+
+        String body = """
+            {
+              "playerId": 10,
+              "intersectionId": 0
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/build-settlement")
+                .header("Authorization", "valid-token")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void buildSettlement_notPlayerTurn_conflict() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setGamePhase("SETUP");
+
+        given(gameService.getGameById(1L, "valid-token")).willReturn(game);
+        given(gameService.placeInitialSettlement(1L, "valid-token", 11L, 0))
+                .willThrow(new ResponseStatusException(HttpStatus.CONFLICT, "It is not your turn to build."));
+
+        String body = """
+            {
+              "playerId": 11,
+              "intersectionId": 0
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/build-settlement")
+                .header("Authorization", "valid-token")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    public void buildRoad_setupPhase_validPlacement_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setGamePhase("SETUP");
+
+        Player player1 = new Player();
+        player1.setId(10L);
+
+        game.setPlayers(List.of(player1));
+
+        given(gameService.getGameById(1L, "valid-token")).willReturn(game);
+        given(gameService.placeInitialRoad(1L, "valid-token", 10L, 0))
+                .willReturn(game);
+
+        String body = """
+            {
+              "playerId": 10,
+              "edgeId": 0
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/build-road")
+                .header("Authorization", "valid-token")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void buildRoad_invalidPlacement_occupied_badRequest() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setGamePhase("SETUP");
+
+        given(gameService.getGameById(1L, "valid-token")).willReturn(game);
+        given(gameService.placeInitialRoad(1L, "valid-token", 10L, 0))
+                .willThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Edge is already occupied."));
+
+        String body = """
+            {
+              "playerId": 10,
+              "edgeId": 0
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/build-road")
+                .header("Authorization", "valid-token")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void buildRoad_notPlayerTurn_conflict() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setGamePhase("SETUP");
+
+        given(gameService.getGameById(1L, "valid-token")).willReturn(game);
+        given(gameService.placeInitialRoad(1L, "valid-token", 11L, 0))
+                .willThrow(new ResponseStatusException(HttpStatus.CONFLICT, "It is not your turn to build."));
+
+        String body = """
+            {
+              "playerId": 11,
+              "edgeId": 0
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/build-road")
+                .header("Authorization", "valid-token")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isConflict());
+    }
 }

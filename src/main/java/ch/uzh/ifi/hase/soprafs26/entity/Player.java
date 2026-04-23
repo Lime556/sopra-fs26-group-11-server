@@ -57,6 +57,8 @@ public class Player implements Serializable {
 
     private Integer freeRoadBuildsRemaining;
 
+    private Integer lastPlacedSetupSettlementIntersectionId;
+
     public Long getId() {
         return id;
     }
@@ -207,6 +209,14 @@ public class Player implements Serializable {
 
     public void setFreeRoadBuildsRemaining(Integer freeRoadBuildsRemaining) {
         this.freeRoadBuildsRemaining = freeRoadBuildsRemaining;
+    }
+
+    public Integer getLastPlacedSetupSettlementIntersectionId() {
+        return lastPlacedSetupSettlementIntersectionId;
+    }
+
+    public void setLastPlacedSetupSettlementIntersectionId(Integer id) {
+        this.lastPlacedSetupSettlementIntersectionId = id;
     }
 
     public int calculateVictoryPoints() {

@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -672,15 +673,412 @@ public class GameServiceTest {
         assertEquals(0, updatedA.getVictoryPoints());
     }
 
+    @Test
+    public void placeInitialSettlement_setupPhase_validPlacement_success() {
+        Game game = new Game();
+        game.setId(300L);
+        game.setGamePhase("SETUP");
+        game.setCurrentTurnIndex(0);
 
+        Player player = new Player();
+        player.setId(10L);
+        player.setName("Alice");
+        player.setSettlementPoints(0);
 
+        Board board = new Board();
+        board.generateBoard();
 
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
 
+        Mockito.when(gameRepository.findById(300L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
+        Game result = gameService.placeInitialSettlement(300L, "valid-token", 10L, 0);
 
+        assertNotNull(result);
+        Intersection intersection = findIntersection(result.getBoard(), 0);
+        assertNotNull(intersection.getBuilding());
+        assertEquals(10L, ((Settlement) intersection.getBuilding()).getOwnerPlayerId());
+        assertEquals(1, result.getPlayers().get(0).getSettlementPoints());
+    }
 
+    @Test
+    public void placeInitialSettlement_notSetupPhase_throwsConflict() {
+        Game game = new Game();
+        game.setId(301L);
+        game.setGamePhase("ACTIVE");
 
-    // Helper methods
+        Player player = new Player();
+        player.setId(10L);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+        game.setCurrentTurnIndex(0);
+
+        Mockito.when(gameRepository.findById(301L)).thenReturn(Optional.of(game));
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.placeInitialSettlement(301L, "valid-token", 10L, 0)
+        );
+
+        assertEquals("Not in setup phase.", exception.getReason());
+    }
+
+    @Test
+    public void placeInitialSettlement_adjacentToExisting_throwsConflict() {
+        Game game = new Game();
+        game.setId(302L);
+        game.setGamePhase("SETUP");
+
+        Player player1 = new Player();
+        player1.setId(10L);
+
+        Player player2 = new Player();
+        player2.setId(11L);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        Intersection existingSettlementIntersection = findIntersection(board, 1);
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(11L);
+        settlement.setIntersectionId(1);
+        existingSettlementIntersection.setBuilding(settlement);
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player1, player2));
+        game.setCurrentTurnIndex(0);
+
+        Mockito.when(gameRepository.findById(302L)).thenReturn(Optional.of(game));
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.placeInitialSettlement(302L, "valid-token", 10L, 0)
+        );
+
+        assertEquals("Too close to another building.", exception.getReason());
+    }   
+
+    @Test
+    public void placeInitialRoad_setupPhase_validPlacement_success() {
+        Game game = new Game();
+        game.setId(310L);
+        game.setGamePhase("SETUP");
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setLastPlacedSetupSettlementIntersectionId(0);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        Intersection settlementIntersection = findIntersection(board, 0);
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(10L);
+        settlement.setIntersectionId(0);
+        settlementIntersection.setBuilding(settlement);
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+        game.setCurrentTurnIndex(0);
+
+        Mockito.when(gameRepository.findById(310L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Edge roadEdge = findEdge(board, 0, 1);
+
+        Game result = gameService.placeInitialRoad(310L, "valid-token", 10L, roadEdge.getId());
+
+        Edge updatedEdge = findEdge(result.getBoard(), 0, 1);
+
+        assertNotNull(updatedEdge.getRoad());
+        assertEquals(10L, updatedEdge.getRoad().getOwnerPlayerId());
+    }
+
+    @Test
+    public void placeInitialRoad_notConnectedToSettlement_throwsBadRequest() {
+        Game game = new Game();
+        game.setId(311L);
+        game.setGamePhase("SETUP");
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setLastPlacedSetupSettlementIntersectionId(0);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+        game.setCurrentTurnIndex(0);
+
+        Mockito.when(gameRepository.findById(311L)).thenReturn(Optional.of(game));
+
+        Edge roadEdge = findEdge(board, 0, 1);
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.placeInitialRoad(311L, "valid-token", 10L, roadEdge.getId())
+        );
+
+        assertEquals("Road must connect to your own settlement.", exception.getReason());
+    }
+
+    @Test
+    public void placeInitialRoad_notConnectedToNewSettlement_throwsBadRequest() {
+        Game game = new Game();
+        game.setId(311L);
+        game.setGamePhase("SETUP");
+
+        Player player = new Player();
+        player.setId(10L);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+        game.setCurrentTurnIndex(0);
+
+        Mockito.when(gameRepository.findById(311L)).thenReturn(Optional.of(game));
+
+        Intersection oldSettlementIntersection = findIntersection(board, 2);
+        Settlement oldSettlement = new Settlement();
+        oldSettlement.setOwnerPlayerId(10L);
+        oldSettlement.setIntersectionId(2);
+        oldSettlementIntersection.setBuilding(oldSettlement);
+
+        Intersection newSettlementIntersection = findIntersection(board, 0);
+        Settlement newSettlement = new Settlement();
+        newSettlement.setOwnerPlayerId(10L);
+        newSettlement.setIntersectionId(0);
+        newSettlementIntersection.setBuilding(newSettlement);
+
+        player.setLastPlacedSetupSettlementIntersectionId(0);
+
+        Edge roadEdge = findEdge(board, 2, 3);
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.placeInitialRoad(311L, "valid-token", 10L, roadEdge.getId())
+        );
+
+        assertEquals(
+            "Road must connect to your newly placed settlement.",
+            exception.getReason()
+        );
+    }
+
+    @Test
+    public void placeInitialRoad_occupiedEdge_throwsBadRequest() {
+        Game game = new Game();
+        game.setId(312L);
+        game.setGamePhase("SETUP");
+
+        Player player1 = new Player();
+        player1.setId(10L);
+        player1.setLastPlacedSetupSettlementIntersectionId(0);
+
+        Player player2 = new Player();
+        player2.setId(11L);
+        player2.setLastPlacedSetupSettlementIntersectionId(0);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        Edge roadEdge = findEdge(board, 0, 1);
+        Road road = new Road();
+        road.setOwnerPlayerId(11L);
+        road.setEdgeId(roadEdge.getId());
+        roadEdge.setRoad(road);
+
+        Intersection settlementIntersection = findIntersection(board, 0);
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(10L);
+        settlement.setIntersectionId(0);
+        settlementIntersection.setBuilding(settlement);
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player1, player2));
+        game.setCurrentTurnIndex(0);
+
+        Mockito.when(gameRepository.findById(312L)).thenReturn(Optional.of(game));
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.placeInitialRoad(312L, "valid-token", 10L, roadEdge.getId())
+        );
+
+        assertEquals("Edge occupied.", exception.getReason());
+    }
+
+    @Test
+    public void placeInitialRoad_secondSetupRound_grantsResourcesFromSecondSettlement() {
+        Game game = new Game();
+        game.setId(313L);
+        game.setGamePhase("SETUP_SECOND_ROUND");
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setWood(0);
+        player.setBrick(0);
+        player.setWool(0);
+        player.setWheat(0);
+        player.setOre(0);
+        player.setLastPlacedSetupSettlementIntersectionId(0);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        // First setup settlement/road already exists and should not receive setup resources again.
+        Intersection firstSettlementIntersection = findIntersection(board, 0);
+        Settlement firstSettlement = new Settlement();
+        firstSettlement.setOwnerPlayerId(10L);
+        firstSettlement.setIntersectionId(0);
+        firstSettlementIntersection.setBuilding(firstSettlement);
+        placeRoad(findEdge(board, 0, 1), 10L);
+
+        int secondIntersectionId = board.getIntersections().stream()
+            .map(Intersection::getId)
+            .filter(id -> id != null && id != 0)
+            .filter(id -> !areAdjacent(board, 0, id))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("No valid second setup settlement intersection found."));
+
+        Intersection secondSettlementIntersection = findIntersection(board, secondIntersectionId);
+        Settlement secondSettlement = new Settlement();
+        secondSettlement.setOwnerPlayerId(10L);
+        secondSettlement.setIntersectionId(secondIntersectionId);
+        secondSettlementIntersection.setBuilding(secondSettlement);
+        player.setLastPlacedSetupSettlementIntersectionId(secondIntersectionId);
+
+        Edge secondRoadEdge = board.getEdges().stream()
+            .filter(edge -> edge != null)
+            .filter(edge -> edge.getRoad() == null)
+            .filter(edge -> edge.getIntersectionAId() == secondIntersectionId || edge.getIntersectionBId() == secondIntersectionId)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("No edge found for second setup road."));
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+        game.setCurrentTurnIndex(0);
+
+        Mockito.when(gameRepository.findById(313L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game result = gameService.placeInitialRoad(313L, "valid-token", 10L, secondRoadEdge.getId());
+        Player updatedPlayer = result.getPlayers().get(0);
+
+        List<Integer> adjacentHexIds = result.getBoard().getAdjacentHexIdsForIntersection(secondIntersectionId);
+        int expectedWood = 0;
+        int expectedBrick = 0;
+        int expectedWool = 0;
+        int expectedWheat = 0;
+        int expectedOre = 0;
+
+        for (Integer hexId : adjacentHexIds) {
+            String tile = result.getBoard().getHexTiles().get(hexId - 1);
+            switch (tile) {
+                case "WOOD" -> expectedWood++;
+                case "BRICK" -> expectedBrick++;
+                case "SHEEP" -> expectedWool++;
+                case "WHEAT" -> expectedWheat++;
+                case "ORE" -> expectedOre++;
+                default -> {
+                    // DESERT or unknown tiles give no resources.
+                }
+            }
+        }
+
+        assertEquals(expectedWood, updatedPlayer.getWood());
+        assertEquals(expectedBrick, updatedPlayer.getBrick());
+        assertEquals(expectedWool, updatedPlayer.getWool());
+        assertEquals(expectedWheat, updatedPlayer.getWheat());
+        assertEquals(expectedOre, updatedPlayer.getOre());
+    }
+
+    @Test
+    public void placeInitialRoad_advancesTurnsInSnakeOrder() {
+        Game game = new Game();
+        game.setId(314L);
+        game.setGamePhase("SETUP");
+        game.setCurrentTurnIndex(1);
+
+        Player playerA = new Player();
+        playerA.setId(10L);
+        
+        Player playerB = new Player();
+        playerB.setId(11L);
+        playerB.setLastPlacedSetupSettlementIntersectionId(0);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        // Player B current setup settlement and road placement.
+        Intersection bSettlementIntersection = findIntersection(board, 0);
+        Settlement bSettlement = new Settlement();
+        bSettlement.setOwnerPlayerId(11L);
+        bSettlement.setIntersectionId(0);
+        bSettlementIntersection.setBuilding(bSettlement);
+
+        game.setBoard(board);
+        game.setPlayers(List.of(playerA, playerB));
+
+        Mockito.when(gameRepository.findById(314L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Edge bRoadEdge = findEdge(board, 0, 1);
+        Game afterFirstRoundRoad = gameService.placeInitialRoad(314L, "valid-token", 11L, bRoadEdge.getId());
+
+        assertEquals("SETUP_SECOND_ROUND", afterFirstRoundRoad.getGamePhase());
+        assertEquals(1, afterFirstRoundRoad.getCurrentTurnIndex());
+
+        // In second round player B places settlement and road again, then turn should move to player A.
+        int secondIntersectionId = board.getIntersections().stream()
+            .map(Intersection::getId)
+            .filter(id -> id != null && id != 0)
+            .filter(id -> !areAdjacent(board, 0, id))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("No second-round settlement intersection found."));
+
+        Settlement secondSettlement = new Settlement();
+        secondSettlement.setOwnerPlayerId(11L);
+        secondSettlement.setIntersectionId(secondIntersectionId);
+        findIntersection(board, secondIntersectionId).setBuilding(secondSettlement);
+        playerB.setLastPlacedSetupSettlementIntersectionId(secondIntersectionId);
+
+        Edge secondRoundRoad = board.getEdges().stream()
+            .filter(edge -> edge != null)
+            .filter(edge -> edge.getRoad() == null)
+            .filter(edge -> edge.getIntersectionAId() == secondIntersectionId || edge.getIntersectionBId() == secondIntersectionId)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("No second-round road edge found."));
+
+        Game afterSecondRoundRoad = gameService.placeInitialRoad(314L, "valid-token", 11L, secondRoundRoad.getId());
+
+        assertEquals("SETUP_SECOND_ROUND", afterSecondRoundRoad.getGamePhase());
+        assertEquals(0, afterSecondRoundRoad.getCurrentTurnIndex());
+        assertTrue(afterSecondRoundRoad.isSetupPhase());
+    }
+
+    private boolean areAdjacent(Board board, int intersectionAId, int intersectionBId) {
+        return board.getEdges().stream()
+            .filter(edge -> edge != null)
+            .anyMatch(edge ->
+                (edge.getIntersectionAId() == intersectionAId && edge.getIntersectionBId() == intersectionBId)
+                    || (edge.getIntersectionAId() == intersectionBId && edge.getIntersectionBId() == intersectionAId)
+            );
+    }
+
     private Edge findEdge(Board board, int intersectionAId, int intersectionBId) {
         int min = Math.min(intersectionAId, intersectionBId);
         int max = Math.max(intersectionAId, intersectionBId);
