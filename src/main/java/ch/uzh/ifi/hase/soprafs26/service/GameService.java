@@ -826,6 +826,9 @@ public class GameService {
     }
 
     private int countPlayerSettlements(Game game, Long playerId) {
+        if (game == null || game.getBoard() == null || game.getBoard().getIntersections() == null) {
+            return 0;
+        }
         return (int) game.getBoard().getIntersections().stream()
             .filter(i -> i.getBuilding() instanceof Settlement)
             .map(i -> (Settlement) i.getBuilding())
@@ -834,6 +837,9 @@ public class GameService {
     }
 
     private int countPlayerRoads(Game game, Long playerId) {
+        if (game == null || game.getBoard() == null || game.getBoard().getEdges() == null) {
+            return 0;
+        }
         return (int) game.getBoard().getEdges().stream()
             .filter(e -> e.getRoad() != null)
             .filter(e -> playerId.equals(e.getRoad().getOwnerPlayerId()))
@@ -1364,6 +1370,7 @@ public class GameService {
         }
 
         updateLongestRoadOwnership(game);
+        updateLargestArmyOwnership(game);
 
         players.forEach(player -> {
             if (player != null) {
