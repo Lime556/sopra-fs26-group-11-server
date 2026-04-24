@@ -1,6 +1,9 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -20,9 +23,15 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
+import ch.uzh.ifi.hase.soprafs26.entity.Building;
 import ch.uzh.ifi.hase.soprafs26.entity.Boat;
+import ch.uzh.ifi.hase.soprafs26.entity.City;
+import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
+import ch.uzh.ifi.hase.soprafs26.entity.Road;
+import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
@@ -37,6 +46,12 @@ import ch.uzh.ifi.hase.soprafs26.service.GameService;
 
 @RestController
 public class GameController {
+    private static final double HEX_SIZE = 58.0;
+    private static final double SQRT_3 = Math.sqrt(3.0);
+    private static final double ORIGIN_X = 150.0;
+    private static final double ORIGIN_Y = 130.0;
+    private static final double HEX_SPACING_X = HEX_SIZE * SQRT_3;
+    private static final double HEX_SPACING_Y = HEX_SIZE * 1.5;
 
     private final GameService gameService;
     private final SimpMessagingTemplate messaging;
@@ -230,6 +245,7 @@ public class GameController {
         return new GameStateDTO(
             game.getId(),
             game.getCurrentTurnIndex(),
+            game.getGamePhase(),
             game.getTurnPhase(),
             game.getDiceValue(),
             currentPlayer != null ? currentPlayer.getId() : null,
@@ -248,6 +264,7 @@ public class GameController {
         GameStateDTO stateDTO = new GameStateDTO(
             game.getId(),
             game.getCurrentTurnIndex(),
+            game.getGamePhase(),
             game.getTurnPhase(),
             game.getDiceValue(),
             currentPlayer != null ? currentPlayer.getId() : null,
@@ -268,6 +285,7 @@ public class GameController {
         GameStateDTO stateDTO = new GameStateDTO(
             game.getId(),
             game.getCurrentTurnIndex(),
+            game.getGamePhase(),
             game.getTurnPhase(),
             game.getDiceValue(),
             currentPlayer != null ? currentPlayer.getId() : null,
@@ -354,22 +372,23 @@ public class GameController {
         dto.setStartedAt(game.getStartedAt());
         dto.setFinishedAt(game.getFinishedAt());
         dto.setDevelopmentDeck(convertDevelopmentDeckToDto(game));
-        dto.setPlayers(convertPlayersToDto(game.getPlayers()));
-        dto.setWinner(convertPlayerToDto(game.getWinner()));
+        dto.setPlayers(convertPlayersToDto(game));
+        dto.setWinner(convertPlayerToDto(game, game.getWinner()));
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
         dto.setChatMessages(game.getChatMessages());
         return dto;
     }
 
-    private List<PlayerGetDTO> convertPlayersToDto(List<Player> players) {
+    private List<PlayerGetDTO> convertPlayersToDto(Game game) {
+        List<Player> players = game.getPlayers();
         if (players == null) {
             return Collections.emptyList();
         }
 
-        return players.stream().map(this::convertPlayerToDto).collect(Collectors.toList());
+        return players.stream().map(player -> convertPlayerToDto(game, player)).collect(Collectors.toList());
     }
 
-    private PlayerGetDTO convertPlayerToDto(Player player) {
+    private PlayerGetDTO convertPlayerToDto(Game game, Player player) {
         if (player == null) {
             return null;
         }
@@ -391,7 +410,194 @@ public class GameController {
         dto.setDevelopmentCards(player.getDevelopmentCards());
         dto.setKnightsPlayed(player.getKnightsPlayed());
         dto.setFreeRoadBuildsRemaining(player.getFreeRoadBuildsRemaining());
+        dto.setRoadsOnEdges(extractRoadsForPlayer(game, player.getId()));
+        dto.setSettlementsOnCorners(extractSettlementsForPlayer(game, player.getId()));
+        dto.setCitiesOnCorners(extractCitiesForPlayer(game, player.getId()));
         return dto;
+    }
+
+    private List<String> extractRoadsForPlayer(Game game, Long playerId) {
+        Board board = game.getBoard();
+        if (board == null || board.getEdges() == null || playerId == null) {
+            return Collections.emptyList();
+        }
+
+        Map<Integer, String> edgeIdToRoadPosition = buildEdgeIdToRoadPositionMap();
+        List<String> roads = new ArrayList<>();
+        for (Edge edge : board.getEdges()) {
+            if (edge == null || edge.getRoad() == null || edge.getRoad().getOwnerPlayerId() == null) {
+                continue;
+            }
+            if (!playerId.equals(edge.getRoad().getOwnerPlayerId())) {
+                continue;
+            }
+
+            String position = edgeIdToRoadPosition.get(edge.getId());
+            if (position != null) {
+                roads.add(position);
+            }
+        }
+
+        return roads;
+    }
+
+    private List<Map<String, Integer>> extractSettlementsForPlayer(Game game, Long playerId) {
+        return extractBuildingsForPlayer(game, playerId, Settlement.class);
+    }
+
+    private List<Map<String, Integer>> extractCitiesForPlayer(Game game, Long playerId) {
+        return extractBuildingsForPlayer(game, playerId, City.class);
+    }
+
+    private List<Map<String, Integer>> extractBuildingsForPlayer(Game game, Long playerId, Class<? extends Building> expectedType) {
+        Board board = game.getBoard();
+        if (board == null || board.getIntersections() == null || playerId == null) {
+            return Collections.emptyList();
+        }
+
+        Map<Integer, Map<String, Integer>> intersectionIdToCornerPosition = buildIntersectionIdToCornerPositionMap();
+        List<Map<String, Integer>> positions = new ArrayList<>();
+
+        for (Intersection intersection : board.getIntersections()) {
+            if (intersection == null || intersection.getBuilding() == null) {
+                continue;
+            }
+
+            Building building = intersection.getBuilding();
+            if (!expectedType.isInstance(building) || building.getOwnerPlayerId() == null || !playerId.equals(building.getOwnerPlayerId())) {
+                continue;
+            }
+
+            Map<String, Integer> position = intersectionIdToCornerPosition.get(intersection.getId());
+            if (position != null) {
+                positions.add(position);
+            }
+        }
+
+        return positions;
+    }
+
+    private Map<Integer, Map<String, Integer>> buildIntersectionIdToCornerPositionMap() {
+        Map<String, Integer> cornerKeyToIntersectionId = new LinkedHashMap<>();
+        Map<Integer, Map<String, Integer>> intersectionIdToPosition = new HashMap<>();
+        int nextIntersectionId = 0;
+
+        for (int hexId = 1; hexId <= 19; hexId++) {
+            double[] center = toPixel(hexId);
+            for (int corner = 0; corner < 6; corner++) {
+                double[] point = getCornerPoint(center[0], center[1], corner);
+                String cornerKey = formatPoint(point[0], point[1]);
+
+                Integer intersectionId = cornerKeyToIntersectionId.get(cornerKey);
+                if (intersectionId == null) {
+                    intersectionId = nextIntersectionId++;
+                    cornerKeyToIntersectionId.put(cornerKey, intersectionId);
+                }
+
+                if (!intersectionIdToPosition.containsKey(intersectionId)) {
+                    Map<String, Integer> position = new HashMap<>();
+                    position.put("hexId", hexId);
+                    position.put("corner", corner);
+                    intersectionIdToPosition.put(intersectionId, position);
+                }
+            }
+        }
+
+        return intersectionIdToPosition;
+    }
+
+    private Map<Integer, String> buildEdgeIdToRoadPositionMap() {
+        Map<String, Integer> cornerKeyToIntersectionId = new LinkedHashMap<>();
+        Map<String, Integer> edgeKeyToEdgeId = new LinkedHashMap<>();
+        Map<Integer, String> edgeIdToRoadPosition = new HashMap<>();
+        int nextIntersectionId = 0;
+        int nextEdgeId = 0;
+
+        for (int hexId = 1; hexId <= 19; hexId++) {
+            double[] center = toPixel(hexId);
+            String[] cornerKeys = new String[6];
+
+            for (int corner = 0; corner < 6; corner++) {
+                double[] point = getCornerPoint(center[0], center[1], corner);
+                String cornerKey = formatPoint(point[0], point[1]);
+                cornerKeys[corner] = cornerKey;
+                if (!cornerKeyToIntersectionId.containsKey(cornerKey)) {
+                    cornerKeyToIntersectionId.put(cornerKey, nextIntersectionId++);
+                }
+            }
+
+            for (int edge = 0; edge < 6; edge++) {
+                Integer a = cornerKeyToIntersectionId.get(cornerKeys[edge]);
+                Integer b = cornerKeyToIntersectionId.get(cornerKeys[(edge + 1) % 6]);
+                if (a == null || b == null) {
+                    continue;
+                }
+
+                String edgeKey = createCanonicalEdgeKey(a, b);
+                Integer edgeId = edgeKeyToEdgeId.get(edgeKey);
+                if (edgeId == null) {
+                    edgeId = nextEdgeId++;
+                    edgeKeyToEdgeId.put(edgeKey, edgeId);
+                }
+
+                if (!edgeIdToRoadPosition.containsKey(edgeId)) {
+                    edgeIdToRoadPosition.put(edgeId, hexId + ":" + edge);
+                }
+            }
+        }
+
+        return edgeIdToRoadPosition;
+    }
+
+    private String createCanonicalEdgeKey(int intersectionAId, int intersectionBId) {
+        int min = Math.min(intersectionAId, intersectionBId);
+        int max = Math.max(intersectionAId, intersectionBId);
+        return min + "|" + max;
+    }
+
+    private double[] toPixel(int hexId) {
+        double[] coordinates = boardCoordinatesForHex(hexId);
+        return new double[] {
+            ORIGIN_X + coordinates[0] * HEX_SPACING_X,
+            ORIGIN_Y + coordinates[1] * HEX_SPACING_Y
+        };
+    }
+
+    private double[] boardCoordinatesForHex(int hexId) {
+        return switch (hexId) {
+            case 1 -> new double[] {1, 0};
+            case 2 -> new double[] {2, 0};
+            case 3 -> new double[] {3, 0};
+            case 4 -> new double[] {0.5, 1};
+            case 5 -> new double[] {1.5, 1};
+            case 6 -> new double[] {2.5, 1};
+            case 7 -> new double[] {3.5, 1};
+            case 8 -> new double[] {0, 2};
+            case 9 -> new double[] {1, 2};
+            case 10 -> new double[] {2, 2};
+            case 11 -> new double[] {3, 2};
+            case 12 -> new double[] {4, 2};
+            case 13 -> new double[] {0.5, 3};
+            case 14 -> new double[] {1.5, 3};
+            case 15 -> new double[] {2.5, 3};
+            case 16 -> new double[] {3.5, 3};
+            case 17 -> new double[] {1, 4};
+            case 18 -> new double[] {2, 4};
+            case 19 -> new double[] {3, 4};
+            default -> throw new IllegalArgumentException("Unsupported hex id: " + hexId);
+        };
+    }
+
+    private double[] getCornerPoint(double centerX, double centerY, int cornerIndex) {
+        double angle = (Math.PI / 3.0) * cornerIndex + Math.PI / 6.0;
+        return new double[] {
+            centerX + HEX_SIZE * Math.cos(angle),
+            centerY + HEX_SIZE * Math.sin(angle)
+        };
+    }
+
+    private String formatPoint(double x, double y) {
+        return Math.round(x) + ":" + Math.round(y);
     }
 
     private DevelopmentDeckGetDTO convertDevelopmentDeckToDto(Game game) {

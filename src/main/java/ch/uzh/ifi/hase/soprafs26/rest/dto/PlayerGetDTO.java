@@ -1,6 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.rest.dto;
 
 import java.util.List;
+import java.util.Map;
 
 public class PlayerGetDTO {
     private Long id;
@@ -19,6 +20,9 @@ public class PlayerGetDTO {
     private List<String> developmentCards;
     private Integer knightsPlayed;
     private Integer freeRoadBuildsRemaining;
+    private List<String> roadsOnEdges;
+    private List<Map<String, Integer>> settlementsOnCorners;
+    private List<Map<String, Integer>> citiesOnCorners;
 
     public Long getId() {
         return id;
@@ -146,5 +150,29 @@ public class PlayerGetDTO {
 
     public void setFreeRoadBuildsRemaining(Integer freeRoadBuildsRemaining) {
         this.freeRoadBuildsRemaining = freeRoadBuildsRemaining;
+    }
+
+    public List<String> getRoadsOnEdges() {
+        return roadsOnEdges;
+    }
+
+    public void setRoadsOnEdges(List<String> roadsOnEdges) {
+        this.roadsOnEdges = roadsOnEdges;
+    }
+
+    public List<Map<String, Integer>> getSettlementsOnCorners() {
+        return settlementsOnCorners;
+    }
+
+    public void setSettlementsOnCorners(List<Map<String, Integer>> settlementsOnCorners) {
+        this.settlementsOnCorners = settlementsOnCorners;
+    }
+
+    public List<Map<String, Integer>> getCitiesOnCorners() {
+        return citiesOnCorners;
+    }
+
+    public void setCitiesOnCorners(List<Map<String, Integer>> citiesOnCorners) {
+        this.citiesOnCorners = citiesOnCorners;
     }
 }

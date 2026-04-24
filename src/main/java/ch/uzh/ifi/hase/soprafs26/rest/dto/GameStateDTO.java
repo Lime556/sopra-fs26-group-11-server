@@ -4,6 +4,7 @@ public class GameStateDTO {
     
     private Long gameId;
     private Integer currentTurnIndex;
+    private String gamePhase;
     private String turnPhase;
     private Integer diceValue;
     private Long currentPlayerId;
@@ -13,10 +14,11 @@ public class GameStateDTO {
     public GameStateDTO() {
     }
 
-    public GameStateDTO(Long gameId, Integer currentTurnIndex, String turnPhase, Integer diceValue,
+    public GameStateDTO(Long gameId, Integer currentTurnIndex, String gamePhase, String turnPhase, Integer diceValue,
                         Long currentPlayerId, String currentPlayerName, Boolean gameFinished) {
         this.gameId = gameId;
         this.currentTurnIndex = currentTurnIndex;
+        this.gamePhase = gamePhase;
         this.turnPhase = turnPhase;
         this.diceValue = diceValue;
         this.currentPlayerId = currentPlayerId;
@@ -46,6 +48,14 @@ public class GameStateDTO {
 
     public void setTurnPhase(String turnPhase) {
         this.turnPhase = turnPhase;
+    }
+
+    public String getGamePhase() {
+        return gamePhase;
+    }
+
+    public void setGamePhase(String gamePhase) {
+        this.gamePhase = gamePhase;
     }
 
     public Integer getDiceValue() {
