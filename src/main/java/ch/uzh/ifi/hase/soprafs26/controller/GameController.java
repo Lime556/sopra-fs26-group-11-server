@@ -3,15 +3,11 @@ package ch.uzh.ifi.hase.soprafs26.controller;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
-import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
-import ch.uzh.ifi.hase.soprafs26.entity.City;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -358,26 +354,22 @@ public class GameController {
         dto.setStartedAt(game.getStartedAt());
         dto.setFinishedAt(game.getFinishedAt());
         dto.setDevelopmentDeck(convertDevelopmentDeckToDto(game));
-        dto.setPlayers(convertPlayersToDto(game.getPlayers(), game.getBoard()));
+        dto.setPlayers(convertPlayersToDto(game.getPlayers()));
         dto.setWinner(convertPlayerToDto(game.getWinner()));
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
         dto.setChatMessages(game.getChatMessages());
         return dto;
     }
 
-    private List<PlayerGetDTO> convertPlayersToDto(List<Player> players, Board board) {
+    private List<PlayerGetDTO> convertPlayersToDto(List<Player> players) {
         if (players == null) {
             return Collections.emptyList();
         }
 
-        return players.stream().map(p -> convertPlayerToDto(p, board)).collect(Collectors.toList());
+        return players.stream().map(this::convertPlayerToDto).collect(Collectors.toList());
     }
 
     private PlayerGetDTO convertPlayerToDto(Player player) {
-        return convertPlayerToDto(player, null);
-    }
-
-    private PlayerGetDTO convertPlayerToDto(Player player, Board board) {
         if (player == null) {
             return null;
         }
@@ -399,36 +391,6 @@ public class GameController {
         dto.setDevelopmentCards(player.getDevelopmentCards());
         dto.setKnightsPlayed(player.getKnightsPlayed());
         dto.setFreeRoadBuildsRemaining(player.getFreeRoadBuildsRemaining());
-
-        if (board != null && player.getId() != null) {
-            List<Map<String, Integer>> settlements = new ArrayList<>();
-            List<Map<String, Integer>> cities = new ArrayList<>();
-            List<Map<String, Integer>> roads = new ArrayList<>();
-
-            for (Intersection inter : board.getIntersections()) {
-                if (inter.getBuilding() != null && player.getId().equals(inter.getBuilding().getOwnerPlayerId())) {
-                    List<Map<String, Integer>> coords = board.getHexCoordinatesForIntersection(inter.getId());
-                    if (!coords.isEmpty()) {
-                        if (inter.getBuilding() instanceof Settlement) settlements.add(coords.get(0));
-                        else if (inter.getBuilding() instanceof City) cities.add(coords.get(0));
-                    }
-                }
-            }
-
-            board.getEdges().stream()
-                .filter(e -> e.getRoad() != null && player.getId().equals(e.getRoad().getOwnerPlayerId()))
-                .forEach(e -> {
-                    List<Map<String, Integer>> coords = board.getHexCoordinatesForEdge(e.getId());
-                    if (!coords.isEmpty()) {
-                        roads.add(coords.get(0));
-                    }
-                });
-
-            dto.setSettlementsOnCorners(settlements);
-            dto.setCitiesOnCorners(cities);
-            dto.setRoadsOnEdges(roads);
-        }
-
         return dto;
     }
 

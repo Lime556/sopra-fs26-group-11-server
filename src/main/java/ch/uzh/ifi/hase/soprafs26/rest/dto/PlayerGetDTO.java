@@ -1,13 +1,11 @@
 package ch.uzh.ifi.hase.soprafs26.rest.dto;
 
 import java.util.List;
-import java.util.Map;
 
 public class PlayerGetDTO {
-
     private Long id;
     private String name;
-    private int victoryPoints;
+    private Integer victoryPoints;
     private Integer settlementPoints;
     private Integer cityPoints;
     private Integer developmentCardVictoryPoints;
@@ -21,11 +19,6 @@ public class PlayerGetDTO {
     private List<String> developmentCards;
     private Integer knightsPlayed;
     private Integer freeRoadBuildsRemaining;
-
-    // New fields for building and road locations
-    private List<Map<String, Integer>> settlementsOnCorners;
-    private List<Map<String, Integer>> citiesOnCorners;
-    private List<Map<String, Integer>> roadsOnEdges;
 
     public Long getId() {
         return id;
@@ -43,11 +36,11 @@ public class PlayerGetDTO {
         this.name = name;
     }
 
-    public int getVictoryPoints() {
+    public Integer getVictoryPoints() {
         return victoryPoints;
     }
 
-    public void setVictoryPoints(int victoryPoints) {
+    public void setVictoryPoints(Integer victoryPoints) {
         this.victoryPoints = victoryPoints;
     }
 
@@ -153,29 +146,5 @@ public class PlayerGetDTO {
 
     public void setFreeRoadBuildsRemaining(Integer freeRoadBuildsRemaining) {
         this.freeRoadBuildsRemaining = freeRoadBuildsRemaining;
-    }
-
-    public List<Map<String, Integer>> getSettlementsOnCorners() {
-        return settlementsOnCorners;
-    }
-
-    public void setSettlementsOnCorners(List<Map<String, Integer>> settlementsOnCorners) {
-        this.settlementsOnCorners = settlementsOnCorners;
-    }
-
-    public List<Map<String, Integer>> getCitiesOnCorners() {
-        return citiesOnCorners;
-    }
-
-    public void setCitiesOnCorners(List<Map<String, Integer>> citiesOnCorners) {
-        this.citiesOnCorners = citiesOnCorners;
-    }
-
-    public List<Map<String, Integer>> getRoadsOnEdges() {
-        return roadsOnEdges;
-    }
-
-    public void setRoadsOnEdges(List<Map<String, Integer>> roadsOnEdges) {
-        this.roadsOnEdges = roadsOnEdges;
     }
 }
