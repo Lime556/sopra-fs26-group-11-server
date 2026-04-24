@@ -251,65 +251,47 @@ public class Board implements Serializable {
     }
 
     public Map<Integer, List<Integer>> buildIntersectionToHexIdsMap() {
-        Map<String, Integer> cornerKeyToIntersectionId = new LinkedHashMap<>();
-        Map<Integer, Set<Integer>> adjacentHexIdsByIntersectionId = new LinkedHashMap<>();
-    public List<Integer> getAdjacentHexIdsForIntersection(Integer intersectionId) {
-        if (intersectionId == null) {
-            return Collections.emptyList();
-        }
+    Map<String, Integer> cornerKeyToIntersectionId = new LinkedHashMap<>();
+    Map<Integer, Set<Integer>> adjacentHexIdsByIntersectionId = new LinkedHashMap<>();
+    int nextIntersectionId = 0;
 
-        Map<Integer, List<Integer>> intersectionToHexIds = buildIntersectionToHexMap();
-        return intersectionToHexIds.getOrDefault(intersectionId, Collections.emptyList());
+    for (int hexId = 1; hexId <= 19; hexId++) {
+        double[] center = toPixel(hexId);
+
+        for (int cornerIndex = 0; cornerIndex < 6; cornerIndex++) {
+            double[] cornerPoint = getCornerPoint(center[0], center[1], cornerIndex);
+            String cornerKey = formatPoint(cornerPoint[0], cornerPoint[1]);
+
+            Integer intersectionId = cornerKeyToIntersectionId.get(cornerKey);
+            if (intersectionId == null) {
+                intersectionId = nextIntersectionId++;
+                cornerKeyToIntersectionId.put(cornerKey, intersectionId);
+            }
+
+            adjacentHexIdsByIntersectionId
+                .computeIfAbsent(intersectionId, key -> new HashSet<>())
+                .add(hexId);
+        }
     }
 
-    private Map<Integer, List<Integer>> buildIntersectionToHexMap() {
-        Map<String, Integer> intersectionKeyToId = new LinkedHashMap<>();
-        Map<Integer, List<Integer>> intersectionToHexIds = new LinkedHashMap<>();
-        int nextIntersectionId = 0;
+    // Convert Set -> List to match the expected output type.
+    return adjacentHexIdsByIntersectionId.entrySet().stream()
+        .collect(Collectors.toMap(
+            Map.Entry::getKey,
+            entry -> new ArrayList<>(entry.getValue()),
+            (a, b) -> a,
+            LinkedHashMap::new
+        ));
+}
 
-        for (int hexId = 1; hexId <= 19; hexId++) {
-            double[] center = toPixel(hexId);
-            for (int cornerIndex = 0; cornerIndex < 6; cornerIndex++) {
-                double[] cornerPoint = getCornerPoint(center[0], center[1], cornerIndex);
-                String cornerKey = formatPoint(cornerPoint[0], cornerPoint[1]);
-
-                Integer intersectionId = cornerKeyToIntersectionId.get(cornerKey);
-                if (intersectionId == null) {
-                    intersectionId = nextIntersectionId;
-                    cornerKeyToIntersectionId.put(cornerKey, intersectionId);
-                    nextIntersectionId++;
-                }
-
-                adjacentHexIdsByIntersectionId
-                    .computeIfAbsent(intersectionId, key -> new HashSet<>())
-                    .add(hexId);
-            }
-        }
-
-        return adjacentHexIdsByIntersectionId.entrySet().stream()
-            .collect(Collectors.toMap(Map.Entry::getKey, entry -> new ArrayList<>(entry.getValue())));
-
-            for (int cornerIndex = 0; cornerIndex < 6; cornerIndex++) {
-                double[] point = getCornerPoint(center[0], center[1], cornerIndex);
-                String cornerKey = formatPoint(point[0], point[1]);
-
-                Integer intersectionId = intersectionKeyToId.get(cornerKey);
-                if (intersectionId == null) {
-                    intersectionId = nextIntersectionId;
-                    intersectionKeyToId.put(cornerKey, nextIntersectionId);
-                    intersectionToHexIds.put(nextIntersectionId, new ArrayList<>());
-                    nextIntersectionId++;
-                }
-
-                List<Integer> adjacentHexIds = intersectionToHexIds.get(intersectionId);
-                if (adjacentHexIds != null && !adjacentHexIds.contains(hexId)) {
-                    adjacentHexIds.add(hexId);
-                }
-            }
-        }
-
-        return intersectionToHexIds;
+public List<Integer> getAdjacentHexIdsForIntersection(Integer intersectionId) {
+    if (intersectionId == null) {
+        return Collections.emptyList();
     }
+
+    Map<Integer, List<Integer>> intersectionToHexIds = buildIntersectionToHexIdsMap();
+    return intersectionToHexIds.getOrDefault(intersectionId, Collections.emptyList());
+}
 
     public List<String> generateBoard() {
         this.hexTiles = new ArrayList<>(STANDARD_HEX_TILES);
