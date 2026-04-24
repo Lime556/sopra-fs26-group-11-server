@@ -30,6 +30,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.GameChatMessageDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.DiceRollDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
@@ -454,6 +455,16 @@ public class GameController {
         return authorizationHeader.trim();
     }
 
+    @GetMapping("/games/{gameId}/dice")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public DiceRollDTO getDiceRoll(@PathVariable Long gameId) {
+        Game game = gameService.getGameById(gameId, null);
+        DiceRollDTO dto = new DiceRollDTO();
+        dto.setDiceValue(game.getDiceValue());
+        dto.setDiceRolledAt(game.getDiceRolledAt());
+        return dto;
+    }
     private static Long readRequiredLong(Map<String, Object> body, String key) {
         Object value = body == null ? null : body.get(key);
         if (!(value instanceof Number number)) {

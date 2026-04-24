@@ -3,12 +3,17 @@ package ch.uzh.ifi.hase.soprafs26.controller;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
 import java.util.List;
 
 import static org.hamcrest.Matchers.is;
 import org.junit.jupiter.api.Test;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpStatus;
@@ -181,6 +186,81 @@ public class GameControllerTest {
         mockMvc.perform(getRequest)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.gameFinished", is(true)));
+    }
+
+        @Test
+        public void getDiceRoll_validRequest_success() throws Exception {
+                Game game = new Game();
+                game.setId(1L);
+                game.setDiceValue(11);
+                game.setDiceRolledAt(java.time.Instant.parse("2026-04-21T10:15:30Z"));
+
+                given(gameService.getGameById(1L, null)).willReturn(game);
+
+                MockHttpServletRequestBuilder getRequest = get("/games/1/dice");
+
+                mockMvc.perform(getRequest)
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.diceValue", is(11)))
+                                .andExpect(jsonPath("$.diceRolledAt", is("2026-04-21T10:15:30Z")));
+        }
+
+    @Test
+    public void rollDice_validRequest_successAndBroadcastsState() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setCurrentTurnIndex(0);
+        game.setTurnPhase(TurnPhase.ACTION.toString());
+        game.setDiceValue(8);
+
+        Player currentPlayer = new Player();
+        currentPlayer.setId(10L);
+        currentPlayer.setName("ActivePlayer");
+        game.setPlayers(List.of(currentPlayer));
+
+        given(gameService.rollDice(1L, "token-123")).willReturn(game);
+        given(gameService.getCurrentPlayer(game)).willReturn(currentPlayer);
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/roll-dice")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentTurnIndex", is(0)))
+                .andExpect(jsonPath("$.turnPhase", is("ACTION")))
+                .andExpect(jsonPath("$.diceValue", is(8)))
+                .andExpect(jsonPath("$.currentPlayerId", is(10)))
+                .andExpect(jsonPath("$.currentPlayerName", is("ActivePlayer")));
+
+        verify(messagingTemplate).convertAndSend(eq("/topic/games/1/state"), any(GameStateDTO.class));
+    }
+
+    @Test
+    public void rollDice_notInRollPhase_returnsConflictAndDoesNotBroadcast() throws Exception {
+        given(gameService.rollDice(1L, "token-123"))
+                .willThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Cannot roll dice."));
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/roll-dice")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isConflict());
+
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameStateDTO.class));
+    }
+
+    @Test
+    public void rollDice_notActivePlayer_returnsForbiddenAndDoesNotBroadcast() throws Exception {
+        given(gameService.rollDice(1L, "token-123"))
+                .willThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the active player can roll dice."));
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/roll-dice")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isForbidden());
+
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameStateDTO.class));
     }
 
     @Test
