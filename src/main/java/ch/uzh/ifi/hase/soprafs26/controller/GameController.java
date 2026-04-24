@@ -458,8 +458,10 @@ public class GameController {
     @GetMapping("/games/{gameId}/dice")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
-    public DiceRollDTO getDiceRoll(@PathVariable Long gameId) {
-        Game game = gameService.getGameById(gameId, null);
+    public DiceRollDTO getDiceRoll(
+            @PathVariable Long gameId,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Game game = gameService.getGameById(gameId, extractToken(authorizationHeader));
         DiceRollDTO dto = new DiceRollDTO();
         dto.setDiceValue(game.getDiceValue());
         dto.setDiceRolledAt(game.getDiceRolledAt());
