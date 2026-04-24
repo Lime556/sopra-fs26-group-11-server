@@ -1,6 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.City;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
@@ -98,6 +99,7 @@ public class TurnSystemTest {
         testGame.setPlayers(Arrays.asList(player1, player2, player3));
         testGame.setCurrentTurnIndex(0);
         testGame.setTurnPhase(TurnPhase.ROLL_DICE.toString());
+        testGame.setGamePhase(GamePhase.ACTIVE);
 
         Mockito.when(gameRepository.save(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0));
         Mockito.when(gameRepository.findById(100L)).thenReturn(Optional.of(testGame));
