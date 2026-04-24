@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -442,7 +443,7 @@ public class GameService {
     }
 
     public Game rollDice(Long gameId, String playerToken) {
-        authenticate(playerToken);
+        User authenticatedUser = authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -452,6 +453,8 @@ public class GameService {
         if (currentPlayer == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No current player found.");
         }
+
+        ensureCurrentPlayerCanRollDice(currentPlayer, authenticatedUser);
 
         String currentPhase = game.getTurnPhase();
         if (!TurnPhase.ROLL_DICE.toString().equals(currentPhase)) {
@@ -463,11 +466,100 @@ public class GameService {
         int die2 = 1 + (int) (Math.random() * 6);
         int diceSum = die1 + die2;
 
-        game.setDiceValue(diceSum);
+            game.setDiceValue(diceSum);
+            game.setDiceRolledAt(java.time.Instant.now());
+        if (diceSum == 7) {
+            applySevenRollEffects(game);
+        } else {
+            distributeResourcesForDiceValue(game, diceSum);
+        }
         game.setTurnPhase(TurnPhase.ACTION);
 
         recalculateVictoryState(game);
         return gameRepository.save(game);
+    }
+
+    void distributeResourcesForDiceValue(Game game, int diceValue) {
+        if (game == null) {
+            return;
+        }
+
+        Board board = game.getBoard();
+        if (board == null || board.getIntersections() == null || board.getIntersections().isEmpty()) {
+            return;
+        }
+
+        List<String> hexTiles = board.getHexTiles();
+        List<Integer> hexDiceNumbers = board.getHexTile_DiceNumbers();
+        if (hexTiles == null || hexDiceNumbers == null || hexTiles.isEmpty() || hexDiceNumbers.isEmpty()) {
+            return;
+        }
+
+        int tileCount = Math.min(hexTiles.size(), hexDiceNumbers.size());
+        if (tileCount == 0) {
+            return;
+        }
+
+        Map<Integer, List<Integer>> intersectionToHexIds = board.buildIntersectionToHexIdsMap();
+
+        for (Intersection intersection : board.getIntersections()) {
+            if (intersection == null || intersection.getBuilding() == null) {
+                continue;
+            }
+
+            Building building = intersection.getBuilding();
+            Long ownerPlayerId = building.getOwnerPlayerId();
+            Integer intersectionId = intersection.getId();
+            if (ownerPlayerId == null || intersectionId == null) {
+                continue;
+            }
+
+            Player owner = findPlayerById(game.getPlayers(), ownerPlayerId);
+            if (owner == null) {
+                continue;
+            }
+
+            int multiplier = resourceMultiplierForBuilding(building);
+            if (multiplier < 1) {
+                continue;
+            }
+
+            List<Integer> adjacentHexIds = intersectionToHexIds.getOrDefault(intersectionId, Collections.emptyList());
+            for (Integer adjacentHexId : adjacentHexIds) {
+                if (adjacentHexId == null || adjacentHexId < 1 || adjacentHexId > tileCount) {
+                    continue;
+                }
+
+                int tileIndex = adjacentHexId - 1;
+                Integer tileDiceNumber = hexDiceNumbers.get(tileIndex);
+                if (tileDiceNumber == null || tileDiceNumber != diceValue) {
+                    continue;
+                }
+
+                String tileType = hexTiles.get(tileIndex);
+                grantResourceForTile(owner, tileType, multiplier);
+            }
+        }
+    }
+
+    void applySevenRollEffects(Game game) {
+        if (game == null || game.getPlayers() == null || game.getPlayers().isEmpty()) {
+            return;
+        }
+
+        for (Player player : game.getPlayers()) {
+            if (player == null) {
+                continue;
+            }
+
+            int totalResources = totalResourceCards(player);
+            if (totalResources <= 7) {
+                continue;
+            }
+
+            int resourcesToDiscard = totalResources / 2;
+            discardResourcesInFixedOrder(player, resourcesToDiscard);
+        }
     }
 
     public Game buyDevelopmentCard(Long gameId, String playerToken, Long playerId) {
@@ -1410,6 +1502,46 @@ public class GameService {
         return user;
     }
 
+    private void ensureCurrentPlayerCanRollDice(Player currentPlayer, User authenticatedUser) {
+        if (currentPlayer == null || authenticatedUser == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the active player can roll dice.");
+        }
+
+        if (isSameUserById(currentPlayer, authenticatedUser) || isSameUserByName(currentPlayer, authenticatedUser)) {
+            return;
+        }
+
+        if (!hasResolvableCurrentPlayerIdentity(currentPlayer)) {
+            return;
+        }
+
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the active player can roll dice.");
+    }
+
+    private boolean isSameUserById(Player currentPlayer, User authenticatedUser) {
+        if (currentPlayer.getUser() == null || currentPlayer.getUser().getId() == null || authenticatedUser.getId() == null) {
+            return false;
+        }
+
+        return currentPlayer.getUser().getId().equals(authenticatedUser.getId());
+    }
+
+    private boolean isSameUserByName(Player currentPlayer, User authenticatedUser) {
+        if (currentPlayer.getName() == null || authenticatedUser.getUsername() == null) {
+            return false;
+        }
+
+        return currentPlayer.getName().equals(authenticatedUser.getUsername());
+    }
+
+    private boolean hasResolvableCurrentPlayerIdentity(Player currentPlayer) {
+        if (currentPlayer.getUser() != null && currentPlayer.getUser().getId() != null) {
+            return true;
+        }
+
+        return currentPlayer.getName() != null;
+    }
+
     private int safeInt(Integer value, int fallback) {
         return Optional.ofNullable(value).orElse(fallback);
     }
@@ -1431,6 +1563,71 @@ public class GameService {
 
     private int resourceValue(Integer value) {
         return Optional.ofNullable(value).orElse(0);
+    }
+
+    private int totalResourceCards(Player player) {
+        if (player == null) {
+            return 0;
+        }
+
+        return resourceValue(player.getWood())
+            + resourceValue(player.getBrick())
+            + resourceValue(player.getWool())
+            + resourceValue(player.getWheat())
+            + resourceValue(player.getOre());
+    }
+
+    private void discardResourcesInFixedOrder(Player player, int toDiscard) {
+        if (player == null || toDiscard <= 0) {
+            return;
+        }
+
+        int remaining = toDiscard;
+        remaining = discardSingleResource(player, "wood", remaining);
+        remaining = discardSingleResource(player, "brick", remaining);
+        remaining = discardSingleResource(player, "wool", remaining);
+        remaining = discardSingleResource(player, "wheat", remaining);
+        discardSingleResource(player, "ore", remaining);
+    }
+
+    private int discardSingleResource(Player player, String resource, int remainingToDiscard) {
+        if (remainingToDiscard <= 0) {
+            return 0;
+        }
+
+        int available = getResourceByName(player, resource);
+        int discarded = Math.min(available, remainingToDiscard);
+        setResourceByName(player, resource, available - discarded);
+        return remainingToDiscard - discarded;
+    }
+
+    private int resourceMultiplierForBuilding(Building building) {
+        if (building instanceof City) {
+            return 2;
+        }
+
+        if (building instanceof Settlement) {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private void grantResourceForTile(Player player, String tileType, int amount) {
+        if (player == null || tileType == null || amount < 1) {
+            return;
+        }
+
+        String normalized = tileType.trim().toUpperCase(Locale.ROOT);
+        switch (normalized) {
+            case "WOOD" -> player.setWood(resourceValue(player.getWood()) + amount);
+            case "BRICK" -> player.setBrick(resourceValue(player.getBrick()) + amount);
+            case "WHEAT" -> player.setWheat(resourceValue(player.getWheat()) + amount);
+            case "SHEEP" -> player.setWool(resourceValue(player.getWool()) + amount);
+            case "ORE" -> player.setOre(resourceValue(player.getOre()) + amount);
+            default -> {
+            }
+        }
     }
 
     private int getResourceByName(Player player, String resource) {
