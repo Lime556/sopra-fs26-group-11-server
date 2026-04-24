@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -283,6 +284,77 @@ public class Board implements Serializable {
             LinkedHashMap::new
         ));
 }
+
+    /**
+     * Helper to map a global Intersection ID back to a hex and corner index for the frontend.
+     */
+    public List<Map<String, Integer>> getHexCoordinatesForIntersection(Integer targetId) {
+        List<Map<String, Integer>> results = new ArrayList<>();
+        if (targetId == null) return results;
+
+        Map<String, Integer> keyToId = new HashMap<>();
+        int nextId = 0;
+
+        for (int hexId = 1; hexId <= 19; hexId++) {
+            double[] center = toPixel(hexId);
+            for (int cornerIndex = 0; cornerIndex < 6; cornerIndex++) {
+                double[] point = getCornerPoint(center[0], center[1], cornerIndex);
+                String key = formatPoint(point[0], point[1]);
+                
+                Integer id = keyToId.get(key);
+                if (id == null) {
+                    id = nextId++;
+                    keyToId.put(key, id);
+                }
+                
+                if (id.equals(targetId)) {
+                    Map<String, Integer> coord = new HashMap<>();
+                    coord.put("hexId", hexId);
+                    coord.put("corner", cornerIndex);
+                    results.add(coord);
+                }
+            }
+        }
+        return results;
+    }
+
+    /**
+     * Helper to map a global Edge ID back to a hex and edge index for the frontend.
+     */
+    public List<Map<String, Integer>> getHexCoordinatesForEdge(Integer targetId) {
+        List<Map<String, Integer>> results = new ArrayList<>();
+        if (targetId == null) return results;
+
+        Map<String, Integer> intersectionKeyToId = new HashMap<>();
+        Map<String, Integer> edgeKeyToId = new HashMap<>();
+        int nextIntId = 0;
+        int nextEdgeId = 0;
+
+        for (int hexId = 1; hexId <= 19; hexId++) {
+            double[] center = toPixel(hexId);
+            int[] cornerIntIds = new int[6];
+            for (int i = 0; i < 6; i++) {
+                double[] p = getCornerPoint(center[0], center[1], i);
+                String k = formatPoint(p[0], p[1]);
+                if (!intersectionKeyToId.containsKey(k)) {
+                    intersectionKeyToId.put(k, nextIntId++);
+                }
+                cornerIntIds[i] = intersectionKeyToId.get(k);
+            }
+            for (int i = 0; i < 6; i++) {
+                String eKey = createCanonicalEdgeKey(cornerIntIds[i], cornerIntIds[(i + 1) % 6]);
+                if (!edgeKeyToId.containsKey(eKey)) {
+                    edgeKeyToId.put(eKey, nextEdgeId++);
+                }
+                Integer id = edgeKeyToId.get(eKey);
+                
+                if (id.equals(targetId)) {
+                    results.add(Map.of("hexId", hexId, "edge", i));
+                }
+            }
+        }
+        return results;
+    }
 
 public List<Integer> getAdjacentHexIdsForIntersection(Integer intersectionId) {
     if (intersectionId == null) {
