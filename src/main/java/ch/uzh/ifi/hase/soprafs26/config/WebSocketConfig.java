@@ -18,10 +18,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-         registry.addEndpoint("/ws")
-                .setAllowedOrigins("https://sopra-fs26-group-11-client.vercel.app", "http://localhost:3000")
-                .withSockJS()
-                .setSessionCookieNeeded(false);
-    
+        registry.addEndpoint("/ws").setAllowedOriginPatterns("*").withSockJS();
     }
 }
