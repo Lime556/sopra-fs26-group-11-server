@@ -195,9 +195,10 @@ public class GameControllerTest {
                 game.setDiceValue(11);
                 game.setDiceRolledAt(java.time.Instant.parse("2026-04-21T10:15:30Z"));
 
-                given(gameService.getGameById(1L, null)).willReturn(game);
+                    given(gameService.getGameById(1L, "token-123")).willReturn(game);
 
-                MockHttpServletRequestBuilder getRequest = get("/games/1/dice");
+                    MockHttpServletRequestBuilder getRequest = get("/games/1/dice")
+                                    .header("Authorization", "token-123");
 
                 mockMvc.perform(getRequest)
                                 .andExpect(status().isOk())
