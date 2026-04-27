@@ -2,6 +2,7 @@ package ch.uzh.ifi.hase.soprafs26.rest.dto;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public class GamePostDTO {
 
@@ -24,6 +25,7 @@ public class GamePostDTO {
     private PlayerGetDTO winner;
     private List<String> eventLog;
     private List<String> chatMessages;
+    private Map<String, Integer> bankResources;
 
     public Long getId() {
         return id;
@@ -175,5 +177,13 @@ public class GamePostDTO {
 
     public void setChatMessages(List<String> chatMessages) {
         this.chatMessages = chatMessages;
+    }
+
+    public Map<String, Integer> getBankResources() {
+        return bankResources;
+    }
+
+    public void setBankResources(Map<String, Integer> bankResources) {
+        this.bankResources = bankResources;
     }
 }

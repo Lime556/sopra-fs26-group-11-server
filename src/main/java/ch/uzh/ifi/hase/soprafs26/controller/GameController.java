@@ -362,7 +362,22 @@ public class GameController {
         dto.setWinner(convertPlayerToDto(game.getWinner()));
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
         dto.setChatMessages(game.getChatMessages());
+        dto.setBankResources(readBankResources(game));
         return dto;
+    }
+
+    private Map<String, Integer> readBankResources(Game game) {
+        if (game == null) {
+            return Collections.emptyMap();
+        }
+
+        return Map.of(
+            "wood", Optional.ofNullable(game.getBankWood()).orElse(0),
+            "brick", Optional.ofNullable(game.getBankBrick()).orElse(0),
+            "wool", Optional.ofNullable(game.getBankWool()).orElse(0),
+            "wheat", Optional.ofNullable(game.getBankWheat()).orElse(0),
+            "ore", Optional.ofNullable(game.getBankOre()).orElse(0)
+        );
     }
 
     private List<PlayerGetDTO> convertPlayersToDto(List<Player> players, Board board) {
