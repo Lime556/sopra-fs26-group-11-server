@@ -36,6 +36,7 @@ import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 
@@ -50,6 +51,7 @@ public class GameService {
     private static final String CARD_ROAD_BUILDING = "road_building";
     private static final String CARD_YEAR_OF_PLENTY = "year_of_plenty";
     private static final String CARD_MONOPOLY = "monopoly";
+    private static final List<String> TRADE_RESOURCES = List.of("wood", "brick", "wool", "wheat", "ore");
 
     private final GameRepository gameRepository;
     private final UserRepository userRepository;
@@ -394,11 +396,29 @@ public class GameService {
         return gameRepository.save(game);
     }
 
-    public Game applyBankTrade(Long gameId, String playerToken, Long sourcePlayerId,
-            String giveResource, String receiveResource, Integer amount) {
+    public Game applyBankTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
         authenticate(playerToken);
 
-        if (sourcePlayerId == null || giveResource == null || receiveResource == null || amount == null || amount < 1) {
+        if (tradeEvent == null || tradeEvent.getSourcePlayerId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade payload.");
+        }
+
+        Map<String, Integer> giveBundle;
+        Map<String, Integer> receiveBundle;
+        if (tradeEvent.getGiveResources() != null || tradeEvent.getReceiveResources() != null) {
+            giveBundle = normalizeTradeBundle(tradeEvent.getGiveResources());
+            receiveBundle = normalizeTradeBundle(tradeEvent.getReceiveResources());
+        } else {
+            if (tradeEvent.getGiveResource() == null || tradeEvent.getReceiveResource() == null || tradeEvent.getAmount() == null || tradeEvent.getAmount() < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade payload.");
+            }
+            giveBundle = createSingleResourceBundle(tradeEvent.getGiveResource(), tradeEvent.getAmount() * 4);
+            receiveBundle = createSingleResourceBundle(tradeEvent.getReceiveResource(), tradeEvent.getAmount());
+        }
+
+        int totalGive = sumTradeBundle(giveBundle);
+        int totalReceive = sumTradeBundle(receiveBundle);
+        if (totalGive < 1 || totalReceive < 1 || totalGive != totalReceive * 4) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade payload.");
         }
 
@@ -407,37 +427,129 @@ public class GameService {
                 "Game with id " + gameId + " was not found."));
 
         List<Player> players = game.getPlayers();
-        Player source = findPlayerById(players, sourcePlayerId);
+        Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
         if (source == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source player was not found.");
         }
         ensureBankInitialized(game);
 
-        int giveAmount = amount * 4;
-        int currentGive = getResourceByName(source, giveResource);
-        int currentReceive = getResourceByName(source, receiveResource);
-        int bankReceiveAvailable = getBankResourceByName(game, receiveResource);
-        if (currentGive < giveAmount) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for bank trade.");
-        }
-        if (bankReceiveAvailable < amount) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Bank does not have enough resources for this trade.");
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            int receiveAmount = receiveBundle.get(resource);
+            if (getResourceByName(source, resource) < giveAmount) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for bank trade.");
+            }
+            if (getBankResourceByName(game, resource) < receiveAmount) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Bank does not have enough resources for this trade.");
+            }
         }
 
-        setResourceByName(source, giveResource, currentGive - giveAmount);
-        setResourceByName(source, receiveResource, currentReceive + amount);
-        addToBank(game, giveResource, giveAmount);
-        removeFromBank(game, receiveResource, amount);
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            int receiveAmount = receiveBundle.get(resource);
+            if (giveAmount > 0) {
+                setResourceByName(source, resource, getResourceByName(source, resource) - giveAmount);
+                addToBank(game, resource, giveAmount);
+            }
+            if (receiveAmount > 0) {
+                setResourceByName(source, resource, getResourceByName(source, resource) + receiveAmount);
+                removeFromBank(game, resource, receiveAmount);
+            }
+        }
 
         game.setPlayers(players);
         return gameRepository.save(game);
     }
 
-    public Game applyPlayerTrade(Long gameId, String playerToken, Long sourcePlayerId, Long targetPlayerId,
-            String giveResource, String receiveResource, Integer amount) {
-        authenticate(playerToken);
+    public void validatePlayerTradeRequest(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+        User authenticatedUser = authenticate(playerToken);
+        validatePlayerTradePayload(gameId, tradeEvent, false);
 
-        if (sourcePlayerId == null || targetPlayerId == null || giveResource == null || receiveResource == null || amount == null || amount < 1) {
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        List<Player> players = game.getPlayers();
+        Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
+        if (source == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trade player was not found.");
+        }
+
+        ensurePlayerMatchesAuthenticatedUser(source, authenticatedUser, "request trade");
+    }
+
+    public void validatePlayerTradeResponse(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+        User authenticatedUser = authenticate(playerToken);
+        validatePlayerTradePayload(gameId, tradeEvent, false);
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        List<Player> players = game.getPlayers();
+        Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
+        Player target = findPlayerById(players, tradeEvent.getTargetPlayerId());
+        if (source == null || target == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trade player was not found.");
+        }
+
+        ensurePlayerMatchesAuthenticatedUser(target, authenticatedUser, "respond to trade request");
+
+        if (tradeEvent.getTradeAction() != null && "ACCEPT".equalsIgnoreCase(tradeEvent.getTradeAction())) {
+            Map<String, Integer> receiveBundle;
+            if (tradeEvent.getReceiveResources() != null) {
+                receiveBundle = normalizeTradeBundle(tradeEvent.getReceiveResources());
+            } else {
+                if (tradeEvent.getReceiveResource() == null) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+                }
+
+                Integer receiveAmount = tradeEvent.getReceiveAmount() != null ? tradeEvent.getReceiveAmount() : tradeEvent.getAmount();
+                if (receiveAmount == null || receiveAmount < 1) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+                }
+                receiveBundle = createSingleResourceBundle(tradeEvent.getReceiveResource(), receiveAmount);
+            }
+
+            for (String resource : TRADE_RESOURCES) {
+                int receiveAmount = receiveBundle.get(resource);
+                if (getResourceByName(target, resource) < receiveAmount) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for player trade.");
+                }
+            }
+        }
+    }
+
+    public Game applyPlayerTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+        User authenticatedUser = authenticate(playerToken);
+
+        if (tradeEvent == null || tradeEvent.getSourcePlayerId() == null || tradeEvent.getTargetPlayerId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+        }
+
+        if (tradeEvent.getTradeAction() != null && "REQUEST".equalsIgnoreCase(tradeEvent.getTradeAction())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trade requests cannot be executed immediately.");
+        }
+
+        Map<String, Integer> giveBundle;
+        Map<String, Integer> receiveBundle;
+        if (tradeEvent.getGiveResources() != null || tradeEvent.getReceiveResources() != null) {
+            giveBundle = normalizeTradeBundle(tradeEvent.getGiveResources());
+            receiveBundle = normalizeTradeBundle(tradeEvent.getReceiveResources());
+        } else {
+            if (tradeEvent.getGiveResource() == null || tradeEvent.getReceiveResource() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+            Integer giveAmount = tradeEvent.getGiveAmount() != null ? tradeEvent.getGiveAmount() : tradeEvent.getAmount();
+            Integer receiveAmount = tradeEvent.getReceiveAmount() != null ? tradeEvent.getReceiveAmount() : tradeEvent.getAmount();
+            if (giveAmount == null || receiveAmount == null || giveAmount < 1 || receiveAmount < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+            giveBundle = createSingleResourceBundle(tradeEvent.getGiveResource(), giveAmount);
+            receiveBundle = createSingleResourceBundle(tradeEvent.getReceiveResource(), receiveAmount);
+        }
+
+        if (sumTradeBundle(giveBundle) < 1 || sumTradeBundle(receiveBundle) < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
         }
 
@@ -446,28 +558,135 @@ public class GameService {
                 "Game with id " + gameId + " was not found."));
 
         List<Player> players = game.getPlayers();
-        Player source = findPlayerById(players, sourcePlayerId);
-        Player target = findPlayerById(players, targetPlayerId);
+        Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
+        Player target = findPlayerById(players, tradeEvent.getTargetPlayerId());
         if (source == null || target == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trade player was not found.");
         }
 
-        int sourceGive = getResourceByName(source, giveResource);
-        int sourceReceive = getResourceByName(source, receiveResource);
-        int targetGive = getResourceByName(target, giveResource);
-        int targetReceive = getResourceByName(target, receiveResource);
+        ensurePlayerMatchesAuthenticatedUser(target, authenticatedUser, "accept trade request");
 
-        if (sourceGive < amount || targetReceive < amount) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for player trade.");
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            int receiveAmount = receiveBundle.get(resource);
+            if (getResourceByName(source, resource) < giveAmount || getResourceByName(target, resource) < receiveAmount) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for player trade.");
+            }
         }
 
-        setResourceByName(source, giveResource, sourceGive - amount);
-        setResourceByName(source, receiveResource, sourceReceive + amount);
-        setResourceByName(target, receiveResource, targetReceive - amount);
-        setResourceByName(target, giveResource, targetGive + amount);
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            int receiveAmount = receiveBundle.get(resource);
+
+            if (giveAmount > 0) {
+                setResourceByName(source, resource, getResourceByName(source, resource) - giveAmount);
+                setResourceByName(target, resource, getResourceByName(target, resource) + giveAmount);
+            }
+            if (receiveAmount > 0) {
+                setResourceByName(target, resource, getResourceByName(target, resource) - receiveAmount);
+                setResourceByName(source, resource, getResourceByName(source, resource) + receiveAmount);
+            }
+        }
 
         game.setPlayers(players);
         return gameRepository.save(game);
+    }
+
+    private void validatePlayerTradePayload(Long gameId, GameEventDTO tradeEvent, boolean requireTarget) {
+        if (tradeEvent == null || tradeEvent.getSourcePlayerId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+        }
+
+        if (requireTarget && tradeEvent.getTargetPlayerId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+        }
+
+        if (tradeEvent.getTradeAction() != null && "REQUEST".equalsIgnoreCase(tradeEvent.getTradeAction())) {
+            if (tradeEvent.getGiveResources() != null || tradeEvent.getReceiveResources() != null) {
+                normalizeTradeBundle(tradeEvent.getGiveResources());
+                normalizeTradeBundle(tradeEvent.getReceiveResources());
+                return;
+            }
+
+            if (tradeEvent.getGiveResource() == null || tradeEvent.getReceiveResource() == null || tradeEvent.getAmount() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+
+            if (tradeEvent.getAmount() < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+        }
+    }
+
+    private Map<String, Integer> normalizeTradeBundle(Map<String, Integer> bundle) {
+        Map<String, Integer> normalized = new HashMap<>();
+        for (String resource : TRADE_RESOURCES) {
+            normalized.put(resource, 0);
+        }
+
+        if (bundle == null) {
+            return normalized;
+        }
+
+        for (Map.Entry<String, Integer> entry : bundle.entrySet()) {
+            if (entry.getKey() == null) {
+                continue;
+            }
+
+            String resource = entry.getKey().toLowerCase(Locale.ROOT);
+            if (!normalized.containsKey(resource)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid trade resource payload.");
+            }
+
+            Integer amountValue = entry.getValue();
+            int amount = amountValue != null ? amountValue.intValue() : 0;
+            if (amount < 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid trade resource payload.");
+            }
+
+            normalized.put(resource, amount);
+        }
+
+        return normalized;
+    }
+
+    private Map<String, Integer> createSingleResourceBundle(String resource, int amount) {
+        if (resource == null || amount < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid trade resource payload.");
+        }
+
+        Map<String, Integer> bundle = normalizeTradeBundle(null);
+        String normalizedResource = resource.toLowerCase(Locale.ROOT);
+        if (!bundle.containsKey(normalizedResource)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid trade resource payload.");
+        }
+
+        bundle.put(normalizedResource, amount);
+        return bundle;
+    }
+
+    private int sumTradeBundle(Map<String, Integer> bundle) {
+        int sum = 0;
+        for (String resource : TRADE_RESOURCES) {
+            sum += Math.max(0, bundle.getOrDefault(resource, 0));
+        }
+        return sum;
+    }
+
+    private void ensurePlayerMatchesAuthenticatedUser(Player player, User authenticatedUser, String actionDescription) {
+        if (player == null || authenticatedUser == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the targeted player can " + actionDescription + ".");
+        }
+
+        if (isSameUserById(player, authenticatedUser) || isSameUserByName(player, authenticatedUser)) {
+            return;
+        }
+
+        if (!hasResolvableCurrentPlayerIdentity(player)) {
+            return;
+        }
+
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the targeted player can " + actionDescription + ".");
     }
 
     public Game rollDice(Long gameId, String playerToken) {
