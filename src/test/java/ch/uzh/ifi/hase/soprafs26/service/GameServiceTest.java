@@ -2,6 +2,7 @@ package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -9,12 +10,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
@@ -28,6 +31,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 
@@ -1441,6 +1445,299 @@ class GameServiceTest {
         assertEquals("ACTIVE", updatedGame.getGamePhase());
         assertEquals("ROLL_DICE", updatedGame.getTurnPhase());
         assertEquals(0, updatedGame.getCurrentTurnIndex());
+    }
+
+    // ============ Player Trading Tests ============
+
+    @Test
+    void applyPlayerTrade_validTrade_resourcesTransferredCorrectly() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 500L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        // Set initial resources
+        sourcePlayer.setWood(5);
+        sourcePlayer.setBrick(5);
+        targetPlayer.setWood(5);
+        targetPlayer.setBrick(5);
+
+        // Source gives 1 wood, receives 1 brick
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user); // Authenticate as source player
+
+        Game result = gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent);
+
+        // Verify resources after trade
+        assertEquals(4, result.getPlayers().get(0).getWood()); // Source gave 1 wood
+        assertEquals(6, result.getPlayers().get(0).getBrick()); // Source received 1 brick
+        assertEquals(6, result.getPlayers().get(1).getWood()); // Target received 1 wood
+        assertEquals(4, result.getPlayers().get(1).getBrick()); // Target gave 1 brick
+    }
+
+    @Test
+    void applyPlayerTrade_sourceInsufficientResources_throwsConflict() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 501L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        // Set initial resources (source has only 1 wood)
+        sourcePlayer.setWood(1);
+        sourcePlayer.setBrick(5);
+        targetPlayer.setWood(5);
+        targetPlayer.setBrick(5);
+
+        // Source tries to give 2 wood, receives 1 brick
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 2));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(sourcePlayer.getUser().getId());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Not enough resources for player trade."));
+    }
+
+    @Test
+    void applyPlayerTrade_targetInsufficientResources_throwsConflict() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 502L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        // Set initial resources (target has only 0 brick)
+        sourcePlayer.setWood(5);
+        sourcePlayer.setBrick(5);
+        targetPlayer.setWood(5);
+        targetPlayer.setBrick(0);
+
+        // Source gives 1 wood, receives 1 brick (target doesn't have 1 brick)
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(sourcePlayer.getUser().getId());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Not enough resources for player trade."));
+    }
+
+    @Test
+    void applyPlayerTrade_authenticatedUserNotSource_throwsForbidden() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 503L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(targetPlayer.getUser().getId()); // Authenticate as target player, not source
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent));
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Only the targeted player can finalize trade."));
+    }
+
+    @Test
+    void validatePlayerTradeRequest_validRequest_noException() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 504L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        sourcePlayer.setWood(5);
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+        tradeEvent.setTradeAction("REQUEST");
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(sourcePlayer.getUser().getId());
+
+        gameService.validatePlayerTradeRequest(gameId, "valid-token", tradeEvent);
+        // No exception means success
+    }
+
+    @Test
+    void validatePlayerTradeRequest_sourceInsufficientResources_throwsConflict() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 505L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        sourcePlayer.setWood(0); // Source has no wood
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+        tradeEvent.setTradeAction("REQUEST");
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(sourcePlayer.getUser().getId());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.validatePlayerTradeRequest(gameId, "valid-token", tradeEvent));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Not enough resources for player trade."));
+    }
+
+    @Test
+    void validatePlayerTradeResponse_acceptWithSufficientResources_noException() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 506L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+        targetPlayer.setBrick(5); // Target has brick to give
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1)); // Source wants to give wood
+        tradeEvent.setReceiveResources(Map.of("brick", 1)); // Source wants to receive brick (target gives brick)
+        tradeEvent.setTradeAction("ACCEPT");
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(targetPlayer.getUser().getId()); // Authenticate as target player
+
+        gameService.validatePlayerTradeResponse(gameId, "valid-token", tradeEvent);
+        // No exception means success
+    }
+
+    @Test
+    void validatePlayerTradeResponse_acceptWithInsufficientResources_throwsConflict() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 507L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+        targetPlayer.setBrick(0); // Target has no brick to give
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+        tradeEvent.setTradeAction("ACCEPT");
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(targetPlayer.getUser().getId());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.validatePlayerTradeResponse(gameId, "valid-token", tradeEvent));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Not enough resources for player trade."));
+    }
+
+    @Test
+    void validatePlayerTradeResponse_deny_noException() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 508L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+        tradeEvent.setTradeAction("DENY");
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(targetPlayer.getUser().getId());
+
+        gameService.validatePlayerTradeResponse(gameId, "valid-token", tradeEvent);
+        // No exception means success
+    }
+
+    @Test
+    void applyPlayerTrade_multipleResources_transferredCorrectly() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 509L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        // Set initial resources
+        sourcePlayer.setWood(5); sourcePlayer.setBrick(5); sourcePlayer.setWool(5);
+        targetPlayer.setWood(5); targetPlayer.setBrick(5); targetPlayer.setWool(5);
+
+        // Source gives 1 wood, 1 brick; receives 1 wool
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1, "brick", 1));
+        tradeEvent.setReceiveResources(Map.of("wool", 1));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(sourcePlayer.getUser().getId());
+
+        Game result = gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent);
+
+        // Verify source player resources
+        assertEquals(4, result.getPlayers().get(0).getWood());
+        assertEquals(4, result.getPlayers().get(0).getBrick());
+        assertEquals(6, result.getPlayers().get(0).getWool());
+
+        // Verify target player resources
+        assertEquals(6, result.getPlayers().get(1).getWood());
+        assertEquals(6, result.getPlayers().get(1).getBrick());
+        assertEquals(4, result.getPlayers().get(1).getWool());
     }
 
     // ============ Helper Methods ============

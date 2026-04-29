@@ -476,6 +476,27 @@ public class GameService {
         }
 
         ensurePlayerMatchesAuthenticatedUser(source, authenticatedUser, "request trade");
+        // Verify source has enough resources for the requested give bundle
+        Map<String, Integer> giveBundle;
+        if (tradeEvent.getGiveResources() != null) {
+            giveBundle = normalizeTradeBundle(tradeEvent.getGiveResources());
+        } else {
+            if (tradeEvent.getGiveResource() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+            Integer giveAmount = tradeEvent.getGiveAmount() != null ? tradeEvent.getGiveAmount() : tradeEvent.getAmount();
+            if (giveAmount == null || giveAmount < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+            giveBundle = createSingleResourceBundle(tradeEvent.getGiveResource(), giveAmount);
+        }
+
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            if (getResourceByName(source, resource) < giveAmount) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for player trade.");
+            }
+        }
     }
 
     public void validatePlayerTradeResponse(Long gameId, String playerToken, GameEventDTO tradeEvent) {
@@ -1530,6 +1551,11 @@ public class GameService {
         Player player = new Player();
         player.setId(playerDto.getId());
         player.setName(playerDto.getName());
+        // Attach a lightweight User object so player identity can be resolved in service
+        User linkedUser = new User();
+        linkedUser.setId(playerDto.getId());
+        linkedUser.setUsername(playerDto.getName());
+        player.setUser(linkedUser);
         player.setSettlementPoints(playerDto.getSettlementPoints());
         player.setCityPoints(playerDto.getCityPoints());
         player.setDevelopmentCardVictoryPoints(playerDto.getDevelopmentCardVictoryPoints());
