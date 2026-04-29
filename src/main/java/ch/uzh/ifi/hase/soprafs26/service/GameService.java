@@ -564,7 +564,7 @@ public class GameService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trade player was not found.");
         }
 
-        ensurePlayerMatchesAuthenticatedUser(target, authenticatedUser, "accept trade request");
+        ensurePlayerMatchesAuthenticatedUser(source, authenticatedUser, "finalize trade");
 
         for (String resource : TRADE_RESOURCES) {
             int giveAmount = giveBundle.get(resource);
