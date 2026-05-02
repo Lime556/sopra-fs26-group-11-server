@@ -136,7 +136,7 @@ public class UserService {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
 		}
 
-		if (user.getUserStatus() != UserStatus.ONLINE) {
+		if (user.getUserStatus() == UserStatus.OFFLINE) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
 		}
 
@@ -158,7 +158,7 @@ public class UserService {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
 		}
 
-		if (user.getUserStatus() != UserStatus.ONLINE) {
+		if (user.getUserStatus() == UserStatus.OFFLINE) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
 		}
 
