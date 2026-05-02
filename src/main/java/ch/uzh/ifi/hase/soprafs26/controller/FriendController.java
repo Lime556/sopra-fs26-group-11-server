@@ -11,16 +11,16 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendRequestGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendRequestPostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.mapper.DTOMapper;
-import ch.uzh.ifi.hase.soprafs26.service.FriendRequestService;
+import ch.uzh.ifi.hase.soprafs26.service.FriendService;
 import org.springframework.web.bind.annotation.*;
 
 
 @RestController
-public class FriendRequestController {
+public class FriendController {
     
-    private final FriendRequestService friendRequestService;
+    private final FriendService friendRequestService;
 
-    public FriendRequestController(FriendRequestService friendRequestService) {
+    public FriendController(FriendService friendRequestService) {
         this.friendRequestService = friendRequestService;
     }
 

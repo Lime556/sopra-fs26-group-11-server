@@ -16,13 +16,13 @@ import jakarta.transaction.Transactional;
 
 @Service
 @Transactional
-public class FriendRequestService {
+public class FriendService {
     
     private final FriendRequestRepository friendRequestRepository;
     private final FriendshipRepository friendshipRepository;
     private final UserService userService;
 
-    public FriendRequestService(
+    public FriendService(
         FriendRequestRepository friendRequestRepository, 
         FriendshipRepository friendshipRepository, 
         UserService userService
