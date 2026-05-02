@@ -1,5 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -110,5 +112,27 @@ public class FriendRequestService {
         friendRequest.setStatus(FriendRequestStatus.DECLINED);
     
         return friendRequestRepository.saveAndFlush(friendRequest);
+    }
+
+    public List<User> getFriends(String token) {
+        User user = userService.authenticate(token);
+
+        List<Friendship> friendships = friendshipRepository.findByUserAOrUserB(user, user);
+
+        List <User> friends = new java.util.ArrayList<>();
+        
+        for (Friendship friendship: friendships) {
+            User friend;
+
+            if (friendship.getUserA().getId().equals(user.getId())) {
+                friend = friendship.getUserB();
+            } else {
+                friend = friendship.getUserA();
+            }
+            
+            friends.add(friend);
+        }
+
+        return friends;
     }
 }

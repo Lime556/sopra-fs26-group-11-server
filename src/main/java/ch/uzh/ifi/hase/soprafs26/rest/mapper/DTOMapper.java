@@ -9,6 +9,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendRequestGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStartGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
@@ -74,4 +75,6 @@ public interface DTOMapper {
 	@Mapping(source = "status", target = "status")
 	@Mapping(source = "createdAt", target = "createdAt")
 	FriendRequestGetDTO convertEntityToFriendRequestGetDTO(FriendRequest friendRequest);
+
+	FriendGetDTO convertEntityToFriendGetDTO(User user);
 }

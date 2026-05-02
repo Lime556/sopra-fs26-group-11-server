@@ -1,8 +1,13 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 
 import ch.uzh.ifi.hase.soprafs26.entity.FriendRequest;
+import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendRequestGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendRequestPostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.mapper.DTOMapper;
@@ -56,6 +61,23 @@ public class FriendRequestController {
         FriendRequest friendRequest = friendRequestService.declineFriendRequest(token, requestId);
 
         return DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(friendRequest);
+    }
+
+    @GetMapping("/friends")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public List<FriendGetDTO> getFriends(
+        @RequestHeader(value = "Authorization", required = false) String token
+    ) {
+        List<User> friends = friendRequestService.getFriends(token);
+
+        List<FriendGetDTO> friendGetDTOs = new ArrayList<>();
+
+        for (User friend : friends) {
+            friendGetDTOs.add(DTOMapper.INSTANCE.convertEntityToFriendGetDTO(friend));
+        }
+
+        return friendGetDTOs;
     }
     
 }
