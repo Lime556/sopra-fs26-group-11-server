@@ -1,6 +1,5 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.HttpStatus;
 
 import ch.uzh.ifi.hase.soprafs26.entity.FriendRequest;
@@ -32,6 +31,30 @@ public class FriendRequestController {
             friendRequestPostDTO.getReceiverId()
         );
         
+        return DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(friendRequest);
+    }
+
+    @PutMapping("/friend-requests/{requestId}/accept")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public FriendRequestGetDTO acceptFriendRequest(
+        @RequestHeader(value = "Authorization", required = false) String token,
+        @PathVariable Long requestId
+    ) {
+        FriendRequest friendRequest = friendRequestService.acceptFriendRequest(token, requestId);
+
+        return DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(friendRequest);
+    }
+
+    @PutMapping("/friend-requests/{requestId}/decline")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public FriendRequestGetDTO declineFriendRequest(
+        @RequestHeader(value = "Authorization", required = false) String token,
+        @PathVariable Long requestId
+    ) {
+        FriendRequest friendRequest = friendRequestService.declineFriendRequest(token, requestId);
+
         return DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(friendRequest);
     }
     

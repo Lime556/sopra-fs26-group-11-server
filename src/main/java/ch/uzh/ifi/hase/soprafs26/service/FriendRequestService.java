@@ -6,6 +6,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.constant.FriendRequestStatus;
 import ch.uzh.ifi.hase.soprafs26.entity.FriendRequest;
+import ch.uzh.ifi.hase.soprafs26.entity.Friendship;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.FriendRequestRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.FriendshipRepository;
@@ -57,6 +58,57 @@ public class FriendRequestService {
         friendRequest.setStatus(FriendRequestStatus.PENDING);
         friendRequest.setCreatedAt(java.time.Instant.now());
 
+        return friendRequestRepository.saveAndFlush(friendRequest);
+    }
+
+    public FriendRequest acceptFriendRequest(String token, Long requestId) {
+        User receiver = userService.authenticate(token);
+
+        FriendRequest friendRequest = friendRequestRepository.findById(requestId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Friend request not found."));
+        
+        if (!friendRequest.getReceiver().getId().equals(receiver.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the receiver can accept this friend request.");
+        }
+
+        if (friendRequest.getStatus() != FriendRequestStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Friend request is no longer pending.");
+        }
+
+        if (friendshipRepository.existsByUserAAndUserB(friendRequest.getSender(), friendRequest.getReceiver())
+            || friendshipRepository.existsByUserAAndUserB(friendRequest.getReceiver(), friendRequest.getSender())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You are already friends with this user.");
+        }
+
+        friendRequest.setStatus(FriendRequestStatus.ACCEPTED);
+        friendRequestRepository.save(friendRequest);
+
+        Friendship friendship = new Friendship();
+        friendship.setUserA(friendRequest.getSender());
+        friendship.setUserB(friendRequest.getReceiver());
+        friendship.setCreatedAt(java.time.Instant.now());
+
+        friendshipRepository.saveAndFlush(friendship);
+
+        return friendRequest;
+    }
+
+    public FriendRequest declineFriendRequest(String token, Long requestId) {
+        User receiver = userService.authenticate(token);
+    
+        FriendRequest friendRequest = friendRequestRepository.findById(requestId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Friend request not found."));
+    
+        if (!friendRequest.getReceiver().getId().equals(receiver.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the receiver can decline this friend request.");
+        }
+    
+        if (friendRequest.getStatus() != FriendRequestStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Friend request is no longer pending.");
+        }
+    
+        friendRequest.setStatus(FriendRequestStatus.DECLINED);
+    
         return friendRequestRepository.saveAndFlush(friendRequest);
     }
 }
