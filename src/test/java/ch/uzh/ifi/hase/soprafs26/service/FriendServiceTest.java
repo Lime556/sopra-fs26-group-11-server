@@ -397,4 +397,67 @@ public class FriendServiceTest {
         Mockito.verify(friendshipRepository, Mockito.times(1))
             .findByUserAOrUserB(sender, sender);
     }
+
+
+
+
+
+    
+    // ============ Get Pending Friend Request Tests ============
+
+    @Test
+    public void getPendingFriendRequests_validToken_returnsPendingRequests() {
+        FriendRequest request = new FriendRequest();
+        request.setId(100L);
+        request.setSender(sender);
+        request.setReceiver(receiver);
+        request.setStatus(FriendRequestStatus.PENDING);
+
+        Mockito.when(friendRequestRepository.findByReceiverAndStatus(
+            receiver,
+            FriendRequestStatus.PENDING
+        )).thenReturn(List.of(request));
+
+        List<FriendRequest> result = friendService.getPendingFriendRequests("receiver-token");
+
+        assertEquals(1, result.size());
+        assertEquals(request, result.get(0));
+
+        Mockito.verify(userService, Mockito.times(1)).authenticate("receiver-token");
+        Mockito.verify(friendRequestRepository, Mockito.times(1))
+            .findByReceiverAndStatus(receiver, FriendRequestStatus.PENDING);
+    }
+
+    @Test
+    public void getPendingFriendRequests_noPendingRequests_returnsEmptyList() {
+        Mockito.when(friendRequestRepository.findByReceiverAndStatus(
+            receiver,
+            FriendRequestStatus.PENDING
+        )).thenReturn(List.of());
+
+        List<FriendRequest> result = friendService.getPendingFriendRequests("receiver-token");
+
+        assertNotNull(result);
+        assertEquals(0, result.size());
+
+        Mockito.verify(userService, Mockito.times(1)).authenticate("receiver-token");
+        Mockito.verify(friendRequestRepository, Mockito.times(1))
+            .findByReceiverAndStatus(receiver, FriendRequestStatus.PENDING);
+    }
+
+    @Test
+    public void getPendingFriendRequests_missingToken_throwsUnauthorized() {
+        Mockito.when(userService.authenticate(null))
+            .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"));
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> friendService.getPendingFriendRequests(null)
+        );
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+
+        Mockito.verify(friendRequestRepository, Mockito.never())
+            .findByReceiverAndStatus(Mockito.any(), Mockito.any());
+    }
 }

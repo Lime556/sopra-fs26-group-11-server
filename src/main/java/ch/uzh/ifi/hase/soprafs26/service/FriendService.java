@@ -63,6 +63,15 @@ public class FriendService {
         return friendRequestRepository.saveAndFlush(friendRequest);
     }
 
+    public List<FriendRequest> getPendingFriendRequests(String token) {
+        User receiver = userService.authenticate(token);
+    
+        return friendRequestRepository.findByReceiverAndStatus(
+            receiver,
+            FriendRequestStatus.PENDING
+        );
+    }
+
     public FriendRequest acceptFriendRequest(String token, Long requestId) {
         User receiver = userService.authenticate(token);
 

@@ -18,10 +18,10 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 public class FriendController {
     
-    private final FriendService friendRequestService;
+    private final FriendService friendService;
 
-    public FriendController(FriendService friendRequestService) {
-        this.friendRequestService = friendRequestService;
+    public FriendController(FriendService friendService) {
+        this.friendService = friendService;
     }
 
     @PostMapping("/friend-requests")
@@ -31,12 +31,31 @@ public class FriendController {
         @RequestHeader(value = "Authorization", required = false) String token,
         @RequestBody FriendRequestPostDTO friendRequestPostDTO
     ) {
-        FriendRequest friendRequest = friendRequestService.sendFriendRequest(
+        FriendRequest friendRequest = friendService.sendFriendRequest(
             token, 
             friendRequestPostDTO.getReceiverId()
         );
         
         return DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(friendRequest);
+    }
+
+    @GetMapping("/friend-requests")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public List<FriendRequestGetDTO> getPendingFriendRequests(
+        @RequestHeader(value = "Authorization", required = false) String token
+    ) {
+        List<FriendRequest> friendRequests = friendService.getPendingFriendRequests(token);
+
+        List<FriendRequestGetDTO> friendRequestGetDTOs = new ArrayList<>();
+
+        for (FriendRequest friendRequest : friendRequests) {
+            friendRequestGetDTOs.add(
+                DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(friendRequest)
+            );
+        }
+
+        return friendRequestGetDTOs;
     }
 
     @PutMapping("/friend-requests/{requestId}/accept")
@@ -46,7 +65,7 @@ public class FriendController {
         @RequestHeader(value = "Authorization", required = false) String token,
         @PathVariable Long requestId
     ) {
-        FriendRequest friendRequest = friendRequestService.acceptFriendRequest(token, requestId);
+        FriendRequest friendRequest = friendService.acceptFriendRequest(token, requestId);
 
         return DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(friendRequest);
     }
@@ -58,7 +77,7 @@ public class FriendController {
         @RequestHeader(value = "Authorization", required = false) String token,
         @PathVariable Long requestId
     ) {
-        FriendRequest friendRequest = friendRequestService.declineFriendRequest(token, requestId);
+        FriendRequest friendRequest = friendService.declineFriendRequest(token, requestId);
 
         return DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(friendRequest);
     }
@@ -69,7 +88,7 @@ public class FriendController {
     public List<FriendGetDTO> getFriends(
         @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        List<User> friends = friendRequestService.getFriends(token);
+        List<User> friends = friendService.getFriends(token);
 
         List<FriendGetDTO> friendGetDTOs = new ArrayList<>();
 
