@@ -4,10 +4,12 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
 
+import ch.uzh.ifi.hase.soprafs26.entity.FriendRequest;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendRequestGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStartGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyParticipantGetDTO;
@@ -62,4 +64,14 @@ public interface DTOMapper {
 
 	@Mapping(source = "id", target = "gameId")
 	GameStartGetDTO convertEntityToGameStartGetDTO(Game game);
+
+
+	@Mapping(source = "id", target = "id")
+	@Mapping(source = "sender.id", target = "senderId")
+	@Mapping(source = "sender.username", target = "senderUsername")
+	@Mapping(source = "receiver.id", target = "receiverId")
+	@Mapping(source = "receiver.username", target = "receiverUsername")
+	@Mapping(source = "status", target = "status")
+	@Mapping(source = "createdAt", target = "createdAt")
+	FriendRequestGetDTO convertEntityToFriendRequestGetDTO(FriendRequest friendRequest);
 }

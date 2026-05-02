@@ -174,4 +174,9 @@ public class UserService {
         }
         return authorizationHeader.trim();
     }
+
+	public User getUserById(Long userId) {
+		return userRepository.findById(userId)
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+	}
 }
