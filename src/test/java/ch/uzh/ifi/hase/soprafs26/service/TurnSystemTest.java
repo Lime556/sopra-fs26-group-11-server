@@ -1,9 +1,26 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
-import ch.uzh.ifi.hase.soprafs26.entity.Game;
-import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
+import org.springframework.web.server.ResponseStatusException;
+
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.City;
+import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
@@ -13,22 +30,6 @@ import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.MockitoAnnotations;
-import org.springframework.web.server.ResponseStatusException;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Test suite for the turn system implementation.
@@ -100,6 +101,11 @@ public class TurnSystemTest {
         testGame.setCurrentTurnIndex(0);
         testGame.setTurnPhase(TurnPhase.ROLL_DICE.toString());
         testGame.setGamePhase(GamePhase.ACTIVE);
+        testGame.setBankWood(19);
+        testGame.setBankBrick(19);
+        testGame.setBankWool(19);
+        testGame.setBankWheat(19);
+        testGame.setBankOre(19);
 
         Mockito.when(gameRepository.save(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0));
         Mockito.when(gameRepository.findById(100L)).thenReturn(Optional.of(testGame));
@@ -150,7 +156,10 @@ public class TurnSystemTest {
     @Test
     public void distributeResourcesForDiceValue_settlement_grantsResources() {
         Board board = createUniformWoodBoardWithDice(8);
-        Intersection intersection = board.getIntersections().get(0);
+        Intersection intersection = board.getIntersections().stream()
+            .filter(i -> i != null && Integer.valueOf(0).equals(i.getId()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected intersection with id 0."));
 
         Settlement settlement = new Settlement();
         settlement.setOwnerPlayerId(1L);
@@ -171,6 +180,12 @@ public class TurnSystemTest {
     public void distributeResourcesForDiceValue_city_grantsDoubleSettlementResources() {
         Board settlementBoard = createUniformWoodBoardWithDice(9);
         Board cityBoard = createUniformWoodBoardWithDice(9);
+        Integer productiveIntersectionId = settlementBoard.getIntersections().stream()
+            .filter(i -> i != null && i.getId() != null)
+            .map(Intersection::getId)
+            .filter(id -> !settlementBoard.getAdjacentHexIdsForIntersection(id).isEmpty())
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected at least one intersection with adjacent hexes."));
 
         Player settlementOwner = new Player();
         settlementOwner.setId(1L);
@@ -193,18 +208,34 @@ public class TurnSystemTest {
         Game settlementGame = new Game();
         settlementGame.setBoard(settlementBoard);
         settlementGame.setPlayers(List.of(settlementOwner));
+        settlementGame.setBankWood(19);
+        settlementGame.setBankBrick(19);
+        settlementGame.setBankWool(19);
+        settlementGame.setBankWheat(19);
+        settlementGame.setBankOre(19);
 
         Game cityGame = new Game();
         cityGame.setBoard(cityBoard);
         cityGame.setPlayers(List.of(cityOwner));
+        cityGame.setBankWood(19);
+        cityGame.setBankBrick(19);
+        cityGame.setBankWool(19);
+        cityGame.setBankWheat(19);
+        cityGame.setBankOre(19);
 
-        Intersection settlementIntersection = settlementBoard.getIntersections().get(0);
+        Intersection settlementIntersection = settlementBoard.getIntersections().stream()
+            .filter(i -> i != null && productiveIntersectionId.equals(i.getId()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected settlement intersection."));
         Settlement settlement = new Settlement();
         settlement.setOwnerPlayerId(1L);
         settlement.setIntersectionId(settlementIntersection.getId());
         settlementIntersection.setBuilding(settlement);
 
-        Intersection cityIntersection = cityBoard.getIntersections().get(0);
+        Intersection cityIntersection = cityBoard.getIntersections().stream()
+            .filter(i -> i != null && productiveIntersectionId.equals(i.getId()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected city intersection."));
         City city = new City();
         city.setOwnerPlayerId(1L);
         city.setIntersectionId(cityIntersection.getId());

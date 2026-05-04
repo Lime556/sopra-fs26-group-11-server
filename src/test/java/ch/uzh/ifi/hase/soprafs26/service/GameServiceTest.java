@@ -2,6 +2,8 @@ package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,6 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
@@ -28,10 +31,11 @@ import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 
-public class GameServiceTest {
+class GameServiceTest {
 
     @Mock
     private GameRepository gameRepository;
@@ -45,7 +49,8 @@ public class GameServiceTest {
     private User user;
 
     @BeforeEach
-    public void setup() {
+    @SuppressWarnings("java:S1144")
+    void setup() {
         MockitoAnnotations.openMocks(this);
 
         user = new User();
@@ -58,7 +63,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void createGame_withoutBoard_generatesBoard() {
+    void createGame_withoutBoard_generatesBoard() {
         Game createdGame = gameService.createGame("valid-token", null);
 
         assertNotNull(createdGame.getBoard());
@@ -66,7 +71,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void createGame_withBlankDevelopmentDeck_usesDefaultDeck() {
+    void createGame_withBlankDevelopmentDeck_usesDefaultDeck() {
         GamePostDTO gamePostDTO = new GamePostDTO();
         gamePostDTO.setDevelopmentDeck(new DevelopmentDeckGetDTO());
 
@@ -80,7 +85,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void createGame_missingToken_throwsUnauthorized() {
+    void createGame_missingToken_throwsUnauthorized() {
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> gameService.createGame(null, null));
 
@@ -88,7 +93,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void createGame_recalculatesVictoryPointsAndWinner() {
+    void createGame_recalculatesVictoryPointsAndWinner() {
         GamePostDTO gamePostDTO = new GamePostDTO();
         gamePostDTO.setTargetVictoryPoints(10);
 
@@ -121,7 +126,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void updateGameState_detectsNewWinnerAndFinishesGame() {
+    void updateGameState_detectsNewWinnerAndFinishesGame() {
         Game existingGame = new Game();
         existingGame.setId(99L);
         existingGame.setTargetVictoryPoints(10);
@@ -157,7 +162,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void updateGameState_withoutPlayerAtTarget_hasNoWinner() {
+    void updateGameState_withoutPlayerAtTarget_hasNoWinner() {
         Game existingGame = new Game();
         existingGame.setId(100L);
         existingGame.setTargetVictoryPoints(10);
@@ -180,7 +185,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void endTurn_resetsGameStateAndClearsDiceValue() {
+    void endTurn_resetsGameStateAndClearsDiceValue() {
         Game testGame = new Game();
         testGame.setId(150L);
         testGame.setGamePhase("ACTIVE");
@@ -209,7 +214,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void endTurn_withMultiplePlayers_transitionsCorrectly() {
+    void endTurn_withMultiplePlayers_transitionsCorrectly() {
         Game testGame = new Game();
         testGame.setId(151L);
         testGame.setGamePhase("ACTIVE");
@@ -249,7 +254,7 @@ public class GameServiceTest {
 
     // Tests for settlement placement and city upgrade logic
     @Test
-    public void addSettlementToPlayer_adjacentBuilding_throwsConflict() {
+    void addSettlementToPlayer_adjacentBuilding_throwsConflict() {
         Game game = new Game();
         game.setId(5L);
     
@@ -285,7 +290,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void upgradeSettlementToCity_withoutSettlement_throwsConflict() {
+    void upgradeSettlementToCity_withoutSettlement_throwsConflict() {
         Game game = new Game();
         game.setId(201L);
     
@@ -313,7 +318,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void upgradeSettlementToCity_notEnoughResources_throwsConflict() {
+    void upgradeSettlementToCity_notEnoughResources_throwsConflict() {
     Game game = new Game();
     game.setId(202L);
 
@@ -347,7 +352,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void addRoadToPlayer_validRequest_deductsResourcesAndPlacesRoad() {
+    void addRoadToPlayer_validRequest_deductsResourcesAndPlacesRoad() {
         Game game = new Game();
         game.setId(210L);
     
@@ -389,7 +394,7 @@ public class GameServiceTest {
     }
     
     @Test
-    public void addSettlementToPlayer_validRequest_deductsResourcesAndPlacesSettlement() {
+    void addSettlementToPlayer_validRequest_deductsResourcesAndPlacesSettlement() {
         Game game = new Game();
         game.setId(220L);
     
@@ -430,7 +435,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void upgradeSettlementToCity_validRequest_updatesResourcesAndPoints() {
+    void upgradeSettlementToCity_validRequest_updatesResourcesAndPoints() {
         Game game = new Game();
         game.setId(200L);
     
@@ -482,7 +487,7 @@ public class GameServiceTest {
 
     // Tests for longest road and victory point recalculation logic
     @Test
-    public void recalculateVictoryState_fiveConnectedRoads_setsLongestRoad() {
+    void recalculateVictoryState_fiveConnectedRoads_setsLongestRoad() {
         Game game = new Game();
         game.setId(1L);
         game.setTargetVictoryPoints(10);
@@ -530,7 +535,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void recalculateVictoryState_fourConnectedRoads_doesNotSetLongestRoad() {
+    void recalculateVictoryState_fourConnectedRoads_doesNotSetLongestRoad() {
         Game game = new Game();
         game.setId(2L);
         game.setTargetVictoryPoints(10);
@@ -575,7 +580,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void recalculateVictoryState_branchingRoadNetwork_countsLongestPathNotAllEdges() {
+    void recalculateVictoryState_branchingRoadNetwork_countsLongestPathNotAllEdges() {
         Game game = new Game();
         game.setId(3L);
         game.setTargetVictoryPoints(10);
@@ -623,7 +628,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void recalculateVictoryState_opponentBuildingBlocksRoadContinuation() {
+    void recalculateVictoryState_opponentBuildingBlocksRoadContinuation() {
         Game game = new Game();
         game.setId(4L);
         game.setTargetVictoryPoints(10);
@@ -678,7 +683,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void placeInitialSettlement_setupPhase_validPlacement_success() {
+    void placeInitialSettlement_setupPhase_validPlacement_success() {
         Game game = new Game();
         game.setId(300L);
         game.setGamePhase("SETUP");
@@ -709,7 +714,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void placeInitialSettlement_notSetupPhase_throwsConflict() {
+    void placeInitialSettlement_notSetupPhase_throwsConflict() {
         Game game = new Game();
         game.setId(301L);
         game.setGamePhase("ACTIVE");
@@ -735,7 +740,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void placeInitialSettlement_adjacentToExisting_throwsConflict() {
+    void placeInitialSettlement_adjacentToExisting_throwsConflict() {
         Game game = new Game();
         game.setId(302L);
         game.setGamePhase("SETUP");
@@ -770,7 +775,7 @@ public class GameServiceTest {
     }   
 
     @Test
-    public void placeInitialRoad_setupPhase_validPlacement_success() {
+    void placeInitialRoad_setupPhase_validPlacement_success() {
         Game game = new Game();
         game.setId(310L);
         game.setGamePhase("SETUP");
@@ -807,7 +812,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void placeInitialRoad_notConnectedToSettlement_throwsBadRequest() {
+    void placeInitialRoad_notConnectedToSettlement_throwsBadRequest() {
         Game game = new Game();
         game.setId(311L);
         game.setGamePhase("SETUP");
@@ -826,17 +831,18 @@ public class GameServiceTest {
         Mockito.when(gameRepository.findById(311L)).thenReturn(Optional.of(game));
 
         Edge roadEdge = findEdge(board, 0, 1);
+        Integer roadEdgeId = roadEdge.getId();
 
         ResponseStatusException exception = assertThrows(
             ResponseStatusException.class,
-            () -> gameService.placeInitialRoad(311L, "valid-token", 10L, roadEdge.getId())
+            () -> gameService.placeInitialRoad(311L, "valid-token", 10L, roadEdgeId)
         );
 
         assertEquals("Road must connect to your own settlement.", exception.getReason());
     }
 
     @Test
-    public void placeInitialRoad_notConnectedToNewSettlement_throwsBadRequest() {
+    void placeInitialRoad_notConnectedToNewSettlement_throwsBadRequest() {
         Game game = new Game();
         game.setId(311L);
         game.setGamePhase("SETUP");
@@ -868,10 +874,11 @@ public class GameServiceTest {
         player.setLastPlacedSetupSettlementIntersectionId(0);
 
         Edge roadEdge = findEdge(board, 2, 3);
+        Integer roadEdgeId = roadEdge.getId();
 
         ResponseStatusException exception = assertThrows(
             ResponseStatusException.class,
-            () -> gameService.placeInitialRoad(311L, "valid-token", 10L, roadEdge.getId())
+            () -> gameService.placeInitialRoad(311L, "valid-token", 10L, roadEdgeId)
         );
 
         assertEquals(
@@ -881,7 +888,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void placeInitialRoad_occupiedEdge_throwsBadRequest() {
+    void placeInitialRoad_occupiedEdge_throwsBadRequest() {
         Game game = new Game();
         game.setId(312L);
         game.setGamePhase("SETUP");
@@ -914,17 +921,18 @@ public class GameServiceTest {
         game.setCurrentTurnIndex(0);
 
         Mockito.when(gameRepository.findById(312L)).thenReturn(Optional.of(game));
+        Integer roadEdgeId = roadEdge.getId();
 
         ResponseStatusException exception = assertThrows(
             ResponseStatusException.class,
-            () -> gameService.placeInitialRoad(312L, "valid-token", 10L, roadEdge.getId())
+            () -> gameService.placeInitialRoad(312L, "valid-token", 10L, roadEdgeId)
         );
 
         assertEquals("Edge occupied.", exception.getReason());
     }
 
     @Test
-    public void placeInitialRoad_secondSetupRound_grantsResourcesFromSecondSettlement() {
+    void placeInitialRoad_secondSetupRound_grantsResourcesFromSecondSettlement() {
         Game game = new Game();
         game.setId(313L);
         game.setGamePhase("SETUP_SECOND_ROUND");
@@ -964,7 +972,7 @@ public class GameServiceTest {
         player.setLastPlacedSetupSettlementIntersectionId(secondIntersectionId);
 
         Edge secondRoadEdge = board.getEdges().stream()
-            .filter(edge -> edge != null)
+            .filter(Objects::nonNull)
             .filter(edge -> edge.getRoad() == null)
             .filter(edge -> edge.getIntersectionAId() == secondIntersectionId || edge.getIntersectionBId() == secondIntersectionId)
             .findFirst()
@@ -1008,74 +1016,10 @@ public class GameServiceTest {
         assertEquals(expectedWheat, updatedPlayer.getWheat());
         assertEquals(expectedOre, updatedPlayer.getOre());
     }
-/*
-    @Test
-    public void placeInitialRoad_advancesTurnsInSnakeOrder() {
-        Game game = new Game();
-        game.setId(314L);
-        game.setGamePhase("SETUP");
-        game.setCurrentTurnIndex(1);
 
-        Player playerA = new Player();
-        playerA.setId(10L);
-        
-        Player playerB = new Player();
-        playerB.setId(11L);
-        playerB.setLastPlacedSetupSettlementIntersectionId(0);
-
-        Board board = new Board();
-        board.generateBoard();
-
-        // Player B current setup settlement and road placement.
-        Intersection bSettlementIntersection = findIntersection(board, 0);
-        Settlement bSettlement = new Settlement();
-        bSettlement.setOwnerPlayerId(11L);
-        bSettlement.setIntersectionId(0);
-        bSettlementIntersection.setBuilding(bSettlement);
-
-        game.setBoard(board);
-        game.setPlayers(List.of(playerA, playerB));
-
-        Mockito.when(gameRepository.findById(314L)).thenReturn(Optional.of(game));
-        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
-            .thenAnswer(invocation -> invocation.getArgument(0));
-
-        Edge bRoadEdge = findEdge(board, 0, 1);
-        Game afterFirstRoundRoad = gameService.placeInitialRoad(314L, "valid-token", 11L, bRoadEdge.getId());
-
-        assertEquals(1, afterFirstRoundRoad.getCurrentTurnIndex());
-
-        // In second round player B places settlement and road again, then turn should move to player A.
-        int secondIntersectionId = board.getIntersections().stream()
-            .map(Intersection::getId)
-            .filter(id -> id != null && id != 0)
-            .filter(id -> !areAdjacent(board, 0, id))
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("No second-round settlement intersection found."));
-
-        Settlement secondSettlement = new Settlement();
-        secondSettlement.setOwnerPlayerId(11L);
-        secondSettlement.setIntersectionId(secondIntersectionId);
-        findIntersection(board, secondIntersectionId).setBuilding(secondSettlement);
-        playerB.setLastPlacedSetupSettlementIntersectionId(secondIntersectionId);
-
-        Edge secondRoundRoad = board.getEdges().stream()
-            .filter(edge -> edge != null)
-            .filter(edge -> edge.getRoad() == null)
-            .filter(edge -> edge.getIntersectionAId() == secondIntersectionId || edge.getIntersectionBId() == secondIntersectionId)
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("No second-round road edge found."));
-
-        Game afterSecondRoundRoad = gameService.placeInitialRoad(314L, "valid-token", 11L, secondRoundRoad.getId());
-
-        assertEquals("SETUP_SECOND_ROUND", afterSecondRoundRoad.getGamePhase());
-        assertEquals(0, afterSecondRoundRoad.getCurrentTurnIndex());
-        assertTrue(afterSecondRoundRoad.isSetupPhase());
-    }
- */
     private boolean areAdjacent(Board board, int intersectionAId, int intersectionBId) {
         return board.getEdges().stream()
-            .filter(edge -> edge != null)
+            .filter(Objects::nonNull)
             .anyMatch(edge ->
                 (edge.getIntersectionAId() == intersectionAId && edge.getIntersectionBId() == intersectionBId)
                     || (edge.getIntersectionAId() == intersectionBId && edge.getIntersectionBId() == intersectionAId)
@@ -1087,7 +1031,7 @@ public class GameServiceTest {
         int max = Math.max(intersectionAId, intersectionBId);
 
         return board.getEdges().stream()
-            .filter(edge -> edge != null)
+            .filter(Objects::nonNull)
             .filter(edge -> edge.getIntersectionAId() != null && edge.getIntersectionBId() != null)
             .filter(edge -> edge.getIntersectionAId() == min && edge.getIntersectionBId() == max)
             .findFirst()
@@ -1105,7 +1049,7 @@ public class GameServiceTest {
 
     private Intersection findIntersection(Board board, int intersectionId) {
         return board.getIntersections().stream()
-            .filter(intersection -> intersection != null)
+            .filter(Objects::nonNull)
             .filter(intersection -> intersection.getId() != null)
             .filter(intersection -> intersection.getId() == intersectionId)
             .findFirst()
@@ -1117,7 +1061,7 @@ public class GameServiceTest {
     // ============ Knight Card Board-Adjacency Tests ============
 
     @Test
-    public void playKnightCard_withValidTargetWithSettlement_stealAttemptsValidation() {
+    void playKnightCard_withValidTargetWithSettlement_stealAttemptsValidation() {
         // This test validates that the adjacency checking is enforced
         Game game = createGameWithPlayers("valid-token", 2);
         Long gameId = 100L;
@@ -1132,7 +1076,7 @@ public class GameServiceTest {
         
         // Place defender's settlement somewhere on the board
         List<Intersection> intersections = game.getBoard().getIntersections();
-        if (intersections.size() > 0) {
+        if (!intersections.isEmpty()) {
             Intersection intersection = intersections.get(0);
             Settlement settlement = new Settlement();
             settlement.setOwnerPlayerId(defender.getId());
@@ -1157,7 +1101,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void playKnightCard_noSettlementOnTargetHex_validationEnforced() {
+    void playKnightCard_noSettlementOnTargetHex_validationEnforced() {
         // Test validates that we can't steal from a player with no buildings on the target hex
         Game game = createGameWithPlayers("valid-token", 2);
         Long gameId = 101L;
@@ -1174,16 +1118,18 @@ public class GameServiceTest {
         game.setRobberTileIndex(1);
         
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Long attackerId = attacker.getId();
+        Long defenderId = defender.getId();
         
         // Should throw conflict because no player has buildings on hex 1
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-            () -> gameService.playKnightCard(gameId, "valid-token", attacker.getId(), 1, defender.getId()));
+            () -> gameService.playKnightCard(gameId, "valid-token", attackerId, 1, defenderId));
         
         assertEquals(409, exception.getStatusCode().value());
     }
 
     @Test
-    public void playKnightCard_targetIsAttacker_noSteal() {
+    void playKnightCard_targetIsAttacker_noSteal() {
         Game game = createGameWithPlayers("valid-token", 2);
         Long gameId = 105L;
         game.setId(gameId);
@@ -1208,7 +1154,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void playKnightCard_multipleBuildingsOnHex_validationChecksAll() {
+    void playKnightCard_multipleBuildingsOnHex_validationChecksAll() {
         // Validates that adjacency check works with multiple buildings
         Game game = createGameWithPlayers("valid-token", 3);
         Long gameId = 106L;
@@ -1255,7 +1201,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void playKnightCard_incrementsKnightsPlayedForLargestArmy() {
+    void playKnightCard_incrementsKnightsPlayedForLargestArmy() {
         // Validates that largest army is calculated correctly after playing knight
         Game game = createGameWithPlayers("valid-token", 2);
         Long gameId = 107L;
@@ -1285,7 +1231,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void buyDevelopmentCard_drawsRoadBuildingCard_addsCardAndSpendsResources() {
+    void buyDevelopmentCard_drawsRoadBuildingCard_addsCardAndSpendsResources() {
         Game game = createGameWithPlayers("valid-token", 2);
         Long gameId = 200L;
         game.setId(gameId);
@@ -1312,7 +1258,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void buyDevelopmentCard_drawsVictoryPointCard_increasesVictoryCardPoints() {
+    void buyDevelopmentCard_drawsVictoryPointCard_increasesVictoryCardPoints() {
         Game game = createGameWithPlayers("valid-token", 2);
         Long gameId = 201L;
         game.setId(gameId);
@@ -1337,7 +1283,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void playRoadBuildingCard_grantsTwoFreeRoadsAndRemovesCard() {
+    void playRoadBuildingCard_grantsTwoFreeRoadsAndRemovesCard() {
         Game game = createGameWithPlayers("valid-token", 2);
         Long gameId = 202L;
         game.setId(gameId);
@@ -1355,7 +1301,7 @@ public class GameServiceTest {
     }
 
     @Test
-    public void playYearOfPlentyCard_grantsChosenResourcesAndRemovesCard() {
+    void playYearOfPlentyCard_grantsChosenResourcesAndRemovesCard() {
         Game game = createGameWithPlayers("valid-token", 2);
         Long gameId = 203L;
         game.setId(gameId);
@@ -1374,24 +1320,25 @@ public class GameServiceTest {
     }
 
     @Test
-    public void playYearOfPlentyCard_missingResource_throwsBadRequest() {
+    void playYearOfPlentyCard_missingResource_throwsBadRequest() {
         Game game = createGameWithPlayers("valid-token", 2);
         Long gameId = 204L;
         game.setId(gameId);
 
         Player player = game.getPlayers().get(0);
         player.setDevelopmentCards(List.of("year_of_plenty"));
+        Long playerId = player.getId();
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-            () -> gameService.playYearOfPlentyCard(gameId, "valid-token", player.getId(), "wood", null));
+            () -> gameService.playYearOfPlentyCard(gameId, "valid-token", playerId, "wood", null));
 
         assertEquals(400, exception.getStatusCode().value());
     }
 
     @Test
-    public void playMonopolyCard_collectsResourceFromOtherPlayersAndRemovesCard() {
+    void playMonopolyCard_collectsResourceFromOtherPlayersAndRemovesCard() {
         Game game = createGameWithPlayers("valid-token", 3);
         Long gameId = 205L;
         game.setId(gameId);
@@ -1416,24 +1363,25 @@ public class GameServiceTest {
     }
 
     @Test
-    public void playMonopolyCard_missingResource_throwsBadRequest() {
+    void playMonopolyCard_missingResource_throwsBadRequest() {
         Game game = createGameWithPlayers("valid-token", 2);
         Long gameId = 206L;
         game.setId(gameId);
 
         Player source = game.getPlayers().get(0);
         source.setDevelopmentCards(List.of("monopoly"));
+        Long sourceId = source.getId();
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-            () -> gameService.playMonopolyCard(gameId, "valid-token", source.getId(), null));
+            () -> gameService.playMonopolyCard(gameId, "valid-token", sourceId, null));
 
         assertEquals(400, exception.getStatusCode().value());
     }
 
     @Test
-    public void endTurn_lastPlayerSecondSetupRound_transitionsToActivePhase() {
+    void endTurn_lastPlayerSecondSetupRound_transitionsToActivePhase() {
         Game game = new Game();
         game.setId(400L);
         game.setGamePhase("SETUP_SECOND_ROUND"); // Start in second setup round
@@ -1455,36 +1403,36 @@ public class GameServiceTest {
         board.generateBoard();
 
         // Add 2 settlements for player1
-        Intersection int1_p1 = findIntersection(board, 0);
-        Settlement s1_p1 = new Settlement(); s1_p1.setOwnerPlayerId(10L); s1_p1.setIntersectionId(0);
-        int1_p1.setBuilding(s1_p1);
-        Intersection int2_p1 = findIntersection(board, 2);
-        Settlement s2_p1 = new Settlement(); s2_p1.setOwnerPlayerId(10L); s2_p1.setIntersectionId(2);
-        int2_p1.setBuilding(s2_p1);
+        Intersection intersection1Player1 = findIntersection(board, 0);
+        Settlement settlement1Player1 = new Settlement(); settlement1Player1.setOwnerPlayerId(10L); settlement1Player1.setIntersectionId(0);
+        intersection1Player1.setBuilding(settlement1Player1);
+        Intersection intersection2Player1 = findIntersection(board, 2);
+        Settlement settlement2Player1 = new Settlement(); settlement2Player1.setOwnerPlayerId(10L); settlement2Player1.setIntersectionId(2);
+        intersection2Player1.setBuilding(settlement2Player1);
 
         // Add 2 roads for player1
-        Edge edge1_p1 = findEdge(board, 0, 1);
-        Road r1_p1 = new Road(); r1_p1.setOwnerPlayerId(10L); r1_p1.setEdgeId(edge1_p1.getId());
-        edge1_p1.setRoad(r1_p1);
-        Edge edge2_p1 = findEdge(board, 2, 3);
-        Road r2_p1 = new Road(); r2_p1.setOwnerPlayerId(10L); r2_p1.setEdgeId(edge2_p1.getId());
-        edge2_p1.setRoad(r2_p1);
+        Edge edge1Player1 = findEdge(board, 0, 1);
+        Road road1Player1 = new Road(); road1Player1.setOwnerPlayerId(10L); road1Player1.setEdgeId(edge1Player1.getId());
+        edge1Player1.setRoad(road1Player1);
+        Edge edge2Player1 = findEdge(board, 2, 3);
+        Road road2Player1 = new Road(); road2Player1.setOwnerPlayerId(10L); road2Player1.setEdgeId(edge2Player1.getId());
+        edge2Player1.setRoad(road2Player1);
 
         // Add 2 settlements for player2 (to ensure game is ready for transition)
-        Intersection int1_p2 = findIntersection(board, 4);
-        Settlement s1_p2 = new Settlement(); s1_p2.setOwnerPlayerId(11L); s1_p2.setIntersectionId(4);
-        int1_p2.setBuilding(s1_p2);
-        Intersection int2_p2 = findIntersection(board, 6);
-        Settlement s2_p2 = new Settlement(); s2_p2.setOwnerPlayerId(11L); s2_p2.setIntersectionId(6);
-        int2_p2.setBuilding(s2_p2);
+        Intersection intersection1Player2 = findIntersection(board, 4);
+        Settlement settlement1Player2 = new Settlement(); settlement1Player2.setOwnerPlayerId(11L); settlement1Player2.setIntersectionId(4);
+        intersection1Player2.setBuilding(settlement1Player2);
+        Intersection intersection2Player2 = findIntersection(board, 6);
+        Settlement settlement2Player2 = new Settlement(); settlement2Player2.setOwnerPlayerId(11L); settlement2Player2.setIntersectionId(6);
+        intersection2Player2.setBuilding(settlement2Player2);
 
         // Add 2 roads for player2
-        Edge edge1_p2 = findEdge(board, 4, 5);
-        Road r1_p2 = new Road(); r1_p2.setOwnerPlayerId(11L); r1_p2.setEdgeId(edge1_p2.getId());
-        edge1_p2.setRoad(r1_p2);
-        Edge edge2_p2 = findEdge(board, 6, 7);
-        Road r2_p2 = new Road(); r2_p2.setOwnerPlayerId(11L); r2_p2.setEdgeId(edge2_p2.getId());
-        edge2_p2.setRoad(r2_p2);
+        Edge edge1Player2 = findEdge(board, 4, 5);
+        Road road1Player2 = new Road(); road1Player2.setOwnerPlayerId(11L); road1Player2.setEdgeId(edge1Player2.getId());
+        edge1Player2.setRoad(road1Player2);
+        Edge edge2Player2 = findEdge(board, 6, 7);
+        Road road2Player2 = new Road(); road2Player2.setOwnerPlayerId(11L); road2Player2.setEdgeId(edge2Player2.getId());
+        edge2Player2.setRoad(road2Player2);
 
         game.setBoard(board);
 
@@ -1497,6 +1445,299 @@ public class GameServiceTest {
         assertEquals("ACTIVE", updatedGame.getGamePhase());
         assertEquals("ROLL_DICE", updatedGame.getTurnPhase());
         assertEquals(0, updatedGame.getCurrentTurnIndex());
+    }
+
+    // ============ Player Trading Tests ============
+
+    @Test
+    void applyPlayerTrade_validTrade_resourcesTransferredCorrectly() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 500L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        // Set initial resources
+        sourcePlayer.setWood(5);
+        sourcePlayer.setBrick(5);
+        targetPlayer.setWood(5);
+        targetPlayer.setBrick(5);
+
+        // Source gives 1 wood, receives 1 brick
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user); // Authenticate as source player
+
+        Game result = gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent);
+
+        // Verify resources after trade
+        assertEquals(4, result.getPlayers().get(0).getWood()); // Source gave 1 wood
+        assertEquals(6, result.getPlayers().get(0).getBrick()); // Source received 1 brick
+        assertEquals(6, result.getPlayers().get(1).getWood()); // Target received 1 wood
+        assertEquals(4, result.getPlayers().get(1).getBrick()); // Target gave 1 brick
+    }
+
+    @Test
+    void applyPlayerTrade_sourceInsufficientResources_throwsConflict() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 501L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        // Set initial resources (source has only 1 wood)
+        sourcePlayer.setWood(1);
+        sourcePlayer.setBrick(5);
+        targetPlayer.setWood(5);
+        targetPlayer.setBrick(5);
+
+        // Source tries to give 2 wood, receives 1 brick
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 2));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(sourcePlayer.getUser().getId());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Not enough resources for player trade."));
+    }
+
+    @Test
+    void applyPlayerTrade_targetInsufficientResources_throwsConflict() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 502L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        // Set initial resources (target has only 0 brick)
+        sourcePlayer.setWood(5);
+        sourcePlayer.setBrick(5);
+        targetPlayer.setWood(5);
+        targetPlayer.setBrick(0);
+
+        // Source gives 1 wood, receives 1 brick (target doesn't have 1 brick)
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(sourcePlayer.getUser().getId());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Not enough resources for player trade."));
+    }
+
+    @Test
+    void applyPlayerTrade_authenticatedUserNotSource_throwsForbidden() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 503L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(targetPlayer.getUser().getId()); // Authenticate as target player, not source
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent));
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Only the targeted player can finalize trade."));
+    }
+
+    @Test
+    void validatePlayerTradeRequest_validRequest_noException() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 504L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        sourcePlayer.setWood(5);
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+        tradeEvent.setTradeAction("REQUEST");
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(sourcePlayer.getUser().getId());
+
+        gameService.validatePlayerTradeRequest(gameId, "valid-token", tradeEvent);
+        // No exception means success
+    }
+
+    @Test
+    void validatePlayerTradeRequest_sourceInsufficientResources_throwsConflict() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 505L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        sourcePlayer.setWood(0); // Source has no wood
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+        tradeEvent.setTradeAction("REQUEST");
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(sourcePlayer.getUser().getId());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.validatePlayerTradeRequest(gameId, "valid-token", tradeEvent));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Not enough resources for player trade."));
+    }
+
+    @Test
+    void validatePlayerTradeResponse_acceptWithSufficientResources_noException() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 506L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+        targetPlayer.setBrick(5); // Target has brick to give
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1)); // Source wants to give wood
+        tradeEvent.setReceiveResources(Map.of("brick", 1)); // Source wants to receive brick (target gives brick)
+        tradeEvent.setTradeAction("ACCEPT");
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(targetPlayer.getUser().getId()); // Authenticate as target player
+
+        gameService.validatePlayerTradeResponse(gameId, "valid-token", tradeEvent);
+        // No exception means success
+    }
+
+    @Test
+    void validatePlayerTradeResponse_acceptWithInsufficientResources_throwsConflict() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 507L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+        targetPlayer.setBrick(0); // Target has no brick to give
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+        tradeEvent.setTradeAction("ACCEPT");
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(targetPlayer.getUser().getId());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+            () -> gameService.validatePlayerTradeResponse(gameId, "valid-token", tradeEvent));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Not enough resources for player trade."));
+    }
+
+    @Test
+    void validatePlayerTradeResponse_deny_noException() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 508L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1));
+        tradeEvent.setReceiveResources(Map.of("brick", 1));
+        tradeEvent.setTradeAction("DENY");
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(targetPlayer.getUser().getId());
+
+        gameService.validatePlayerTradeResponse(gameId, "valid-token", tradeEvent);
+        // No exception means success
+    }
+
+    @Test
+    void applyPlayerTrade_multipleResources_transferredCorrectly() {
+        Game game = createGameWithPlayers("valid-token", 2);
+        Long gameId = 509L;
+        game.setId(gameId);
+
+        Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        Player targetPlayer = game.getPlayers().get(1); // Player 2
+
+        // Set initial resources
+        sourcePlayer.setWood(5); sourcePlayer.setBrick(5); sourcePlayer.setWool(5);
+        targetPlayer.setWood(5); targetPlayer.setBrick(5); targetPlayer.setWool(5);
+
+        // Source gives 1 wood, 1 brick; receives 1 wool
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(sourcePlayer.getId());
+        tradeEvent.setTargetPlayerId(targetPlayer.getId());
+        tradeEvent.setGiveResources(Map.of("wood", 1, "brick", 1));
+        tradeEvent.setReceiveResources(Map.of("wool", 1));
+
+        Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        user.setId(sourcePlayer.getUser().getId());
+
+        Game result = gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent);
+
+        // Verify source player resources
+        assertEquals(4, result.getPlayers().get(0).getWood());
+        assertEquals(4, result.getPlayers().get(0).getBrick());
+        assertEquals(6, result.getPlayers().get(0).getWool());
+
+        // Verify target player resources
+        assertEquals(6, result.getPlayers().get(1).getWood());
+        assertEquals(6, result.getPlayers().get(1).getBrick());
+        assertEquals(4, result.getPlayers().get(1).getWool());
     }
 
     // ============ Helper Methods ============
