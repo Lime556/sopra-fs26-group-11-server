@@ -3,6 +3,7 @@ package ch.uzh.ifi.hase.soprafs26.controller;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
 import java.util.List;
@@ -219,7 +220,7 @@ public class GameControllerTest {
         currentPlayer.setName("ActivePlayer");
         game.setPlayers(List.of(currentPlayer));
 
-        given(gameService.rollDice(1L, "token-123")).willReturn(game);
+        given(gameService.rollDice(1L, "token-123", null)).willReturn(game);
         given(gameService.getCurrentPlayer(game)).willReturn(currentPlayer);
 
         MockHttpServletRequestBuilder postRequest = post("/games/1/actions/roll-dice")
@@ -233,12 +234,12 @@ public class GameControllerTest {
                 .andExpect(jsonPath("$.currentPlayerId", is(10)))
                 .andExpect(jsonPath("$.currentPlayerName", is("ActivePlayer")));
 
-        verify(messagingTemplate).convertAndSend(eq("/topic/games/1/state"), any(GameStateDTO.class));
+        verify(messagingTemplate).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
 
     @Test
     public void rollDice_notInRollPhase_returnsConflictAndDoesNotBroadcast() throws Exception {
-        given(gameService.rollDice(1L, "token-123"))
+        given(gameService.rollDice(1L, "token-123", null))
                 .willThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Cannot roll dice."));
 
         MockHttpServletRequestBuilder postRequest = post("/games/1/actions/roll-dice")
@@ -247,12 +248,12 @@ public class GameControllerTest {
         mockMvc.perform(postRequest)
                 .andExpect(status().isConflict());
 
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameStateDTO.class));
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
 
     @Test
     public void rollDice_notActivePlayer_returnsForbiddenAndDoesNotBroadcast() throws Exception {
-        given(gameService.rollDice(1L, "token-123"))
+        given(gameService.rollDice(1L, "token-123", null))
                 .willThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the active player can roll dice."));
 
         MockHttpServletRequestBuilder postRequest = post("/games/1/actions/roll-dice")
@@ -261,7 +262,7 @@ public class GameControllerTest {
         mockMvc.perform(postRequest)
                 .andExpect(status().isForbidden());
 
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameStateDTO.class));
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
 
     @Test
@@ -542,5 +543,95 @@ public class GameControllerTest {
 
         mockMvc.perform(postRequest)
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    public void moveRobber_validRequest_successAndBroadcasts() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setRobberTileIndex(8);
+        game.setCurrentTurnIndex(0);
+        game.setTurnPhase("ACTION");
+
+        Player currentPlayer = new Player();
+        currentPlayer.setId(10L);
+        currentPlayer.setName("ActivePlayer");
+        game.setPlayers(List.of(currentPlayer));
+
+        given(gameService.moveRobber(1L, "token-123", 12)).willReturn(game);
+        given(gameService.getCurrentPlayer(game)).willReturn(currentPlayer);
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/move-robber")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content("12");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentTurnIndex", is(0)))
+                .andExpect(jsonPath("$.turnPhase", is("ACTION")));
+
+        verify(messagingTemplate).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
+    }
+
+    @Test
+    public void moveRobber_invalidHexId_returnsBadRequest() throws Exception {
+        given(gameService.moveRobber(1L, "token-123", 99))
+                .willThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid hex id."));
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/move-robber")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content("99");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isBadRequest());
+
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
+    }
+
+    @Test
+    public void moveRobber_missingToken_returnsUnauthorized() throws Exception {
+        given(gameService.moveRobber(1L, null, 12))
+                .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token."));
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/move-robber")
+                .contentType("application/json")
+                .content("12");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isUnauthorized());
+
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
+    }
+
+    @Test
+    public void moveRobber_sameHexAsCurrentRobber_returnsConflict() throws Exception {
+        given(gameService.moveRobber(1L, "token-123", 8))
+                .willThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Cannot move robber to the same tile."));
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/move-robber")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content("8");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isConflict());
+
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
+    }
+
+    @Test
+    public void moveRobber_gameNotFound_returnsNotFound() throws Exception {
+        given(gameService.moveRobber(999L, "token-123", 12))
+                .willThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Game with id 999 was not found."));
+
+        MockHttpServletRequestBuilder postRequest = post("/games/999/actions/move-robber")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content("12");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isNotFound());
     }
 }

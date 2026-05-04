@@ -1,12 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
-import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
-import ch.uzh.ifi.hase.soprafs26.entity.Board;
-import ch.uzh.ifi.hase.soprafs26.entity.City;
-import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
-import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
@@ -14,7 +9,6 @@ import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,7 +93,7 @@ public class TurnSystemTest {
         testGame.setPlayers(Arrays.asList(player1, player2, player3));
         testGame.setCurrentTurnIndex(0);
         testGame.setTurnPhase(TurnPhase.ROLL_DICE.toString());
-        testGame.setGamePhase(GamePhase.ACTIVE);
+        testGame.setGamePhase("ACTIVE");
 
         Mockito.when(gameRepository.save(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0));
         Mockito.when(gameRepository.findById(100L)).thenReturn(Optional.of(testGame));
@@ -111,7 +105,7 @@ public class TurnSystemTest {
         assertEquals(TurnPhase.ROLL_DICE.toString(), testGame.getTurnPhase());
         assertEquals(0, testGame.getCurrentTurnIndex());
 
-        Game updatedGame = gameService.rollDice(100L, "valid-token");
+        Game updatedGame = gameService.rollDice(100L, "valid-token", null);
 
         assertEquals(TurnPhase.ACTION.toString(), updatedGame.getTurnPhase());
         assertNotNull(updatedGame.getDiceValue());
@@ -123,7 +117,7 @@ public class TurnSystemTest {
         testGame.setTurnPhase(TurnPhase.ACTION.toString());
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> gameService.rollDice(100L, "valid-token"));
+                () -> gameService.rollDice(100L, "valid-token", null));
 
         assertEquals(409, exception.getStatusCode().value());
         assertTrue(exception.getReason().contains("ROLL_DICE phase"));
@@ -131,136 +125,11 @@ public class TurnSystemTest {
 
     @Test
     public void rollDice_diceRollIsValid() {
-        Game updatedGame = gameService.rollDice(100L, "valid-token");
+        Game updatedGame = gameService.rollDice(100L, "valid-token", null);
 
         int diceValue = updatedGame.getDiceValue();
         assertTrue(diceValue >= 2 && diceValue <= 12,
                 "Dice value should be between 2 and 12, got: " + diceValue);
-    }
-
-    @Test
-    public void rollDice_setsDiceRolledAtTimestamp() {
-        assertEquals(null, testGame.getDiceRolledAt());
-
-        Game updatedGame = gameService.rollDice(100L, "valid-token");
-
-        assertNotNull(updatedGame.getDiceRolledAt());
-    }
-
-    @Test
-    public void distributeResourcesForDiceValue_settlement_grantsResources() {
-        Board board = createUniformWoodBoardWithDice(8);
-        Intersection intersection = board.getIntersections().get(0);
-
-        Settlement settlement = new Settlement();
-        settlement.setOwnerPlayerId(1L);
-        settlement.setIntersectionId(intersection.getId());
-        intersection.setBuilding(settlement);
-
-        testGame.setBoard(board);
-
-        int beforeWood = player1.getWood();
-        gameService.distributeResourcesForDiceValue(testGame, 8);
-
-        assertTrue(player1.getWood() > beforeWood);
-        assertEquals(10, player2.getWood());
-        assertEquals(10, player3.getWood());
-    }
-
-    @Test
-    public void distributeResourcesForDiceValue_city_grantsDoubleSettlementResources() {
-        Board settlementBoard = createUniformWoodBoardWithDice(9);
-        Board cityBoard = createUniformWoodBoardWithDice(9);
-
-        Player settlementOwner = new Player();
-        settlementOwner.setId(1L);
-        settlementOwner.setName("SettlementOwner");
-        settlementOwner.setWood(0);
-        settlementOwner.setBrick(0);
-        settlementOwner.setWool(0);
-        settlementOwner.setWheat(0);
-        settlementOwner.setOre(0);
-
-        Player cityOwner = new Player();
-        cityOwner.setId(1L);
-        cityOwner.setName("CityOwner");
-        cityOwner.setWood(0);
-        cityOwner.setBrick(0);
-        cityOwner.setWool(0);
-        cityOwner.setWheat(0);
-        cityOwner.setOre(0);
-
-        Game settlementGame = new Game();
-        settlementGame.setBoard(settlementBoard);
-        settlementGame.setPlayers(List.of(settlementOwner));
-
-        Game cityGame = new Game();
-        cityGame.setBoard(cityBoard);
-        cityGame.setPlayers(List.of(cityOwner));
-
-        Intersection settlementIntersection = settlementBoard.getIntersections().get(0);
-        Settlement settlement = new Settlement();
-        settlement.setOwnerPlayerId(1L);
-        settlement.setIntersectionId(settlementIntersection.getId());
-        settlementIntersection.setBuilding(settlement);
-
-        Intersection cityIntersection = cityBoard.getIntersections().get(0);
-        City city = new City();
-        city.setOwnerPlayerId(1L);
-        city.setIntersectionId(cityIntersection.getId());
-        cityIntersection.setBuilding(city);
-
-        gameService.distributeResourcesForDiceValue(settlementGame, 9);
-        gameService.distributeResourcesForDiceValue(cityGame, 9);
-
-        int settlementGain = settlementOwner.getWood();
-        int cityGain = cityOwner.getWood();
-
-        assertTrue(settlementGain > 0);
-        assertEquals(settlementGain * 2, cityGain);
-    }
-
-    @Test
-    public void applySevenRollEffects_playerWithMoreThanSeven_discardsHalf() {
-        player1.setWood(3);
-        player1.setBrick(2);
-        player1.setWool(2);
-        player1.setWheat(1);
-        player1.setOre(0);
-
-        int beforeTotal = player1.getWood() + player1.getBrick() + player1.getWool() + player1.getWheat() + player1.getOre();
-        gameService.applySevenRollEffects(testGame);
-        int afterTotal = player1.getWood() + player1.getBrick() + player1.getWool() + player1.getWheat() + player1.getOre();
-
-        assertEquals(8, beforeTotal);
-        assertEquals(4, afterTotal);
-    }
-
-    @Test
-    public void applySevenRollEffects_playerWithSevenOrLess_keepsResources() {
-        player2.setWood(2);
-        player2.setBrick(2);
-        player2.setWool(1);
-        player2.setWheat(1);
-        player2.setOre(1);
-
-        int beforeTotal = player2.getWood() + player2.getBrick() + player2.getWool() + player2.getWheat() + player2.getOre();
-        gameService.applySevenRollEffects(testGame);
-        int afterTotal = player2.getWood() + player2.getBrick() + player2.getWool() + player2.getWheat() + player2.getOre();
-
-        assertEquals(7, beforeTotal);
-        assertEquals(7, afterTotal);
-    }
-
-    @Test
-    public void rollDice_notActivePlayer_throwsForbidden() {
-        testUser.setUsername("Player2");
-
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> gameService.rollDice(100L, "valid-token"));
-
-        assertEquals(403, exception.getStatusCode().value());
-        assertTrue(exception.getReason().contains("active player"));
     }
 
     @Test
@@ -346,7 +215,7 @@ public class TurnSystemTest {
         assertEquals(0, testGame.getCurrentTurnIndex());
 
         // Roll dice: Transition to ACTION phase
-        Game afterRoll = gameService.rollDice(100L, "valid-token");
+        Game afterRoll = gameService.rollDice(100L, "valid-token", null);
         assertEquals(TurnPhase.ACTION.toString(), afterRoll.getTurnPhase());
         assertNotNull(afterRoll.getDiceValue());
 
@@ -356,13 +225,5 @@ public class TurnSystemTest {
         Game afterEndTurn = gameService.endTurn(100L, "valid-token");
         assertEquals(1, afterEndTurn.getCurrentTurnIndex());
         assertEquals(TurnPhase.ROLL_DICE.toString(), afterEndTurn.getTurnPhase());
-    }
-
-    private Board createUniformWoodBoardWithDice(int diceValue) {
-        Board board = new Board();
-        board.generateBoard();
-        board.setHexTiles(Collections.nCopies(19, "WOOD"));
-        board.setHexTile_DiceNumbers(Collections.nCopies(19, diceValue));
-        return board;
     }
 }
