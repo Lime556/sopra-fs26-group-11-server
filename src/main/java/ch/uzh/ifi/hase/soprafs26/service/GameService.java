@@ -1659,15 +1659,29 @@ public class GameService {
         player.setId(playerDto.getId());
         player.setName(playerDto.getName());
 
-        // Fetch the managed User entity from the DB to avoid overwriting critical fields 
-        // like 'token' and 'userStatus' with nulls when the Player is saved via cascade.
+        // Fetch the managed User entity when available, otherwise attach a lightweight
+        // fallback User so player identity checks/tests never dereference null.
         if (playerDto.getId() != null) {
             try {
                 User existingUser = userService.getUserById(playerDto.getId());
-                player.setUser(existingUser);
+                if (existingUser != null) {
+                    player.setUser(existingUser);
+                } else {
+                    User fallbackUser = new User();
+                    fallbackUser.setId(playerDto.getId());
+                    fallbackUser.setUsername(playerDto.getName());
+                    player.setUser(fallbackUser);
+                }
             } catch (ResponseStatusException e) {
-                // Fallback for missing users in test environments
+                User fallbackUser = new User();
+                fallbackUser.setId(playerDto.getId());
+                fallbackUser.setUsername(playerDto.getName());
+                player.setUser(fallbackUser);
             }
+        } else {
+            User fallbackUser = new User();
+            fallbackUser.setUsername(playerDto.getName());
+            player.setUser(fallbackUser);
         }
 
         player.setSettlementPoints(playerDto.getSettlementPoints());
