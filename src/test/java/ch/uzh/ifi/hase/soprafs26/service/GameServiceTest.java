@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -1473,7 +1474,7 @@ class GameServiceTest {
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
         Mockito.when(gameRepository.save(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user); // Authenticate as source player
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user); // Authenticate as source player
 
         Game result = gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent);
 
@@ -1507,7 +1508,7 @@ class GameServiceTest {
         tradeEvent.setReceiveResources(Map.of("brick", 1));
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         user.setId(sourcePlayer.getUser().getId());
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -1540,7 +1541,7 @@ class GameServiceTest {
         tradeEvent.setReceiveResources(Map.of("brick", 1));
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         user.setId(sourcePlayer.getUser().getId());
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -1566,7 +1567,7 @@ class GameServiceTest {
         tradeEvent.setReceiveResources(Map.of("brick", 1));
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         user.setId(targetPlayer.getUser().getId()); // Authenticate as target player, not source
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -1592,7 +1593,7 @@ class GameServiceTest {
         tradeEvent.setTradeAction("REQUEST");
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         user.setId(sourcePlayer.getUser().getId());
 
         gameService.validatePlayerTradeRequest(gameId, "valid-token", tradeEvent);
@@ -1615,7 +1616,7 @@ class GameServiceTest {
         tradeEvent.setTradeAction("REQUEST");
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         user.setId(sourcePlayer.getUser().getId());
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -1643,7 +1644,7 @@ class GameServiceTest {
         tradeEvent.setTradeAction("ACCEPT");
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         user.setId(targetPlayer.getUser().getId()); // Authenticate as target player
 
         gameService.validatePlayerTradeResponse(gameId, "valid-token", tradeEvent);
@@ -1668,7 +1669,7 @@ class GameServiceTest {
         tradeEvent.setTradeAction("ACCEPT");
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         user.setId(targetPlayer.getUser().getId());
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -1695,7 +1696,7 @@ class GameServiceTest {
         tradeEvent.setTradeAction("DENY");
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         user.setId(targetPlayer.getUser().getId());
 
         gameService.validatePlayerTradeResponse(gameId, "valid-token", tradeEvent);
@@ -1724,7 +1725,7 @@ class GameServiceTest {
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
         Mockito.when(gameRepository.save(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         user.setId(sourcePlayer.getUser().getId());
 
         Game result = gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent);
