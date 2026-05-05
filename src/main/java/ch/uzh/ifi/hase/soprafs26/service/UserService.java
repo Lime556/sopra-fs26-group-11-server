@@ -1,9 +1,12 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,8 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.constant.UserStatus;
+import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameHistoryEntryDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.PasswordUpdateDTO;
 
 /**
  * User Service
@@ -33,13 +41,91 @@ public class UserService {
 	private final Logger log = LoggerFactory.getLogger(UserService.class);
 
 	private final UserRepository userRepository;
+	private final GameRepository gameRepository;
 
-	public UserService(@Qualifier("userRepository") UserRepository userRepository) {
+	public UserService(@Qualifier("userRepository") UserRepository userRepository,
+			@Qualifier("gameRepository") GameRepository gameRepository) {
 		this.userRepository = userRepository;
+		this.gameRepository = gameRepository;
 	}
 
 	public List<User> getUsers() {
 		return this.userRepository.findAll();
+	}
+
+	public User getUserById(Long id) {
+		return userRepository.findById(id)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+	}
+
+	public User getUserByIdWithWinRate(Long id) {
+		User user = getUserById(id);
+
+		List<Game> allGames = gameRepository.findAll();
+		int totalFinished = 0;
+		int wins = 0;
+		for (Game game : allGames) {
+			if (game.getFinishedAt() == null) {
+				continue;
+			}
+			if (game.getPlayers() == null) {
+				continue;
+			}
+			for (Player player : game.getPlayers()) {
+				if (player.getUser() != null && id.equals(player.getUser().getId())) {
+					totalFinished++;
+					if (player.getId() != null && player.getId().equals(game.getWinnerPlayerId())) {
+						wins++;
+					}
+					break;
+				}
+			}
+		}
+
+		double calculatedWinRate = totalFinished > 0 ? (double) wins / totalFinished : 0.0;
+		user.setWinRate(calculatedWinRate);
+		userRepository.save(user);
+
+		return user;
+	}
+
+	public List<GameHistoryEntryDTO> getGameHistory(Long userId) {
+		userRepository.findById(userId)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+		List<Game> allGames = gameRepository.findAll();
+
+		return allGames.stream()
+				.filter(game -> game.getFinishedAt() != null)
+				.filter(game -> game.getPlayers() != null && game.getPlayers().stream()
+						.anyMatch(p -> p.getUser() != null && userId.equals(p.getUser().getId())))
+				.sorted(Comparator.comparing(Game::getFinishedAt).reversed())
+				.limit(10)
+				.map(game -> buildHistoryEntry(game, userId))
+				.collect(Collectors.toList());
+	}
+
+	private GameHistoryEntryDTO buildHistoryEntry(Game game, Long userId) {
+		GameHistoryEntryDTO entry = new GameHistoryEntryDTO();
+		entry.setGameId(game.getId());
+		entry.setStartedAt(game.getStartedAt());
+		entry.setFinishedAt(game.getFinishedAt());
+
+		List<String> playerNames = new ArrayList<>();
+		int userVictoryPoints = 0;
+		for (Player player : game.getPlayers()) {
+			String name = player.getUser() != null ? player.getUser().getUsername() : player.getName();
+			if (name != null) {
+				playerNames.add(name);
+			}
+			if (player.getUser() != null && userId.equals(player.getUser().getId())) {
+				userVictoryPoints = player.getVictoryPoints();
+				entry.setWon(player.getId() != null && player.getId().equals(game.getWinnerPlayerId()));
+			}
+		}
+		entry.setPlayerVictoryPoints(userVictoryPoints);
+		entry.setPlayerNames(playerNames);
+		return entry;
 	}
 
 	public User createUser(User newUser) {
@@ -165,6 +251,37 @@ public class UserService {
 		return user;
 	}
 
+	public void updatePassword(Long userId, String token, PasswordUpdateDTO dto) {
+		User requester = authenticate(token);
+
+		if (!requester.getId().equals(userId)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only change your own password");
+		}
+
+		if (dto.getCurrentPassword() == null || dto.getCurrentPassword().isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password must not be empty");
+		}
+
+		if (!requester.getPasswordHash().equals(dto.getCurrentPassword())) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect");
+		}
+
+		if (dto.getNewPassword() == null || dto.getNewPassword().isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must not be empty");
+		}
+
+		if (dto.getNewPassword().length() < 6) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must be at least 6 characters");
+		}
+
+		if (dto.getNewPassword().equals(dto.getCurrentPassword())) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must differ from current password");
+		}
+
+		requester.setPasswordHash(dto.getNewPassword());
+		userRepository.save(requester);
+	}
+
 	private String extractToken(String authorizationHeader) {
         if (authorizationHeader == null || authorizationHeader.isBlank()) {
             return null;
@@ -175,8 +292,4 @@ public class UserService {
         return authorizationHeader.trim();
     }
 
-	public User getUserById(Long userId) {
-		return userRepository.findById(userId)
-			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-	}
 }

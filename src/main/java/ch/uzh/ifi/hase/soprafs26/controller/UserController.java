@@ -5,7 +5,9 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -13,6 +15,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameHistoryEntryDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.PasswordUpdateDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserAuthDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserPostDTO;
@@ -33,6 +37,39 @@ public class UserController {
 
 	UserController(UserService userService) {
 		this.userService = userService;
+	}
+
+	@PutMapping("/users/{id}/password")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void updatePassword(
+		@RequestHeader(value = "Authorization", required = false) String token,
+		@PathVariable Long id,
+		@RequestBody PasswordUpdateDTO passwordUpdateDTO
+	) {
+		userService.updatePassword(id, token, passwordUpdateDTO);
+	}
+
+	@GetMapping("/users/{id}/history")
+	@ResponseStatus(HttpStatus.OK)
+	@ResponseBody
+	public List<GameHistoryEntryDTO> getGameHistory(
+		@RequestHeader(value = "Authorization", required = false) String token,
+		@PathVariable Long id
+	) {
+		userService.authenticate(token);
+		return userService.getGameHistory(id);
+	}
+
+	@GetMapping("/users/{id}")
+	@ResponseStatus(HttpStatus.OK)
+	@ResponseBody
+	public UserGetDTO getUserById(
+		@RequestHeader(value = "Authorization", required = false) String token,
+		@PathVariable Long id
+	) {
+		userService.authenticate(token);
+		User user = userService.getUserByIdWithWinRate(id);
+		return DTOMapper.INSTANCE.convertEntityToUserGetDTO(user);
 	}
 
 	@GetMapping("/users")
