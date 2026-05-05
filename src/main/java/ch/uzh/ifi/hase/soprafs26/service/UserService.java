@@ -1,9 +1,12 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +22,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameHistoryEntryDTO;
 
 /**
  * User Service
@@ -78,6 +82,45 @@ public class UserService {
 		userRepository.save(user);
 
 		return user;
+	}
+
+	public List<GameHistoryEntryDTO> getGameHistory(Long userId) {
+		userRepository.findById(userId)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+		List<Game> allGames = gameRepository.findAll();
+
+		return allGames.stream()
+				.filter(game -> game.getFinishedAt() != null)
+				.filter(game -> game.getPlayers() != null && game.getPlayers().stream()
+						.anyMatch(p -> p.getUser() != null && userId.equals(p.getUser().getId())))
+				.sorted(Comparator.comparing(Game::getFinishedAt).reversed())
+				.limit(10)
+				.map(game -> buildHistoryEntry(game, userId))
+				.collect(Collectors.toList());
+	}
+
+	private GameHistoryEntryDTO buildHistoryEntry(Game game, Long userId) {
+		GameHistoryEntryDTO entry = new GameHistoryEntryDTO();
+		entry.setGameId(game.getId());
+		entry.setStartedAt(game.getStartedAt());
+		entry.setFinishedAt(game.getFinishedAt());
+
+		List<String> playerNames = new ArrayList<>();
+		int userVictoryPoints = 0;
+		for (Player player : game.getPlayers()) {
+			String name = player.getUser() != null ? player.getUser().getUsername() : player.getName();
+			if (name != null) {
+				playerNames.add(name);
+			}
+			if (player.getUser() != null && userId.equals(player.getUser().getId())) {
+				userVictoryPoints = player.getVictoryPoints();
+				entry.setWon(player.getId() != null && player.getId().equals(game.getWinnerPlayerId()));
+			}
+		}
+		entry.setPlayerVictoryPoints(userVictoryPoints);
+		entry.setPlayerNames(playerNames);
+		return entry;
 	}
 
 	public User createUser(User newUser) {

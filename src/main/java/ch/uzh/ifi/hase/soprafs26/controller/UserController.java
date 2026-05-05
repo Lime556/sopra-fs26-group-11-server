@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameHistoryEntryDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserAuthDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserPostDTO;
@@ -34,6 +35,17 @@ public class UserController {
 
 	UserController(UserService userService) {
 		this.userService = userService;
+	}
+
+	@GetMapping("/users/{id}/history")
+	@ResponseStatus(HttpStatus.OK)
+	@ResponseBody
+	public List<GameHistoryEntryDTO> getGameHistory(
+		@RequestHeader(value = "Authorization", required = false) String token,
+		@PathVariable Long id
+	) {
+		userService.authenticate(token);
+		return userService.getGameHistory(id);
 	}
 
 	@GetMapping("/users/{id}")
