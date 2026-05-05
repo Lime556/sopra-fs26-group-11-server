@@ -68,7 +68,7 @@ public class UserController {
 		@PathVariable Long id
 	) {
 		userService.authenticate(token);
-		User user = userService.getUserById(id);
+		User user = userService.getUserByIdWithWinRate(id);
 		return DTOMapper.INSTANCE.convertEntityToUserGetDTO(user);
 	}
 
