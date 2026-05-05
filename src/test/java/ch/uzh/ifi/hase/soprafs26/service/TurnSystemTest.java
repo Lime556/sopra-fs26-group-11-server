@@ -27,7 +27,6 @@ import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
-import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 
@@ -45,7 +44,7 @@ public class TurnSystemTest {
     private GameRepository gameRepository;
 
     @Mock
-    private UserRepository userRepository;
+    private UserService userService;
 
     @InjectMocks
     private GameService gameService;
@@ -109,7 +108,7 @@ public class TurnSystemTest {
 
         Mockito.when(gameRepository.save(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0));
         Mockito.when(gameRepository.findById(100L)).thenReturn(Optional.of(testGame));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(testUser);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(testUser);
     }
 
     @Test

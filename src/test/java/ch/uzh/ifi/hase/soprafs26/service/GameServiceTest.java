@@ -10,7 +10,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -29,7 +28,6 @@ import ch.uzh.ifi.hase.soprafs26.entity.Road;
 import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
-import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
@@ -41,7 +39,7 @@ class GameServiceTest {
     private GameRepository gameRepository;
 
     @Mock
-    private UserRepository userRepository;
+    private UserService userService;
 
     @InjectMocks
     private GameService gameService;
@@ -59,7 +57,9 @@ class GameServiceTest {
         user.setEmail("user@email.com");
 
         Mockito.when(gameRepository.save(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(user);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
+        Mockito.when(userService.authenticate(null))
+            .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"));
     }
 
     @Test

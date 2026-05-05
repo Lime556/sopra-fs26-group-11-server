@@ -33,7 +33,6 @@ import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
-import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
@@ -54,12 +53,14 @@ public class GameService {
     private static final List<String> TRADE_RESOURCES = List.of("wood", "brick", "wool", "wheat", "ore");
 
     private final GameRepository gameRepository;
-    private final UserRepository userRepository;
-
-    public GameService(@Qualifier("gameRepository") GameRepository gameRepository,
-                       @Qualifier("userRepository") UserRepository userRepository) {
+    private final UserService userService;
+    
+    public GameService(
+        @Qualifier("gameRepository") GameRepository gameRepository,
+        UserService userService
+    ) {
         this.gameRepository = gameRepository;
-        this.userRepository = userRepository;
+        this.userService = userService;
     }
 
     public Game createGame(String playerToken, GamePostDTO gamePostDTO) {
@@ -1770,15 +1771,7 @@ public class GameService {
     }
 
     private User authenticate(String playerToken) {
-        if (playerToken == null || playerToken.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token.");
-        }
-
-        User user = userRepository.findByToken(playerToken);
-        if (user == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authorization token.");
-        }
-        return user;
+        return userService.authenticate(playerToken);
     }
 
     private void ensureCurrentPlayerCanRollDice(Player currentPlayer, User authenticatedUser) {
