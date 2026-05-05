@@ -731,7 +731,7 @@ public class GameService {
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the targeted player can " + actionDescription + ".");
     }
 
-    public Game rollDice(Long gameId, String playerToken) {
+    public Game rollDice(Long gameId, String playerToken, RollDiceRequestDTO request) {
         User authenticatedUser = authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
@@ -767,6 +767,10 @@ public class GameService {
 
         recalculateVictoryState(game);
         return gameRepository.save(game);
+    }
+
+    public Game rollDice(Long gameId, String playerToken) {
+        return rollDice(gameId, playerToken, null);
     }
 
     void distributeResourcesForDiceValue(Game game, int diceValue) {
@@ -856,6 +860,10 @@ public class GameService {
             int resourcesToDiscard = totalResources / 2;
             discardResourcesInFixedOrder(game, player, resourcesToDiscard);
         }
+    }
+
+    void applySevenRollEffects(Game game) {
+        applySevenRollEffects(game, null, null);
     }
 
     public Game buyDevelopmentCard(Long gameId, String playerToken, Long playerId) {
@@ -1943,11 +1951,11 @@ public class GameService {
         }
 
         int remaining = toDiscard;
-        remaining = discardSingleResource(player, "wood", remaining);
-        remaining = discardSingleResource(player, "brick", remaining);
-        remaining = discardSingleResource(player, "wool", remaining);
-        remaining = discardSingleResource(player, "wheat", remaining);
-        remaining = discardSingleResource(player, "ore", remaining);
+        remaining = discardSingleResource(game, player, "wood", remaining);
+        remaining = discardSingleResource(game, player, "brick", remaining);
+        remaining = discardSingleResource(game, player, "wool", remaining);
+        remaining = discardSingleResource(game, player, "wheat", remaining);
+        remaining = discardSingleResource(game, player, "ore", remaining);
     }
 
     private int discardSingleResource(Game game, Player player, String resource, int remainingToDiscard) {

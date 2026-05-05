@@ -386,4 +386,21 @@ public class TurnSystemTest {
         assertEquals(1, afterEndTurn.getCurrentTurnIndex());
         assertEquals(TurnPhase.ROLL_DICE.toString(), afterEndTurn.getTurnPhase());
     }
+
+    private Board createUniformWoodBoardWithDice(int diceNumber) {
+        Board board = new Board();
+        board.generateBoard();
+        
+        // Replace all hex tiles with WOOD
+        for (int i = 0; i < board.getHexTiles().size(); i++) {
+            board.getHexTiles().set(i, "WOOD");
+        }
+        
+        // Replace all dice numbers with the specified number
+        for (int i = 0; i < board.getHexTile_DiceNumbers().size(); i++) {
+            board.getHexTile_DiceNumbers().set(i, diceNumber);
+        }
+        
+        return board;
+    }
 }
