@@ -1658,11 +1658,18 @@ public class GameService {
         Player player = new Player();
         player.setId(playerDto.getId());
         player.setName(playerDto.getName());
-        // Attach a lightweight User object so player identity can be resolved in service
-        User linkedUser = new User();
-        linkedUser.setId(playerDto.getId());
-        linkedUser.setUsername(playerDto.getName());
-        player.setUser(linkedUser);
+
+        // Fetch the managed User entity from the DB to avoid overwriting critical fields 
+        // like 'token' and 'userStatus' with nulls when the Player is saved via cascade.
+        if (playerDto.getId() != null) {
+            try {
+                User existingUser = userService.getUserById(playerDto.getId());
+                player.setUser(existingUser);
+            } catch (ResponseStatusException e) {
+                // Fallback for missing users in test environments
+            }
+        }
+
         player.setSettlementPoints(playerDto.getSettlementPoints());
         player.setCityPoints(playerDto.getCityPoints());
         player.setDevelopmentCardVictoryPoints(playerDto.getDevelopmentCardVictoryPoints());
