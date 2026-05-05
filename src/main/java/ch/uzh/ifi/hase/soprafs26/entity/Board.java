@@ -286,6 +286,38 @@ public class Board implements Serializable {
 }
 
     /**
+     * Returns the intersection IDs (corners) for a given hexId, in canonical order (0-5).
+     */
+    public List<Integer> getIntersectionIdsForHex(int hexId) {
+        List<Integer> intersectionIds = new ArrayList<>();
+        Map<String, Integer> cornerKeyToIntersectionId = new LinkedHashMap<>();
+        int nextIntersectionId = 0;
+
+        for (int h = 1; h <= 19; h++) {
+            double[] center = toPixel(h);
+            for (int cornerIndex = 0; cornerIndex < 6; cornerIndex++) {
+                double[] cornerPoint = getCornerPoint(center[0], center[1], cornerIndex);
+                String cornerKey = formatPoint(cornerPoint[0], cornerPoint[1]);
+                Integer intersectionId = cornerKeyToIntersectionId.get(cornerKey);
+                if (intersectionId == null) {
+                    intersectionId = nextIntersectionId++;
+                    cornerKeyToIntersectionId.put(cornerKey, intersectionId);
+                }
+                if (h == hexId) {
+                    // For the requested hex, add the intersection in canonical order
+                    if (intersectionIds.size() <= cornerIndex) {
+                        intersectionIds.add(intersectionId);
+                    } else {
+                        intersectionIds.set(cornerIndex, intersectionId);
+                    }
+                }
+            }
+        }
+
+        return intersectionIds;
+    }
+
+    /**
      * Helper to map a global Intersection ID back to a hex and corner index for the frontend.
      */
     public List<Map<String, Integer>> getHexCoordinatesForIntersection(Integer targetId) {

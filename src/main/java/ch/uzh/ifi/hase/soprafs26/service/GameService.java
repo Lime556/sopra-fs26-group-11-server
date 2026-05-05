@@ -1830,17 +1830,18 @@ public class GameService {
         }
 
         Board board = game.getBoard();
-        if (board == null || board.getIntersections() == null) {
+        if (board == null) {
             return false;
         }
 
-        List<Integer> hexIntersectionIds = getIntersectionsForHex(robberHexId);
-        if (hexIntersectionIds.isEmpty()) {
+        // Use Board's geometry to get all intersection IDs for this hex
+        List<Integer> robberHexIntersections = board.getIntersectionIdsForHex(robberHexId);
+        if (robberHexIntersections.isEmpty()) {
             return false;
         }
 
-        // Check if target player has a settlement or city on any of the intersections adjacent to this hex
-        for (Integer intersectionId : hexIntersectionIds) {
+        // Check if target player has a settlement or city on any of the intersections of the robber hex
+        for (Integer intersectionId : robberHexIntersections) {
             Intersection intersection = findIntersectionById(game, intersectionId);
             if (intersection != null && intersection.getBuilding() != null) {
                 if (targetPlayerId.equals(intersection.getBuilding().getOwnerPlayerId())) {
