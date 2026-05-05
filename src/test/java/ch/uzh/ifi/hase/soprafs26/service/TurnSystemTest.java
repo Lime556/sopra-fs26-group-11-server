@@ -1,7 +1,6 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,7 +26,6 @@ import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
-import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 
@@ -45,7 +43,7 @@ public class TurnSystemTest {
     private GameRepository gameRepository;
 
     @Mock
-    private UserRepository userRepository;
+    private UserService userService;
 
     @InjectMocks
     private GameService gameService;
@@ -100,7 +98,7 @@ public class TurnSystemTest {
         testGame.setPlayers(Arrays.asList(player1, player2, player3));
         testGame.setCurrentTurnIndex(0);
         testGame.setTurnPhase(TurnPhase.ROLL_DICE.toString());
-        testGame.setGamePhase(GamePhase.ACTIVE);
+        testGame.setGamePhase("ACTIVE");
         testGame.setBankWood(19);
         testGame.setBankBrick(19);
         testGame.setBankWool(19);
@@ -109,7 +107,7 @@ public class TurnSystemTest {
 
         Mockito.when(gameRepository.save(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0));
         Mockito.when(gameRepository.findById(100L)).thenReturn(Optional.of(testGame));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(testUser);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(testUser);
     }
 
     @Test
@@ -117,7 +115,7 @@ public class TurnSystemTest {
         assertEquals(TurnPhase.ROLL_DICE.toString(), testGame.getTurnPhase());
         assertEquals(0, testGame.getCurrentTurnIndex());
 
-        Game updatedGame = gameService.rollDice(100L, "valid-token");
+        Game updatedGame = gameService.rollDice(100L, "valid-token", null);
 
         assertEquals(TurnPhase.ACTION.toString(), updatedGame.getTurnPhase());
         assertNotNull(updatedGame.getDiceValue());
@@ -129,7 +127,7 @@ public class TurnSystemTest {
         testGame.setTurnPhase(TurnPhase.ACTION.toString());
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> gameService.rollDice(100L, "valid-token"));
+                () -> gameService.rollDice(100L, "valid-token", null));
 
         assertEquals(409, exception.getStatusCode().value());
         assertTrue(exception.getReason().contains("ROLL_DICE phase"));
@@ -137,7 +135,7 @@ public class TurnSystemTest {
 
     @Test
     public void rollDice_diceRollIsValid() {
-        Game updatedGame = gameService.rollDice(100L, "valid-token");
+        Game updatedGame = gameService.rollDice(100L, "valid-token", null);
 
         int diceValue = updatedGame.getDiceValue();
         assertTrue(diceValue >= 2 && diceValue <= 12,
@@ -377,7 +375,7 @@ public class TurnSystemTest {
         assertEquals(0, testGame.getCurrentTurnIndex());
 
         // Roll dice: Transition to ACTION phase
-        Game afterRoll = gameService.rollDice(100L, "valid-token");
+        Game afterRoll = gameService.rollDice(100L, "valid-token", null);
         assertEquals(TurnPhase.ACTION.toString(), afterRoll.getTurnPhase());
         assertNotNull(afterRoll.getDiceValue());
 
@@ -389,11 +387,20 @@ public class TurnSystemTest {
         assertEquals(TurnPhase.ROLL_DICE.toString(), afterEndTurn.getTurnPhase());
     }
 
-    private Board createUniformWoodBoardWithDice(int diceValue) {
+    private Board createUniformWoodBoardWithDice(int diceNumber) {
         Board board = new Board();
         board.generateBoard();
-        board.setHexTiles(Collections.nCopies(19, "WOOD"));
-        board.setHexTile_DiceNumbers(Collections.nCopies(19, diceValue));
+        
+        // Replace all hex tiles with WOOD
+        for (int i = 0; i < board.getHexTiles().size(); i++) {
+            board.getHexTiles().set(i, "WOOD");
+        }
+        
+        // Replace all dice numbers with the specified number
+        for (int i = 0; i < board.getHexTile_DiceNumbers().size(); i++) {
+            board.getHexTile_DiceNumbers().set(i, diceNumber);
+        }
+        
         return board;
     }
 }

@@ -218,7 +218,7 @@ public class UserService {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
 		}
 
-		if (user.getUserStatus() != UserStatus.ONLINE) {
+		if (user.getUserStatus() == UserStatus.OFFLINE) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
 		}
 
@@ -240,7 +240,7 @@ public class UserService {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
 		}
 
-		if (user.getUserStatus() != UserStatus.ONLINE) {
+		if (user.getUserStatus() == UserStatus.OFFLINE) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated");
 		}
 
@@ -287,4 +287,9 @@ public class UserService {
         }
         return authorizationHeader.trim();
     }
+
+	public User getUserById(Long userId) {
+		return userRepository.findById(userId)
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+	}
 }
