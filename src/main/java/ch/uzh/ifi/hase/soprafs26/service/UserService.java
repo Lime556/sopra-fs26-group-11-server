@@ -14,7 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.constant.UserStatus;
+import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 
 /**
@@ -33,13 +36,48 @@ public class UserService {
 	private final Logger log = LoggerFactory.getLogger(UserService.class);
 
 	private final UserRepository userRepository;
+	private final GameRepository gameRepository;
 
-	public UserService(@Qualifier("userRepository") UserRepository userRepository) {
+	public UserService(@Qualifier("userRepository") UserRepository userRepository,
+			@Qualifier("gameRepository") GameRepository gameRepository) {
 		this.userRepository = userRepository;
+		this.gameRepository = gameRepository;
 	}
 
 	public List<User> getUsers() {
 		return this.userRepository.findAll();
+	}
+
+	public User getUserById(Long id) {
+		User user = userRepository.findById(id)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+		List<Game> allGames = gameRepository.findAll();
+		int totalFinished = 0;
+		int wins = 0;
+		for (Game game : allGames) {
+			if (game.getFinishedAt() == null) {
+				continue;
+			}
+			if (game.getPlayers() == null) {
+				continue;
+			}
+			for (Player player : game.getPlayers()) {
+				if (player.getUser() != null && id.equals(player.getUser().getId())) {
+					totalFinished++;
+					if (player.getId() != null && player.getId().equals(game.getWinnerPlayerId())) {
+						wins++;
+					}
+					break;
+				}
+			}
+		}
+
+		double calculatedWinRate = totalFinished > 0 ? (double) wins / totalFinished : 0.0;
+		user.setWinRate(calculatedWinRate);
+		userRepository.save(user);
+
+		return user;
 	}
 
 	public User createUser(User newUser) {
