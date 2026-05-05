@@ -1,17 +1,14 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
-import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
-import ch.uzh.ifi.hase.soprafs26.entity.City;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,16 +22,19 @@ import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Boat;
+import ch.uzh.ifi.hase.soprafs26.entity.City;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
+import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.DiceRollDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameChatMessageDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.DiceRollDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
@@ -119,32 +119,35 @@ public class GameController {
             );
         } else if ("BANK_TRADE".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null
-                && gameEventDTO.getGiveResource() != null
-                && gameEventDTO.getReceiveResource() != null
-                && gameEventDTO.getAmount() != null) {
+                && ((gameEventDTO.getGiveResources() != null && gameEventDTO.getReceiveResources() != null)
+                        || (gameEventDTO.getGiveResource() != null
+                            && gameEventDTO.getReceiveResource() != null
+                            && gameEventDTO.getAmount() != null))) {
             updatedGame = gameService.applyBankTrade(
                 gameId,
                 token,
-                gameEventDTO.getSourcePlayerId(),
-                gameEventDTO.getGiveResource(),
-                gameEventDTO.getReceiveResource(),
-                gameEventDTO.getAmount()
+                gameEventDTO
             );
         } else if ("PLAYER_TRADE".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null
-                && gameEventDTO.getTargetPlayerId() != null
-                && gameEventDTO.getGiveResource() != null
-                && gameEventDTO.getReceiveResource() != null
-                && gameEventDTO.getAmount() != null) {
-            updatedGame = gameService.applyPlayerTrade(
-                gameId,
-                token,
-                gameEventDTO.getSourcePlayerId(),
-                gameEventDTO.getTargetPlayerId(),
-                gameEventDTO.getGiveResource(),
-                gameEventDTO.getReceiveResource(),
-                gameEventDTO.getAmount()
-            );
+                && ((gameEventDTO.getGiveResources() != null && gameEventDTO.getReceiveResources() != null)
+                        || (gameEventDTO.getGiveResource() != null
+                            && gameEventDTO.getReceiveResource() != null
+                            && (gameEventDTO.getGiveAmount() != null || gameEventDTO.getReceiveAmount() != null || gameEventDTO.getAmount() != null)))) {
+            if ("REQUEST".equalsIgnoreCase(gameEventDTO.getTradeAction())) {
+                gameService.validatePlayerTradeRequest(gameId, token, gameEventDTO);
+            } else if ("ACCEPT".equalsIgnoreCase(gameEventDTO.getTradeAction()) || "DENY".equalsIgnoreCase(gameEventDTO.getTradeAction())) {
+                gameService.validatePlayerTradeResponse(gameId, token, gameEventDTO);
+            } else {
+                if (gameEventDTO.getTargetPlayerId() == null) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+                }
+                updatedGame = gameService.applyPlayerTrade(
+                    gameId,
+                    token,
+                    gameEventDTO
+                );
+            }
         } else if ("DEVELOPMENT_CARD_BOUGHT".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null) {
             updatedGame = gameService.buyDevelopmentCard(
@@ -405,7 +408,22 @@ public class GameController {
         dto.setWinner(convertPlayerToDto(game.getWinner()));
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
         dto.setChatMessages(game.getChatMessages());
+        dto.setBankResources(readBankResources(game));
         return dto;
+    }
+
+    private Map<String, Integer> readBankResources(Game game) {
+        if (game == null) {
+            return Collections.emptyMap();
+        }
+
+        return Map.of(
+            "wood", Optional.ofNullable(game.getBankWood()).orElse(0),
+            "brick", Optional.ofNullable(game.getBankBrick()).orElse(0),
+            "wool", Optional.ofNullable(game.getBankWool()).orElse(0),
+            "wheat", Optional.ofNullable(game.getBankWheat()).orElse(0),
+            "ore", Optional.ofNullable(game.getBankOre()).orElse(0)
+        );
     }
 
     private List<PlayerGetDTO> convertPlayersToDto(List<Player> players, Board board) {

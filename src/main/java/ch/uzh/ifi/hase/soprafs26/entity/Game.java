@@ -64,6 +64,21 @@ public class Game{
     private Integer robberTileIndex;
 
     @Column
+    private Integer bankWood;
+
+    @Column
+    private Integer bankBrick;
+
+    @Column
+    private Integer bankWool;
+
+    @Column
+    private Integer bankWheat;
+
+    @Column
+    private Integer bankOre;
+
+    @Column
     private Integer developmentKnightRemaining;
 
     @Column
@@ -203,6 +218,46 @@ public class Game{
 
     public void setRobberTileIndex(Integer robberTileIndex) {
         this.robberTileIndex = robberTileIndex;
+    }
+
+    public Integer getBankWood() {
+        return bankWood;
+    }
+
+    public void setBankWood(Integer bankWood) {
+        this.bankWood = bankWood;
+    }
+
+    public Integer getBankBrick() {
+        return bankBrick;
+    }
+
+    public void setBankBrick(Integer bankBrick) {
+        this.bankBrick = bankBrick;
+    }
+
+    public Integer getBankWool() {
+        return bankWool;
+    }
+
+    public void setBankWool(Integer bankWool) {
+        this.bankWool = bankWool;
+    }
+
+    public Integer getBankWheat() {
+        return bankWheat;
+    }
+
+    public void setBankWheat(Integer bankWheat) {
+        this.bankWheat = bankWheat;
+    }
+
+    public Integer getBankOre() {
+        return bankOre;
+    }
+
+    public void setBankOre(Integer bankOre) {
+        this.bankOre = bankOre;
     }
 
     public Integer getDevelopmentKnightRemaining() {

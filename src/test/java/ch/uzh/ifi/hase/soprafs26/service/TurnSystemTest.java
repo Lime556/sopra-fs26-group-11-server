@@ -1,16 +1,13 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
-import ch.uzh.ifi.hase.soprafs26.entity.Game;
-import ch.uzh.ifi.hase.soprafs26.entity.Player;
-import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
-import ch.uzh.ifi.hase.soprafs26.entity.User;
-import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
-import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -19,10 +16,18 @@ import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import org.springframework.web.server.ResponseStatusException;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import ch.uzh.ifi.hase.soprafs26.entity.Board;
+import ch.uzh.ifi.hase.soprafs26.entity.City;
+import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
+import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
+import ch.uzh.ifi.hase.soprafs26.entity.Player;
+import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
+import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
+import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 
 /**
  * Test suite for the turn system implementation.
@@ -38,7 +43,7 @@ public class TurnSystemTest {
     private GameRepository gameRepository;
 
     @Mock
-    private UserRepository userRepository;
+    private UserService userService;
 
     @InjectMocks
     private GameService gameService;
@@ -94,10 +99,15 @@ public class TurnSystemTest {
         testGame.setCurrentTurnIndex(0);
         testGame.setTurnPhase(TurnPhase.ROLL_DICE.toString());
         testGame.setGamePhase("ACTIVE");
+        testGame.setBankWood(19);
+        testGame.setBankBrick(19);
+        testGame.setBankWool(19);
+        testGame.setBankWheat(19);
+        testGame.setBankOre(19);
 
         Mockito.when(gameRepository.save(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0));
         Mockito.when(gameRepository.findById(100L)).thenReturn(Optional.of(testGame));
-        Mockito.when(userRepository.findByToken("valid-token")).thenReturn(testUser);
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(testUser);
     }
 
     @Test
@@ -130,6 +140,156 @@ public class TurnSystemTest {
         int diceValue = updatedGame.getDiceValue();
         assertTrue(diceValue >= 2 && diceValue <= 12,
                 "Dice value should be between 2 and 12, got: " + diceValue);
+    }
+
+    @Test
+    public void rollDice_setsDiceRolledAtTimestamp() {
+        assertEquals(null, testGame.getDiceRolledAt());
+
+        Game updatedGame = gameService.rollDice(100L, "valid-token");
+
+        assertNotNull(updatedGame.getDiceRolledAt());
+    }
+
+    @Test
+    public void distributeResourcesForDiceValue_settlement_grantsResources() {
+        Board board = createUniformWoodBoardWithDice(8);
+        Intersection intersection = board.getIntersections().stream()
+            .filter(i -> i != null && Integer.valueOf(0).equals(i.getId()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected intersection with id 0."));
+
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(1L);
+        settlement.setIntersectionId(intersection.getId());
+        intersection.setBuilding(settlement);
+
+        testGame.setBoard(board);
+
+        int beforeWood = player1.getWood();
+        gameService.distributeResourcesForDiceValue(testGame, 8);
+
+        assertTrue(player1.getWood() > beforeWood);
+        assertEquals(10, player2.getWood());
+        assertEquals(10, player3.getWood());
+    }
+
+    @Test
+    public void distributeResourcesForDiceValue_city_grantsDoubleSettlementResources() {
+        Board settlementBoard = createUniformWoodBoardWithDice(9);
+        Board cityBoard = createUniformWoodBoardWithDice(9);
+        Integer productiveIntersectionId = settlementBoard.getIntersections().stream()
+            .filter(i -> i != null && i.getId() != null)
+            .map(Intersection::getId)
+            .filter(id -> !settlementBoard.getAdjacentHexIdsForIntersection(id).isEmpty())
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected at least one intersection with adjacent hexes."));
+
+        Player settlementOwner = new Player();
+        settlementOwner.setId(1L);
+        settlementOwner.setName("SettlementOwner");
+        settlementOwner.setWood(0);
+        settlementOwner.setBrick(0);
+        settlementOwner.setWool(0);
+        settlementOwner.setWheat(0);
+        settlementOwner.setOre(0);
+
+        Player cityOwner = new Player();
+        cityOwner.setId(1L);
+        cityOwner.setName("CityOwner");
+        cityOwner.setWood(0);
+        cityOwner.setBrick(0);
+        cityOwner.setWool(0);
+        cityOwner.setWheat(0);
+        cityOwner.setOre(0);
+
+        Game settlementGame = new Game();
+        settlementGame.setBoard(settlementBoard);
+        settlementGame.setPlayers(List.of(settlementOwner));
+        settlementGame.setBankWood(19);
+        settlementGame.setBankBrick(19);
+        settlementGame.setBankWool(19);
+        settlementGame.setBankWheat(19);
+        settlementGame.setBankOre(19);
+
+        Game cityGame = new Game();
+        cityGame.setBoard(cityBoard);
+        cityGame.setPlayers(List.of(cityOwner));
+        cityGame.setBankWood(19);
+        cityGame.setBankBrick(19);
+        cityGame.setBankWool(19);
+        cityGame.setBankWheat(19);
+        cityGame.setBankOre(19);
+
+        Intersection settlementIntersection = settlementBoard.getIntersections().stream()
+            .filter(i -> i != null && productiveIntersectionId.equals(i.getId()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected settlement intersection."));
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(1L);
+        settlement.setIntersectionId(settlementIntersection.getId());
+        settlementIntersection.setBuilding(settlement);
+
+        Intersection cityIntersection = cityBoard.getIntersections().stream()
+            .filter(i -> i != null && productiveIntersectionId.equals(i.getId()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected city intersection."));
+        City city = new City();
+        city.setOwnerPlayerId(1L);
+        city.setIntersectionId(cityIntersection.getId());
+        cityIntersection.setBuilding(city);
+
+        gameService.distributeResourcesForDiceValue(settlementGame, 9);
+        gameService.distributeResourcesForDiceValue(cityGame, 9);
+
+        int settlementGain = settlementOwner.getWood();
+        int cityGain = cityOwner.getWood();
+
+        assertTrue(settlementGain > 0);
+        assertEquals(settlementGain * 2, cityGain);
+    }
+
+    @Test
+    public void applySevenRollEffects_playerWithMoreThanSeven_discardsHalf() {
+        player1.setWood(3);
+        player1.setBrick(2);
+        player1.setWool(2);
+        player1.setWheat(1);
+        player1.setOre(0);
+
+        int beforeTotal = player1.getWood() + player1.getBrick() + player1.getWool() + player1.getWheat() + player1.getOre();
+        gameService.applySevenRollEffects(testGame);
+        int afterTotal = player1.getWood() + player1.getBrick() + player1.getWool() + player1.getWheat() + player1.getOre();
+
+        assertEquals(8, beforeTotal);
+        assertEquals(4, afterTotal);
+    }
+
+    @Test
+    public void applySevenRollEffects_playerWithSevenOrLess_keepsResources() {
+        player2.setWood(2);
+        player2.setBrick(2);
+        player2.setWool(1);
+        player2.setWheat(1);
+        player2.setOre(1);
+
+        int beforeTotal = player2.getWood() + player2.getBrick() + player2.getWool() + player2.getWheat() + player2.getOre();
+        gameService.applySevenRollEffects(testGame);
+        int afterTotal = player2.getWood() + player2.getBrick() + player2.getWool() + player2.getWheat() + player2.getOre();
+
+        assertEquals(7, beforeTotal);
+        assertEquals(7, afterTotal);
+    }
+
+    @Test
+    public void rollDice_notActivePlayer_throwsForbidden() {
+        testUser.setUsername("Player2");
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> gameService.rollDice(100L, "valid-token"));
+
+        assertEquals(403, exception.getStatusCode().value());
+        assertTrue(exception.getReason().contains("active player"));
     }
 
     @Test

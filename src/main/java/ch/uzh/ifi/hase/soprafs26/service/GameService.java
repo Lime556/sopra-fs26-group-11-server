@@ -33,9 +33,9 @@ import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
-import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
@@ -44,19 +44,24 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 @Transactional
 public class GameService {
 
+    private static final int BANK_STARTING_RESOURCE_COUNT = 19;
+
     private static final String CARD_KNIGHT = "knight";
     private static final String CARD_VICTORY_POINT = "victory_point";
     private static final String CARD_ROAD_BUILDING = "road_building";
     private static final String CARD_YEAR_OF_PLENTY = "year_of_plenty";
     private static final String CARD_MONOPOLY = "monopoly";
+    private static final List<String> TRADE_RESOURCES = List.of("wood", "brick", "wool", "wheat", "ore");
 
     private final GameRepository gameRepository;
-    private final UserRepository userRepository;
-
-    public GameService(@Qualifier("gameRepository") GameRepository gameRepository,
-                       @Qualifier("userRepository") UserRepository userRepository) {
+    private final UserService userService;
+    
+    public GameService(
+        @Qualifier("gameRepository") GameRepository gameRepository,
+        UserService userService
+    ) {
         this.gameRepository = gameRepository;
-        this.userRepository = userRepository;
+        this.userService = userService;
     }
 
     public Game createGame(String playerToken, GamePostDTO gamePostDTO) {
@@ -81,6 +86,7 @@ public class GameService {
         game.setChatMessages(gamePostDTO == null || gamePostDTO.getChatMessages() == null
             ? Collections.emptyList()
             : new ArrayList<>(gamePostDTO.getChatMessages()));
+        initializeBankResources(game, gamePostDTO == null ? null : gamePostDTO.getBankResources());
 
         recalculateVictoryState(game);
 
@@ -130,7 +136,13 @@ public class GameService {
             if (gamePostDTO.getStartedAt() != null) {
                 game.setStartedAt(gamePostDTO.getStartedAt());
             }
+
+            if (gamePostDTO.getBankResources() != null) {
+                applyBankResourcesFromMap(game, gamePostDTO.getBankResources());
+            }
         }
+
+        ensureBankInitialized(game);
 
         recalculateVictoryState(game);
         return gameRepository.save(game);
@@ -163,6 +175,7 @@ public class GameService {
                         "Game with id " + gameId + " was not found."));
 
         ensureBoardInitialized(game);
+        ensureBankInitialized(game);
         return game;
     }
 
@@ -202,6 +215,7 @@ public class GameService {
         if (players == null || players.isEmpty()) {
             return game;
         }
+        ensureBankInitialized(game);
 
         Edge targetEdge = findEdgeById(game, edgeId);
         if (targetEdge == null) {
@@ -248,6 +262,8 @@ public class GameService {
         else {
             player.setWood(wood - 1);
             player.setBrick(brick - 1);
+            addToBank(game, "wood", 1);
+            addToBank(game, "brick", 1);
         }
     
         game.setPlayers(players);
@@ -272,6 +288,7 @@ public class GameService {
         if (players == null || players.isEmpty()) {
             return game;
         }
+        ensureBankInitialized(game);
     
         Intersection intersection = findIntersectionById(game, intersectionId);
         if (intersection == null) {
@@ -320,6 +337,10 @@ public class GameService {
         player.setBrick(brick - 1);
         player.setWool(wool - 1);
         player.setWheat(wheat - 1);
+        addToBank(game, "wood", 1);
+        addToBank(game, "brick", 1);
+        addToBank(game, "wool", 1);
+        addToBank(game, "wheat", 1);
         player.setSettlementPoints(safeInt(player.getSettlementPoints(), 0) + 1);
     
         game.setPlayers(players);
@@ -344,6 +365,7 @@ public class GameService {
         if (players == null || players.isEmpty()) {
             return game;
         }
+        ensureBankInitialized(game);
     
         Intersection intersection = findIntersectionById(game, intersectionId);
         if (intersection == null) {
@@ -384,6 +406,8 @@ public class GameService {
     
         player.setWheat(wheat - 2);
         player.setOre(ore - 3);
+        addToBank(game, "wheat", 2);
+        addToBank(game, "ore", 3);
         player.setSettlementPoints(Math.max(0, safeInt(player.getSettlementPoints(), 0) - 1));
         player.setCityPoints(safeInt(player.getCityPoints(), 0) + 1);
     
@@ -393,11 +417,29 @@ public class GameService {
         return gameRepository.save(game);
     }
 
-    public Game applyBankTrade(Long gameId, String playerToken, Long sourcePlayerId,
-            String giveResource, String receiveResource, Integer amount) {
+    public Game applyBankTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
         authenticate(playerToken);
 
-        if (sourcePlayerId == null || giveResource == null || receiveResource == null || amount == null || amount < 1) {
+        if (tradeEvent == null || tradeEvent.getSourcePlayerId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade payload.");
+        }
+
+        Map<String, Integer> giveBundle;
+        Map<String, Integer> receiveBundle;
+        if (tradeEvent.getGiveResources() != null || tradeEvent.getReceiveResources() != null) {
+            giveBundle = normalizeTradeBundle(tradeEvent.getGiveResources());
+            receiveBundle = normalizeTradeBundle(tradeEvent.getReceiveResources());
+        } else {
+            if (tradeEvent.getGiveResource() == null || tradeEvent.getReceiveResource() == null || tradeEvent.getAmount() == null || tradeEvent.getAmount() < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade payload.");
+            }
+            giveBundle = createSingleResourceBundle(tradeEvent.getGiveResource(), tradeEvent.getAmount() * 4);
+            receiveBundle = createSingleResourceBundle(tradeEvent.getReceiveResource(), tradeEvent.getAmount());
+        }
+
+        int totalGive = sumTradeBundle(giveBundle);
+        int totalReceive = sumTradeBundle(receiveBundle);
+        if (totalGive < 1 || totalReceive < 1 || totalGive != totalReceive * 4) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade payload.");
         }
 
@@ -406,30 +448,150 @@ public class GameService {
                 "Game with id " + gameId + " was not found."));
 
         List<Player> players = game.getPlayers();
-        Player source = findPlayerById(players, sourcePlayerId);
+        Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
         if (source == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source player was not found.");
         }
+        ensureBankInitialized(game);
 
-        int giveAmount = amount * 4;
-        int currentGive = getResourceByName(source, giveResource);
-        int currentReceive = getResourceByName(source, receiveResource);
-        if (currentGive < giveAmount) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for bank trade.");
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            int receiveAmount = receiveBundle.get(resource);
+            if (getResourceByName(source, resource) < giveAmount) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for bank trade.");
+            }
+            if (getBankResourceByName(game, resource) < receiveAmount) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Bank does not have enough resources for this trade.");
+            }
         }
 
-        setResourceByName(source, giveResource, currentGive - giveAmount);
-        setResourceByName(source, receiveResource, currentReceive + amount);
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            int receiveAmount = receiveBundle.get(resource);
+            if (giveAmount > 0) {
+                setResourceByName(source, resource, getResourceByName(source, resource) - giveAmount);
+                addToBank(game, resource, giveAmount);
+            }
+            if (receiveAmount > 0) {
+                setResourceByName(source, resource, getResourceByName(source, resource) + receiveAmount);
+                removeFromBank(game, resource, receiveAmount);
+            }
+        }
 
         game.setPlayers(players);
         return gameRepository.save(game);
     }
 
-    public Game applyPlayerTrade(Long gameId, String playerToken, Long sourcePlayerId, Long targetPlayerId,
-            String giveResource, String receiveResource, Integer amount) {
-        authenticate(playerToken);
+    public void validatePlayerTradeRequest(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+        User authenticatedUser = authenticate(playerToken);
+        validatePlayerTradePayload(gameId, tradeEvent, false);
 
-        if (sourcePlayerId == null || targetPlayerId == null || giveResource == null || receiveResource == null || amount == null || amount < 1) {
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        List<Player> players = game.getPlayers();
+        Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
+        if (source == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trade player was not found.");
+        }
+
+        ensurePlayerMatchesAuthenticatedUser(source, authenticatedUser, "request trade");
+        // Verify source has enough resources for the requested give bundle
+        Map<String, Integer> giveBundle;
+        if (tradeEvent.getGiveResources() != null) {
+            giveBundle = normalizeTradeBundle(tradeEvent.getGiveResources());
+        } else {
+            if (tradeEvent.getGiveResource() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+            Integer giveAmount = tradeEvent.getGiveAmount() != null ? tradeEvent.getGiveAmount() : tradeEvent.getAmount();
+            if (giveAmount == null || giveAmount < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+            giveBundle = createSingleResourceBundle(tradeEvent.getGiveResource(), giveAmount);
+        }
+
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            if (getResourceByName(source, resource) < giveAmount) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for player trade.");
+            }
+        }
+    }
+
+    public void validatePlayerTradeResponse(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+        User authenticatedUser = authenticate(playerToken);
+        validatePlayerTradePayload(gameId, tradeEvent, false);
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        List<Player> players = game.getPlayers();
+        Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
+        Player target = findPlayerById(players, tradeEvent.getTargetPlayerId());
+        if (source == null || target == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trade player was not found.");
+        }
+
+        ensurePlayerMatchesAuthenticatedUser(target, authenticatedUser, "respond to trade request");
+
+        if (tradeEvent.getTradeAction() != null && "ACCEPT".equalsIgnoreCase(tradeEvent.getTradeAction())) {
+            Map<String, Integer> receiveBundle;
+            if (tradeEvent.getReceiveResources() != null) {
+                receiveBundle = normalizeTradeBundle(tradeEvent.getReceiveResources());
+            } else {
+                if (tradeEvent.getReceiveResource() == null) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+                }
+
+                Integer receiveAmount = tradeEvent.getReceiveAmount() != null ? tradeEvent.getReceiveAmount() : tradeEvent.getAmount();
+                if (receiveAmount == null || receiveAmount < 1) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+                }
+                receiveBundle = createSingleResourceBundle(tradeEvent.getReceiveResource(), receiveAmount);
+            }
+
+            for (String resource : TRADE_RESOURCES) {
+                int receiveAmount = receiveBundle.get(resource);
+                if (getResourceByName(target, resource) < receiveAmount) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for player trade.");
+                }
+            }
+        }
+    }
+
+    public Game applyPlayerTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+        User authenticatedUser = authenticate(playerToken);
+
+        if (tradeEvent == null || tradeEvent.getSourcePlayerId() == null || tradeEvent.getTargetPlayerId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+        }
+
+        if (tradeEvent.getTradeAction() != null && "REQUEST".equalsIgnoreCase(tradeEvent.getTradeAction())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trade requests cannot be executed immediately.");
+        }
+
+        Map<String, Integer> giveBundle;
+        Map<String, Integer> receiveBundle;
+        if (tradeEvent.getGiveResources() != null || tradeEvent.getReceiveResources() != null) {
+            giveBundle = normalizeTradeBundle(tradeEvent.getGiveResources());
+            receiveBundle = normalizeTradeBundle(tradeEvent.getReceiveResources());
+        } else {
+            if (tradeEvent.getGiveResource() == null || tradeEvent.getReceiveResource() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+            Integer giveAmount = tradeEvent.getGiveAmount() != null ? tradeEvent.getGiveAmount() : tradeEvent.getAmount();
+            Integer receiveAmount = tradeEvent.getReceiveAmount() != null ? tradeEvent.getReceiveAmount() : tradeEvent.getAmount();
+            if (giveAmount == null || receiveAmount == null || giveAmount < 1 || receiveAmount < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+            giveBundle = createSingleResourceBundle(tradeEvent.getGiveResource(), giveAmount);
+            receiveBundle = createSingleResourceBundle(tradeEvent.getReceiveResource(), receiveAmount);
+        }
+
+        if (sumTradeBundle(giveBundle) < 1 || sumTradeBundle(receiveBundle) < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
         }
 
@@ -438,36 +600,144 @@ public class GameService {
                 "Game with id " + gameId + " was not found."));
 
         List<Player> players = game.getPlayers();
-        Player source = findPlayerById(players, sourcePlayerId);
-        Player target = findPlayerById(players, targetPlayerId);
+        Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
+        Player target = findPlayerById(players, tradeEvent.getTargetPlayerId());
         if (source == null || target == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trade player was not found.");
         }
 
-        int sourceGive = getResourceByName(source, giveResource);
-        int sourceReceive = getResourceByName(source, receiveResource);
-        int targetGive = getResourceByName(target, giveResource);
-        int targetReceive = getResourceByName(target, receiveResource);
+        ensurePlayerMatchesAuthenticatedUser(source, authenticatedUser, "finalize trade");
 
-        if (sourceGive < amount || targetReceive < amount) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for player trade.");
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            int receiveAmount = receiveBundle.get(resource);
+            if (getResourceByName(source, resource) < giveAmount || getResourceByName(target, resource) < receiveAmount) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for player trade.");
+            }
         }
 
-        setResourceByName(source, giveResource, sourceGive - amount);
-        setResourceByName(source, receiveResource, sourceReceive + amount);
-        setResourceByName(target, receiveResource, targetReceive - amount);
-        setResourceByName(target, giveResource, targetGive + amount);
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            int receiveAmount = receiveBundle.get(resource);
+
+            if (giveAmount > 0) {
+                setResourceByName(source, resource, getResourceByName(source, resource) - giveAmount);
+                setResourceByName(target, resource, getResourceByName(target, resource) + giveAmount);
+            }
+            if (receiveAmount > 0) {
+                setResourceByName(target, resource, getResourceByName(target, resource) - receiveAmount);
+                setResourceByName(source, resource, getResourceByName(source, resource) + receiveAmount);
+            }
+        }
 
         game.setPlayers(players);
         return gameRepository.save(game);
     }
 
-    public Game rollDice(Long gameId, String playerToken, RollDiceRequestDTO request) {
+    private void validatePlayerTradePayload(Long gameId, GameEventDTO tradeEvent, boolean requireTarget) {
+        if (tradeEvent == null || tradeEvent.getSourcePlayerId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+        }
+
+        if (requireTarget && tradeEvent.getTargetPlayerId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+        }
+
+        if (tradeEvent.getTradeAction() != null && "REQUEST".equalsIgnoreCase(tradeEvent.getTradeAction())) {
+            if (tradeEvent.getGiveResources() != null || tradeEvent.getReceiveResources() != null) {
+                normalizeTradeBundle(tradeEvent.getGiveResources());
+                normalizeTradeBundle(tradeEvent.getReceiveResources());
+                return;
+            }
+
+            if (tradeEvent.getGiveResource() == null || tradeEvent.getReceiveResource() == null || tradeEvent.getAmount() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+
+            if (tradeEvent.getAmount() < 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+            }
+        }
+    }
+
+    private Map<String, Integer> normalizeTradeBundle(Map<String, Integer> bundle) {
+        Map<String, Integer> normalized = new HashMap<>();
+        for (String resource : TRADE_RESOURCES) {
+            normalized.put(resource, 0);
+        }
+
+        if (bundle == null) {
+            return normalized;
+        }
+
+        for (Map.Entry<String, Integer> entry : bundle.entrySet()) {
+            if (entry.getKey() == null) {
+                continue;
+            }
+
+            String resource = entry.getKey().toLowerCase(Locale.ROOT);
+            if (!normalized.containsKey(resource)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid trade resource payload.");
+            }
+
+            Integer amountValue = entry.getValue();
+            int amount = amountValue != null ? amountValue.intValue() : 0;
+            if (amount < 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid trade resource payload.");
+            }
+
+            normalized.put(resource, amount);
+        }
+
+        return normalized;
+    }
+
+    private Map<String, Integer> createSingleResourceBundle(String resource, int amount) {
+        if (resource == null || amount < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid trade resource payload.");
+        }
+
+        Map<String, Integer> bundle = normalizeTradeBundle(null);
+        String normalizedResource = resource.toLowerCase(Locale.ROOT);
+        if (!bundle.containsKey(normalizedResource)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid trade resource payload.");
+        }
+
+        bundle.put(normalizedResource, amount);
+        return bundle;
+    }
+
+    private int sumTradeBundle(Map<String, Integer> bundle) {
+        int sum = 0;
+        for (String resource : TRADE_RESOURCES) {
+            sum += Math.max(0, bundle.getOrDefault(resource, 0));
+        }
+        return sum;
+    }
+
+    private void ensurePlayerMatchesAuthenticatedUser(Player player, User authenticatedUser, String actionDescription) {
+        if (player == null || authenticatedUser == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the targeted player can " + actionDescription + ".");
+        }
+
+        if (isSameUserById(player, authenticatedUser) || isSameUserByName(player, authenticatedUser)) {
+            return;
+        }
+
+        if (!hasResolvableCurrentPlayerIdentity(player)) {
+            return;
+        }
+
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the targeted player can " + actionDescription + ".");
+    }
+
+    public Game rollDice(Long gameId, String playerToken) {
         User authenticatedUser = authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureBankInitialized(game);
 
         Player currentPlayer = getCurrentPlayer(game);
         if (currentPlayer == null) {
@@ -562,7 +832,7 @@ public class GameService {
                 }
 
                 String tileType = hexTiles.get(tileIndex);
-                grantResourceForTile(owner, tileType, multiplier);
+                grantResourceForTile(game, owner, tileType, multiplier);
             }
         }
     }
@@ -571,6 +841,7 @@ public class GameService {
         if (game == null || game.getPlayers() == null || game.getPlayers().isEmpty()) {
             return;
         }
+        ensureBankInitialized(game);
 
         for (Player player : game.getPlayers()) {
             if (player == null) {
@@ -583,14 +854,7 @@ public class GameService {
             }
 
             int resourcesToDiscard = totalResources / 2;
-
-            // If this is the current player and discard choices are provided, use them
-            if (player.getId().equals(currentPlayer.getId()) && discardChoices != null && !discardChoices.isEmpty()) {
-                discardResourcesByChoice(player, discardChoices);
-            } else {
-                // For other players or if no choices provided, discard in fixed order
-                discardResourcesInFixedOrder(player, resourcesToDiscard);
-            }
+            discardResourcesInFixedOrder(game, player, resourcesToDiscard);
         }
     }
 
@@ -609,6 +873,7 @@ public class GameService {
         if (players == null || players.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Game has no players.");
         }
+        ensureBankInitialized(game);
 
         Player player = findPlayerById(players, playerId);
         if (player == null) {
@@ -632,6 +897,9 @@ public class GameService {
         player.setWool(wool - 1);
         player.setWheat(wheat - 1);
         player.setOre(ore - 1);
+        addToBank(game, "wool", 1);
+        addToBank(game, "wheat", 1);
+        addToBank(game, "ore", 1);
 
         if (CARD_VICTORY_POINT.equals(drawnCard)) {
             player.setDevelopmentCardVictoryPoints(safeInt(player.getDevelopmentCardVictoryPoints(), 0) + 1);
@@ -714,12 +982,20 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureBankInitialized(game);
 
         Player player = requirePlayer(game, playerId);
         removeDevelopmentCardFromHand(player, CARD_YEAR_OF_PLENTY);
 
+        if (getBankResourceByName(game, resourceA) < 1 || getBankResourceByName(game, resourceB) < 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Bank does not have enough resources for Year of Plenty.");
+        }
+
         setResourceByName(player, resourceA, getResourceByName(player, resourceA) + 1);
         setResourceByName(player, resourceB, getResourceByName(player, resourceB) + 1);
+        removeFromBank(game, resourceA, 1);
+        removeFromBank(game, resourceB, 1);
 
         recalculateVictoryState(game);
         return gameRepository.save(game);
@@ -1008,6 +1284,7 @@ public class GameService {
         if (game == null || player == null || game.getBoard() == null || game.getBoard().getHexTiles() == null) {
             return;
         }
+        ensureBankInitialized(game);
 
         List<Integer> adjacentHexIds = game.getBoard().getAdjacentHexIdsForIntersection(intersectionId);
         for (Integer hexId : adjacentHexIds) {
@@ -1033,6 +1310,7 @@ public class GameService {
                     // Ignore unknown tile labels.
                 }
             }
+            grantResourceForTile(game, player, tileType, 1);
         }
     }
 
@@ -1346,6 +1624,11 @@ public class GameService {
         Player player = new Player();
         player.setId(playerDto.getId());
         player.setName(playerDto.getName());
+        // Attach a lightweight User object so player identity can be resolved in service
+        User linkedUser = new User();
+        linkedUser.setId(playerDto.getId());
+        linkedUser.setUsername(playerDto.getName());
+        player.setUser(linkedUser);
         player.setSettlementPoints(playerDto.getSettlementPoints());
         player.setCityPoints(playerDto.getCityPoints());
         player.setDevelopmentCardVictoryPoints(playerDto.getDevelopmentCardVictoryPoints());
@@ -1560,15 +1843,7 @@ public class GameService {
     }
 
     private User authenticate(String playerToken) {
-        if (playerToken == null || playerToken.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token.");
-        }
-
-        User user = userRepository.findByToken(playerToken);
-        if (user == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authorization token.");
-        }
-        return user;
+        return userService.authenticate(playerToken);
     }
 
     private void ensureCurrentPlayerCanRollDice(Player currentPlayer, User authenticatedUser) {
@@ -1662,7 +1937,7 @@ public class GameService {
         }
     }
     
-    private void discardResourcesInFixedOrder(Player player, int toDiscard) {
+    private void discardResourcesInFixedOrder(Game game, Player player, int toDiscard) {
         if (player == null || toDiscard <= 0) {
             return;
         }
@@ -1675,7 +1950,7 @@ public class GameService {
         remaining = discardSingleResource(player, "ore", remaining);
     }
 
-    private int discardSingleResource(Player player, String resource, int remainingToDiscard) {
+    private int discardSingleResource(Game game, Player player, String resource, int remainingToDiscard) {
         if (remainingToDiscard <= 0) {
             return 0;
         }
@@ -1683,6 +1958,7 @@ public class GameService {
         int available = getResourceByName(player, resource);
         int discarded = Math.min(available, remainingToDiscard);
         setResourceByName(player, resource, available - discarded);
+        addToBank(game, resource, discarded);
         return remainingToDiscard - discarded;
     }
 
@@ -1698,21 +1974,33 @@ public class GameService {
         return 0;
     }
 
-    private void grantResourceForTile(Player player, String tileType, int amount) {
-        if (player == null || tileType == null || amount < 1) {
+    private void grantResourceForTile(Game game, Player player, String tileType, int amount) {
+        if (game == null || player == null || tileType == null || amount < 1) {
             return;
         }
 
         String normalized = tileType.trim().toUpperCase(Locale.ROOT);
-        switch (normalized) {
-            case "WOOD" -> player.setWood(resourceValue(player.getWood()) + amount);
-            case "BRICK" -> player.setBrick(resourceValue(player.getBrick()) + amount);
-            case "WHEAT" -> player.setWheat(resourceValue(player.getWheat()) + amount);
-            case "SHEEP" -> player.setWool(resourceValue(player.getWool()) + amount);
-            case "ORE" -> player.setOre(resourceValue(player.getOre()) + amount);
-            default -> {
-            }
+        String resourceName = switch (normalized) {
+            case "WOOD" -> "wood";
+            case "BRICK" -> "brick";
+            case "WHEAT" -> "wheat";
+            case "SHEEP", "WOOL" -> "wool";
+            case "ORE" -> "ore";
+            default -> null;
+        };
+
+        if (resourceName == null) {
+            return;
         }
+
+        int availableInBank = getBankResourceByName(game, resourceName);
+        int delivered = Math.min(availableInBank, amount);
+        if (delivered <= 0) {
+            return;
+        }
+
+        removeFromBank(game, resourceName, delivered);
+        setResourceByName(player, resourceName, getResourceByName(player, resourceName) + delivered);
     }
 
     private int getResourceByName(Player player, String resource) {
@@ -1740,6 +2028,99 @@ public class GameService {
 
     private String normalizeResourceName(String resource) {
         return resource == null ? "" : resource.trim().toLowerCase();
+    }
+
+    private void initializeBankResources(Game game, Map<String, Integer> bankResources) {
+        if (bankResources == null) {
+            game.setBankWood(BANK_STARTING_RESOURCE_COUNT);
+            game.setBankBrick(BANK_STARTING_RESOURCE_COUNT);
+            game.setBankWool(BANK_STARTING_RESOURCE_COUNT);
+            game.setBankWheat(BANK_STARTING_RESOURCE_COUNT);
+            game.setBankOre(BANK_STARTING_RESOURCE_COUNT);
+            return;
+        }
+
+        applyBankResourcesFromMap(game, bankResources);
+    }
+
+    private void applyBankResourcesFromMap(Game game, Map<String, Integer> bankResources) {
+        game.setBankWood(Math.max(0, Optional.ofNullable(bankResources.get("wood")).orElse(0)));
+        game.setBankBrick(Math.max(0, Optional.ofNullable(bankResources.get("brick")).orElse(0)));
+        game.setBankWool(Math.max(0, Optional.ofNullable(bankResources.get("wool")).orElse(0)));
+        game.setBankWheat(Math.max(0, Optional.ofNullable(bankResources.get("wheat")).orElse(0)));
+        game.setBankOre(Math.max(0, Optional.ofNullable(bankResources.get("ore")).orElse(0)));
+    }
+
+    private void ensureBankInitialized(Game game) {
+        if (game == null) {
+            return;
+        }
+
+        if (game.getBankWood() != null
+            && game.getBankBrick() != null
+            && game.getBankWool() != null
+            && game.getBankWheat() != null
+            && game.getBankOre() != null) {
+            return;
+        }
+
+        List<Player> players = Optional.ofNullable(game.getPlayers()).orElse(Collections.emptyList());
+        int playersWood = players.stream().filter(Objects::nonNull).mapToInt(player -> resourceValue(player.getWood())).sum();
+        int playersBrick = players.stream().filter(Objects::nonNull).mapToInt(player -> resourceValue(player.getBrick())).sum();
+        int playersWool = players.stream().filter(Objects::nonNull).mapToInt(player -> resourceValue(player.getWool())).sum();
+        int playersWheat = players.stream().filter(Objects::nonNull).mapToInt(player -> resourceValue(player.getWheat())).sum();
+        int playersOre = players.stream().filter(Objects::nonNull).mapToInt(player -> resourceValue(player.getOre())).sum();
+
+        game.setBankWood(Math.max(0, BANK_STARTING_RESOURCE_COUNT - playersWood));
+        game.setBankBrick(Math.max(0, BANK_STARTING_RESOURCE_COUNT - playersBrick));
+        game.setBankWool(Math.max(0, BANK_STARTING_RESOURCE_COUNT - playersWool));
+        game.setBankWheat(Math.max(0, BANK_STARTING_RESOURCE_COUNT - playersWheat));
+        game.setBankOre(Math.max(0, BANK_STARTING_RESOURCE_COUNT - playersOre));
+    }
+
+    private int getBankResourceByName(Game game, String resource) {
+        if (game == null) {
+            return 0;
+        }
+
+        return switch (normalizeResourceName(resource)) {
+            case "wood" -> resourceValue(game.getBankWood());
+            case "brick" -> resourceValue(game.getBankBrick());
+            case "wool" -> resourceValue(game.getBankWool());
+            case "wheat" -> resourceValue(game.getBankWheat());
+            case "ore" -> resourceValue(game.getBankOre());
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported resource: " + resource);
+        };
+    }
+
+    private void setBankResourceByName(Game game, String resource, int value) {
+        int normalized = Math.max(0, value);
+        switch (normalizeResourceName(resource)) {
+            case "wood" -> game.setBankWood(normalized);
+            case "brick" -> game.setBankBrick(normalized);
+            case "wool" -> game.setBankWool(normalized);
+            case "wheat" -> game.setBankWheat(normalized);
+            case "ore" -> game.setBankOre(normalized);
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported resource: " + resource);
+        }
+    }
+
+    private void addToBank(Game game, String resource, int amount) {
+        if (game == null || amount <= 0) {
+            return;
+        }
+
+        int current = getBankResourceByName(game, resource);
+        setBankResourceByName(game, resource, current + amount);
+    }
+
+    private void removeFromBank(Game game, String resource, int amount) {
+        if (game == null || amount <= 0) {
+            return;
+        }
+
+        int current = getBankResourceByName(game, resource);
+        setBankResourceByName(game, resource, Math.max(0, current - amount));
     }
 
     private Intersection findIntersectionById(Game game, Integer intersectionId) {
