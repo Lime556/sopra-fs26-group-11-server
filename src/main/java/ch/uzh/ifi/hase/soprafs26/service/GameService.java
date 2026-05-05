@@ -38,6 +38,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 
 @Service
 @Transactional
@@ -144,6 +145,25 @@ public class GameService {
         ensureBankInitialized(game);
 
         recalculateVictoryState(game);
+        return gameRepository.save(game);
+    }
+
+    public Game moveRobber(Long gameId, String token, Integer hexId) {
+        authenticate(token);
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        if (hexId == null || !isValidHexId(game, hexId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid hex id.");
+        }
+
+        if (hexId.equals(game.getRobberTileIndex())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot move robber to the same tile.");
+        }
+
+        game.setRobberTileIndex(hexId);
         return gameRepository.save(game);
     }
 
@@ -739,7 +759,7 @@ public class GameService {
             game.setDiceValue(diceSum);
             game.setDiceRolledAt(java.time.Instant.now());
         if (diceSum == 7) {
-            applySevenRollEffects(game);
+            applySevenRollEffects(game, currentPlayer, request != null ? request.getDiscardResources() : null);
         } else {
             distributeResourcesForDiceValue(game, diceSum);
         }
@@ -800,6 +820,11 @@ public class GameService {
                     continue;
                 }
 
+                // Skip resource production if robber is on this hex
+                if (adjacentHexId.equals(game.getRobberTileIndex())) {
+                    continue;
+                }
+
                 int tileIndex = adjacentHexId - 1;
                 Integer tileDiceNumber = hexDiceNumbers.get(tileIndex);
                 if (tileDiceNumber == null || tileDiceNumber != diceValue) {
@@ -812,7 +837,7 @@ public class GameService {
         }
     }
 
-    void applySevenRollEffects(Game game) {
+    void applySevenRollEffects(Game game, Player currentPlayer, Map<String, Integer> discardChoices) {
         if (game == null || game.getPlayers() == null || game.getPlayers().isEmpty()) {
             return;
         }
@@ -898,20 +923,31 @@ public class GameService {
         player.setKnightsPlayed(safeInt(player.getKnightsPlayed(), 0) + 1);
 
         if (targetHexId != null) {
+            if (!isValidHexId(game, targetHexId)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Hex tile with id " + targetHexId + " was not found.");
+            }
+            if (targetHexId.equals(game.getRobberTileIndex())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Robber is already on this tile.");
+            }
             game.setRobberTileIndex(targetHexId);
         }
 
         if (targetPlayerId != null && !targetPlayerId.equals(playerId)) {
             Player target = requirePlayer(game, targetPlayerId);
-            
-            // Validate adjacency: target player must have a settlement/city on hex corner adjacent to robber
-            if (targetHexId != null) {
-                if (!canStealFromPlayer(game, targetHexId, targetPlayerId)) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Target player has no settlements or cities adjacent to robber position on hex " + targetHexId + ".");
-                }
+            Integer effectiveRobberHexId = targetHexId != null ? targetHexId : game.getRobberTileIndex();
+
+            if (effectiveRobberHexId == null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Robber position is required to steal from a target player.");
             }
-            
+
+            if (!canStealFromPlayer(game, effectiveRobberHexId, targetPlayerId)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Target player has no settlements or cities adjacent to robber position on hex " + effectiveRobberHexId + ".");
+            }
+
             stealRandomResource(target, player);
         }
 
@@ -1257,6 +1293,23 @@ public class GameService {
                 continue;
             }
 
+            // Test resources - REMOVE LATER
+            //player.setWood(resourceValue(player.getWood()) + 3);
+            //player.setBrick(resourceValue(player.getBrick()) + 3);
+            //player.setWool(resourceValue(player.getWool()) + 3);
+            //player.setWheat(resourceValue(player.getWheat()) + 3);
+            //player.setOre(resourceValue(player.getOre()) + 3);
+
+            switch (tileType.toUpperCase()) {
+                case "WOOD" -> player.setWood(resourceValue(player.getWood()) + 1);
+                case "BRICK" -> player.setBrick(resourceValue(player.getBrick()) + 1);
+                case "SHEEP", "WOOL" -> player.setWool(resourceValue(player.getWool()) + 1);
+                case "WHEAT" -> player.setWheat(resourceValue(player.getWheat()) + 1);
+                case "ORE" -> player.setOre(resourceValue(player.getOre()) + 1);
+                default -> {
+                    // Ignore unknown tile labels.
+                }
+            }
             grantResourceForTile(game, player, tileType, 1);
         }
     }
@@ -1272,6 +1325,15 @@ public class GameService {
         }
 
         return game.getBoard().getHexTiles().get(index);
+    }
+
+    private boolean isValidHexId(Game game, Integer hexId) {
+        if (game == null || hexId == null || game.getBoard() == null || game.getBoard().getHexTiles() == null) {
+            return false;
+        }
+
+        int index = hexId - 1;
+        return index >= 0 && index < game.getBoard().getHexTiles().size();
     }
 
     public Player getCurrentPlayer(Game game) {
@@ -1517,7 +1579,17 @@ public class GameService {
 
     private Integer resolveRobberTileIndex(Board board, GamePostDTO gamePostDTO) {
         if (gamePostDTO != null && gamePostDTO.getRobberTileIndex() != null) {
-            return gamePostDTO.getRobberTileIndex();
+            Integer robberTileIndex = gamePostDTO.getRobberTileIndex();
+            if (board == null || board.getHexTiles() == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Hex tile with id " + robberTileIndex + " was not found.");
+            }
+            int index = robberTileIndex - 1;
+            if (index < 0 || index >= board.getHexTiles().size()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Hex tile with id " + robberTileIndex + " was not found.");
+            }
+            return robberTileIndex;
         }
 
         if (board == null || board.getHexTiles() == null) {
@@ -1849,17 +1921,33 @@ public class GameService {
             + resourceValue(player.getOre());
     }
 
+    private void discardResourcesByChoice(Player player, Map<String, Integer> discardChoices) {
+        if (player == null || discardChoices == null || discardChoices.isEmpty()) {
+            return;
+        }
+
+        for (Map.Entry<String, Integer> entry : discardChoices.entrySet()) {
+            String resource = entry.getKey();
+            Integer amount = entry.getValue();
+            if (amount != null && amount > 0) {
+                int available = getResourceByName(player, resource);
+                int toDiscard = Math.min(amount, available);
+                setResourceByName(player, resource, available - toDiscard);
+            }
+        }
+    }
+    
     private void discardResourcesInFixedOrder(Game game, Player player, int toDiscard) {
         if (player == null || toDiscard <= 0) {
             return;
         }
 
         int remaining = toDiscard;
-        remaining = discardSingleResource(game, player, "wood", remaining);
-        remaining = discardSingleResource(game, player, "brick", remaining);
-        remaining = discardSingleResource(game, player, "wool", remaining);
-        remaining = discardSingleResource(game, player, "wheat", remaining);
-        discardSingleResource(game, player, "ore", remaining);
+        remaining = discardSingleResource(player, "wood", remaining);
+        remaining = discardSingleResource(player, "brick", remaining);
+        remaining = discardSingleResource(player, "wool", remaining);
+        remaining = discardSingleResource(player, "wheat", remaining);
+        remaining = discardSingleResource(player, "ore", remaining);
     }
 
     private int discardSingleResource(Game game, Player player, String resource, int remainingToDiscard) {
@@ -2123,17 +2211,18 @@ public class GameService {
         }
 
         Board board = game.getBoard();
-        if (board == null || board.getIntersections() == null) {
+        if (board == null) {
             return false;
         }
 
-        List<Integer> hexIntersectionIds = getIntersectionsForHex(robberHexId);
-        if (hexIntersectionIds.isEmpty()) {
+        // Use Board's geometry to get all intersection IDs for this hex
+        List<Integer> robberHexIntersections = board.getIntersectionIdsForHex(robberHexId);
+        if (robberHexIntersections.isEmpty()) {
             return false;
         }
 
-        // Check if target player has a settlement or city on any of the intersections adjacent to this hex
-        for (Integer intersectionId : hexIntersectionIds) {
+        // Check if target player has a settlement or city on any of the intersections of the robber hex
+        for (Integer intersectionId : robberHexIntersections) {
             Intersection intersection = findIntersectionById(game, intersectionId);
             if (intersection != null && intersection.getBuilding() != null) {
                 if (targetPlayerId.equals(intersection.getBuilding().getOwnerPlayerId())) {

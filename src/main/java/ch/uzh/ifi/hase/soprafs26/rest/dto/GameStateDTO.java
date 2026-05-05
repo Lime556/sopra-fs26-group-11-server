@@ -9,12 +9,13 @@ public class GameStateDTO {
     private Long currentPlayerId;
     private String currentPlayerName;
     private Boolean gameFinished;
+    private Boolean currentPlayerMustDiscard;
 
     public GameStateDTO() {
     }
 
     public GameStateDTO(Long gameId, Integer currentTurnIndex, String turnPhase, Integer diceValue,
-                        Long currentPlayerId, String currentPlayerName, Boolean gameFinished) {
+                        Long currentPlayerId, String currentPlayerName, Boolean gameFinished, Boolean currentPlayerMustDiscard) {
         this.gameId = gameId;
         this.currentTurnIndex = currentTurnIndex;
         this.turnPhase = turnPhase;
@@ -22,6 +23,7 @@ public class GameStateDTO {
         this.currentPlayerId = currentPlayerId;
         this.currentPlayerName = currentPlayerName;
         this.gameFinished = gameFinished;
+        this.currentPlayerMustDiscard = currentPlayerMustDiscard;
     }
 
     public Long getGameId() {
@@ -78,5 +80,13 @@ public class GameStateDTO {
 
     public void setGameFinished(Boolean gameFinished) {
         this.gameFinished = gameFinished;
+    }
+
+    public Boolean getCurrentPlayerMustDiscard() {
+        return currentPlayerMustDiscard;
+    }
+
+    public void setCurrentPlayerMustDiscard(Boolean currentPlayerMustDiscard) {
+        this.currentPlayerMustDiscard = currentPlayerMustDiscard;
     }
 }
