@@ -65,7 +65,7 @@ public class GameService {
     }
 
     public Game createGame(String playerToken, GamePostDTO gamePostDTO) {
-        authenticate(playerToken);
+        User authenticatedUser = authenticate(playerToken);
 
         Game game = new Game();
         Board board = resolveBoard(gamePostDTO);
@@ -84,9 +84,33 @@ public class GameService {
         game.setFinishedAt(gamePostDTO == null ? null : gamePostDTO.getFinishedAt());
         game.setWinner(convertPlayerDtoToEntity(gamePostDTO == null ? null : gamePostDTO.getWinner()));
         game.setChatMessages(gamePostDTO == null || gamePostDTO.getChatMessages() == null
-            ? Collections.emptyList()
+            ? new ArrayList<>()
             : new ArrayList<>(gamePostDTO.getChatMessages()));
         initializeBankResources(game, gamePostDTO == null ? null : gamePostDTO.getBankResources());
+
+        // If no players are provided (e.g. game created via direct board access), 
+        // add the authenticated user as the first player.
+        if (game.getPlayers().isEmpty()) {
+            Player newPlayer = new Player();
+            newPlayer.setUser(authenticatedUser);
+            newPlayer.setName(authenticatedUser.getUsername());
+            newPlayer.setColor("RED");
+            newPlayer.setSettlementPoints(0);
+            newPlayer.setCityPoints(0);
+            newPlayer.setDevelopmentCardVictoryPoints(0);
+            newPlayer.setWood(0); newPlayer.setBrick(0); newPlayer.setWool(0); newPlayer.setWheat(0); newPlayer.setOre(0);
+            newPlayer.setKnightsPlayed(0);
+            newPlayer.setFreeRoadBuildsRemaining(0);
+            newPlayer.recalculateVictoryPoints();
+            game.getPlayers().add(newPlayer);
+            if (game.getCurrentTurnIndex() == null) {
+                game.setCurrentTurnIndex(0);
+            }
+        }
+
+        game = gameRepository.save(game);
+        final Long savedGameId = game.getId();
+        game.getPlayers().forEach(p -> p.setGameId(savedGameId));
 
         recalculateVictoryState(game);
 
@@ -1618,10 +1642,12 @@ public class GameService {
 
     private List<Player> convertPlayerDtosToEntity(List<PlayerGetDTO> players) {
         if (players == null) {
-            return Collections.emptyList();
+            return new ArrayList<>();
         }
 
-        return players.stream().map(this::convertPlayerDtoToEntity).collect(Collectors.toList());
+        return players.stream()
+                .map(this::convertPlayerDtoToEntity)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     private Player convertPlayerDtoToEntity(PlayerGetDTO playerDto) {
