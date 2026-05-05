@@ -23,6 +23,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameHistoryEntryDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.PasswordUpdateDTO;
 
 /**
  * User Service
@@ -244,6 +245,37 @@ public class UserService {
 		}
 
 		return user;
+	}
+
+	public void updatePassword(Long userId, String token, PasswordUpdateDTO dto) {
+		User requester = authenticate(token);
+
+		if (!requester.getId().equals(userId)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only change your own password");
+		}
+
+		if (dto.getCurrentPassword() == null || dto.getCurrentPassword().isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password must not be empty");
+		}
+
+		if (!requester.getPasswordHash().equals(dto.getCurrentPassword())) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect");
+		}
+
+		if (dto.getNewPassword() == null || dto.getNewPassword().isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must not be empty");
+		}
+
+		if (dto.getNewPassword().length() < 6) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must be at least 6 characters");
+		}
+
+		if (dto.getNewPassword().equals(dto.getCurrentPassword())) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must differ from current password");
+		}
+
+		requester.setPasswordHash(dto.getNewPassword());
+		userRepository.save(requester);
 	}
 
 	private String extractToken(String authorizationHeader) {
