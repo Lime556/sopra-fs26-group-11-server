@@ -32,7 +32,7 @@ public class BotFallbackService {
             return BotAction.of(BotActionType.ROLL_DICE, bot.getId());
         }
 
-        if (Integer.valueOf(7).equals(game.getDiceValue())) {
+        if (Integer.valueOf(7).equals(game.getDiceValue()) && !Boolean.TRUE.equals(game.getRobberMovedAfterSevenRoll())) {
             Integer robberHexId = firstValidRobberHex(game);
             if (robberHexId != null) {
                 return BotAction.robber(bot.getId(), robberHexId);

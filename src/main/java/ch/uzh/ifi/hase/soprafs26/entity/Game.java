@@ -64,6 +64,9 @@ public class Game{
     private Integer robberTileIndex;
 
     @Column
+    private Boolean robberMovedAfterSevenRoll;
+
+    @Column
     private Integer bankWood;
 
     @Column
@@ -218,6 +221,14 @@ public class Game{
 
     public void setRobberTileIndex(Integer robberTileIndex) {
         this.robberTileIndex = robberTileIndex;
+    }
+
+    public Boolean getRobberMovedAfterSevenRoll() {
+        return robberMovedAfterSevenRoll;
+    }
+
+    public void setRobberMovedAfterSevenRoll(Boolean robberMovedAfterSevenRoll) {
+        this.robberMovedAfterSevenRoll = robberMovedAfterSevenRoll;
     }
 
     public Integer getBankWood() {

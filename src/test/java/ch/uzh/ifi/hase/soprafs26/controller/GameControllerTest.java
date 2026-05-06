@@ -6,6 +6,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
+import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
 import java.util.List;
 
 import static org.hamcrest.Matchers.is;
@@ -36,6 +37,9 @@ public class GameControllerTest {
 
     @MockitoBean
     private GameService gameService;
+
+    @MockitoBean
+    private BotActionExecutorService botActionExecutorService;
 
     @MockitoBean
     private SimpMessagingTemplate messagingTemplate;

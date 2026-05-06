@@ -188,7 +188,25 @@ public class GameService {
         }
 
         game.setRobberTileIndex(hexId);
+        if (Integer.valueOf(7).equals(game.getDiceValue())) {
+            game.setRobberMovedAfterSevenRoll(true);
+        }
         return gameRepository.save(game);
+    }
+
+    public Game moveRobberAndStealFromFirstAdjacentPlayer(Long gameId, String token, Long sourcePlayerId, Integer hexId) {
+        Game game = moveRobber(gameId, token, hexId);
+
+        Player source = findPlayerById(game.getPlayers(), sourcePlayerId);
+        Player target = findFirstRobberStealTarget(game, sourcePlayerId, hexId);
+        if (source != null && target != null) {
+            stealRandomResource(target, source);
+            game.setPlayers(game.getPlayers());
+            recalculateVictoryState(game);
+            return gameRepository.save(game);
+        }
+
+        return game;
     }
 
     public Game getGameById(Long gameId, String playerToken) {
@@ -783,8 +801,10 @@ public class GameService {
             game.setDiceValue(diceSum);
             game.setDiceRolledAt(java.time.Instant.now());
         if (diceSum == 7) {
+            game.setRobberMovedAfterSevenRoll(false);
             applySevenRollEffects(game, currentPlayer, request != null ? request.getDiscardResources() : null);
         } else {
+            game.setRobberMovedAfterSevenRoll(false);
             distributeResourcesForDiceValue(game, diceSum);
         }
         game.setTurnPhase(TurnPhase.ACTION);
@@ -1745,6 +1765,38 @@ public class GameService {
         setResourceByName(to, selected, getResourceByName(to, selected) + 1);
     }
 
+    private Player findFirstRobberStealTarget(Game game, Long sourcePlayerId, Integer robberHexId) {
+        if (game == null || sourcePlayerId == null || robberHexId == null || game.getPlayers() == null || game.getBoard() == null) {
+            return null;
+        }
+
+        for (Player player : game.getPlayers()) {
+            if (player == null || player.getId() == null || player.getId().equals(sourcePlayerId)) {
+                continue;
+            }
+            if (!canStealFromPlayer(game, robberHexId, player.getId())) {
+                continue;
+            }
+            if (totalResources(player) > 0) {
+                return player;
+            }
+        }
+
+        return null;
+    }
+
+    private int totalResources(Player player) {
+        if (player == null) {
+            return 0;
+        }
+
+        return resourceValue(player.getWood())
+            + resourceValue(player.getBrick())
+            + resourceValue(player.getWool())
+            + resourceValue(player.getWheat())
+            + resourceValue(player.getOre());
+    }
+
     private void addResourceIfAvailable(List<String> available, String resource, Integer amount) {
         int value = resourceValue(amount);
         for (int i = 0; i < value; i++) {
@@ -1907,6 +1959,10 @@ public class GameService {
     private void ensureCurrentPlayerCanRollDice(Player currentPlayer, User authenticatedUser) {
         if (currentPlayer == null || authenticatedUser == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the active player can roll dice.");
+        }
+
+        if (currentPlayer.isBot()) {
+            return;
         }
 
         if (isSameUserById(currentPlayer, authenticatedUser) || isSameUserByName(currentPlayer, authenticatedUser)) {

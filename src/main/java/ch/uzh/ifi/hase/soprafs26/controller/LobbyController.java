@@ -20,6 +20,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyHostTransferDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyKickDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyParticipantGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.mapper.DTOMapper;
 import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
@@ -40,7 +41,7 @@ public class LobbyController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public List<LobbyGetDTO> getLobbies() {
-        return lobbyService.getLobbies().stream().map(DTOMapper.INSTANCE::convertEntityToLobbyGetDTO).toList();
+        return lobbyService.getLobbies().stream().map(this::convertLobbyToDto).toList();
     }
     
     @PostMapping("/lobbies")
@@ -56,7 +57,7 @@ public class LobbyController {
                 lobbyPostDTO == null ? null : lobbyPostDTO.getPassword(),
                 lobbyPostDTO == null ? null : lobbyPostDTO.getName());
 
-        LobbyGetDTO createdDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(createdLobby);
+        LobbyGetDTO createdDTO = convertLobbyToDto(createdLobby);
         messaging.convertAndSend("/topic/lobbies", createdDTO);
         return createdDTO;
     }
@@ -79,7 +80,7 @@ public class LobbyController {
           authorizationHeader, 
           lobbyJoinDTO == null ? null : lobbyJoinDTO.getPassword());
         
-        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
         messaging.convertAndSend("/topic/lobbies", updatedDTO);
         return updatedDTO;
     }
@@ -103,7 +104,7 @@ public class LobbyController {
         @PathVariable Long lobbyId,
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
-        return DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(
+        return convertLobbyToDto(
             lobbyService.getLobbyById(lobbyId, authorizationHeader)
         );
     }
@@ -137,7 +138,7 @@ public class LobbyController {
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
         Lobby updatedLobby = lobbyService.kickParticipant(lobbyId, authorizationHeader, participantId);
-        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
         messaging.convertAndSend("/topic/lobbies", updatedDTO);
         return updatedDTO;
     }
@@ -150,7 +151,7 @@ public class LobbyController {
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
         Lobby updatedLobby = lobbyService.addBot(lobbyId, authorizationHeader);
-        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
         messaging.convertAndSend("/topic/lobbies", updatedDTO);
         return updatedDTO;
     }
@@ -164,7 +165,7 @@ public class LobbyController {
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
         Lobby updatedLobby = lobbyService.removeBot(lobbyId, authorizationHeader, participantId);
-        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
         messaging.convertAndSend("/topic/lobbies", updatedDTO);
         return updatedDTO;
     }
@@ -182,7 +183,7 @@ public class LobbyController {
             authorizationHeader,
             transferDTO == null ? null : transferDTO.getNewHostParticipantId()
         );
-        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
         messaging.convertAndSend("/topic/lobbies", updatedDTO);
         return updatedDTO;
     }
@@ -200,7 +201,7 @@ public class LobbyController {
             authorizationHeader,
             kickDTO == null ? null : kickDTO.getUserId()
         );
-        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
         messaging.convertAndSend("/topic/lobbies", updatedDTO);
         return updatedDTO;
     }
@@ -218,9 +219,25 @@ public class LobbyController {
             authorizationHeader,
             transferDTO == null ? null : transferDTO.getUserId()
         );
-        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
         messaging.convertAndSend("/topic/lobbies", updatedDTO);
         return updatedDTO;
+    }
+
+    private LobbyGetDTO convertLobbyToDto(Lobby lobby) {
+        LobbyGetDTO dto = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(lobby);
+        if (dto.getParticipants() == null) {
+            return dto;
+        }
+
+        int botCount = 0;
+        for (LobbyParticipantGetDTO participant : dto.getParticipants()) {
+            if (participant != null && participant.isBot()) {
+                botCount++;
+                participant.setUsername("Bot " + botCount);
+            }
+        }
+        return dto;
     }
     
 
