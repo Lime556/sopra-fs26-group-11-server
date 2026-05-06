@@ -1658,11 +1658,32 @@ public class GameService {
         Player player = new Player();
         player.setId(playerDto.getId());
         player.setName(playerDto.getName());
-        // Attach a lightweight User object so player identity can be resolved in service
-        User linkedUser = new User();
-        linkedUser.setId(playerDto.getId());
-        linkedUser.setUsername(playerDto.getName());
-        player.setUser(linkedUser);
+
+        // Fetch the managed User entity when available, otherwise attach a lightweight
+        // fallback User so player identity checks/tests never dereference null.
+        if (playerDto.getId() != null) {
+            try {
+                User existingUser = userService.getUserById(playerDto.getId());
+                if (existingUser != null) {
+                    player.setUser(existingUser);
+                } else {
+                    User fallbackUser = new User();
+                    fallbackUser.setId(playerDto.getId());
+                    fallbackUser.setUsername(playerDto.getName());
+                    player.setUser(fallbackUser);
+                }
+            } catch (ResponseStatusException e) {
+                User fallbackUser = new User();
+                fallbackUser.setId(playerDto.getId());
+                fallbackUser.setUsername(playerDto.getName());
+                player.setUser(fallbackUser);
+            }
+        } else {
+            User fallbackUser = new User();
+            fallbackUser.setUsername(playerDto.getName());
+            player.setUser(fallbackUser);
+        }
+
         player.setSettlementPoints(playerDto.getSettlementPoints());
         player.setCityPoints(playerDto.getCityPoints());
         player.setDevelopmentCardVictoryPoints(playerDto.getDevelopmentCardVictoryPoints());
