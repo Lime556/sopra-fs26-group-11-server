@@ -902,7 +902,13 @@ public class GameService {
             }
 
             int resourcesToDiscard = totalResources / 2;
-            discardResourcesInFixedOrder(game, player, resourcesToDiscard);
+            if (currentPlayer != null && currentPlayer.getId() != null
+                && currentPlayer.getId().equals(player.getId())
+                && discardChoices != null && !discardChoices.isEmpty()) {
+                discardResourcesByChoice(game, player, discardChoices, resourcesToDiscard);
+            } else {
+                discardResourcesInFixedOrder(game, player, resourcesToDiscard);
+            }
         }
     }
 
@@ -1345,23 +1351,6 @@ public class GameService {
                 continue;
             }
 
-            // Test resources - REMOVE LATER
-            //player.setWood(resourceValue(player.getWood()) + 3);
-            //player.setBrick(resourceValue(player.getBrick()) + 3);
-            //player.setWool(resourceValue(player.getWool()) + 3);
-            //player.setWheat(resourceValue(player.getWheat()) + 3);
-            //player.setOre(resourceValue(player.getOre()) + 3);
-
-            switch (tileType.toUpperCase()) {
-                case "WOOD" -> player.setWood(resourceValue(player.getWood()) + 1);
-                case "BRICK" -> player.setBrick(resourceValue(player.getBrick()) + 1);
-                case "SHEEP", "WOOL" -> player.setWool(resourceValue(player.getWool()) + 1);
-                case "WHEAT" -> player.setWheat(resourceValue(player.getWheat()) + 1);
-                case "ORE" -> player.setOre(resourceValue(player.getOre()) + 1);
-                default -> {
-                    // Ignore unknown tile labels.
-                }
-            }
             grantResourceForTile(game, player, tileType, 1);
         }
     }
@@ -2035,18 +2024,33 @@ public class GameService {
             + resourceValue(player.getOre());
     }
 
-    private void discardResourcesByChoice(Player player, Map<String, Integer> discardChoices) {
+    private void discardResourcesByChoice(Game game, Player player, Map<String, Integer> discardChoices, int requiredDiscardCount) {
         if (player == null || discardChoices == null || discardChoices.isEmpty()) {
             return;
         }
 
-        for (Map.Entry<String, Integer> entry : discardChoices.entrySet()) {
+        Map<String, Integer> normalizedChoices = normalizeTradeBundle(discardChoices);
+        int selectedCount = sumTradeBundle(normalizedChoices);
+        if (selectedCount != requiredDiscardCount) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Exactly " + requiredDiscardCount + " resources must be discarded.");
+        }
+
+        for (String resource : TRADE_RESOURCES) {
+            int amount = normalizedChoices.get(resource);
+            if (amount > getResourceByName(player, resource)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot discard more " + resource + " than the player owns.");
+            }
+        }
+
+        for (Map.Entry<String, Integer> entry : normalizedChoices.entrySet()) {
             String resource = entry.getKey();
-            Integer amount = entry.getValue();
-            if (amount != null && amount > 0) {
+            int amount = entry.getValue();
+            if (amount > 0) {
                 int available = getResourceByName(player, resource);
-                int toDiscard = Math.min(amount, available);
-                setResourceByName(player, resource, available - toDiscard);
+                setResourceByName(player, resource, available - amount);
+                addToBank(game, resource, amount);
             }
         }
     }

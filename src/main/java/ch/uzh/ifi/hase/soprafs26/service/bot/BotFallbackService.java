@@ -1,7 +1,9 @@
 package ch.uzh.ifi.hase.soprafs26.service.bot;
 
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 import org.springframework.stereotype.Service;
 
@@ -47,14 +49,14 @@ public class BotFallbackService {
         int roads = countPlayerRoads(game, bot.getId());
 
         if ((game.isFirstSetupRound() && settlements < 1) || (game.isSecondSetupRound() && settlements < 2)) {
-            Integer intersectionId = firstValidSetupSettlement(game);
+            Integer intersectionId = randomValidSetupSettlement(game);
             if (intersectionId != null) {
                 return BotAction.settlement(BotActionType.BUILD_INITIAL_SETTLEMENT, bot.getId(), intersectionId);
             }
         }
 
         if ((game.isFirstSetupRound() && roads < 1) || (game.isSecondSetupRound() && roads < 2)) {
-            Integer edgeId = firstValidSetupRoad(game, bot);
+            Integer edgeId = randomValidSetupRoad(game, bot);
             if (edgeId != null) {
                 return BotAction.road(BotActionType.BUILD_INITIAL_ROAD, bot.getId(), edgeId);
             }
@@ -64,17 +66,17 @@ public class BotFallbackService {
     }
 
     private BotAction chooseMainAction(Game game, Player bot) {
-        Integer cityIntersectionId = firstValidCity(game, bot);
+        Integer cityIntersectionId = randomValidCity(game, bot);
         if (cityIntersectionId != null) {
             return BotAction.settlement(BotActionType.BUILD_CITY, bot.getId(), cityIntersectionId);
         }
 
-        Integer settlementIntersectionId = firstValidSettlement(game, bot);
+        Integer settlementIntersectionId = randomValidSettlement(game, bot);
         if (settlementIntersectionId != null) {
             return BotAction.settlement(BotActionType.BUILD_SETTLEMENT, bot.getId(), settlementIntersectionId);
         }
 
-        Integer roadEdgeId = firstValidRoad(game, bot);
+        Integer roadEdgeId = randomValidRoad(game, bot);
         if (roadEdgeId != null) {
             return BotAction.road(BotActionType.BUILD_ROAD, bot.getId(), roadEdgeId);
         }
@@ -98,21 +100,23 @@ public class BotFallbackService {
         return currentPlayer != null && currentPlayer.isBot() ? currentPlayer : null;
     }
 
-    private Integer firstValidSetupSettlement(Game game) {
+    private Integer randomValidSetupSettlement(Game game) {
+        List<Integer> candidates = new ArrayList<>();
         for (Intersection intersection : intersections(game)) {
             if (intersection != null && !intersection.isOccupied() && !hasAdjacentBuilding(game, intersection.getId())) {
-                return intersection.getId();
+                candidates.add(intersection.getId());
             }
         }
-        return null;
+        return randomCandidate(candidates);
     }
 
-    private Integer firstValidSetupRoad(Game game, Player bot) {
+    private Integer randomValidSetupRoad(Game game, Player bot) {
         Integer settlementId = bot.getLastPlacedSetupSettlementIntersectionId();
         if (settlementId == null) {
             return null;
         }
 
+        List<Integer> candidates = new ArrayList<>();
         for (Edge edge : edges(game)) {
             if (edge == null || edge.isOccupied()) {
                 continue;
@@ -123,51 +127,54 @@ public class BotFallbackService {
                 hasOwnBuildingAtIntersection(game, edge.getIntersectionAId(), bot.getId())
                 || hasOwnBuildingAtIntersection(game, edge.getIntersectionBId(), bot.getId());
             if (connectedToNewSettlement && connectedToOwnBuilding) {
-                return edge.getId();
+                candidates.add(edge.getId());
             }
         }
-        return null;
+        return randomCandidate(candidates);
     }
 
-    private Integer firstValidCity(Game game, Player bot) {
+    private Integer randomValidCity(Game game, Player bot) {
         if (resourceValue(bot.getWheat()) < 2 || resourceValue(bot.getOre()) < 3) {
             return null;
         }
 
+        List<Integer> candidates = new ArrayList<>();
         for (Intersection intersection : intersections(game)) {
             if (intersection == null || !(intersection.getBuilding() instanceof Settlement settlement)) {
                 continue;
             }
             if (bot.getId().equals(settlement.getOwnerPlayerId())) {
-                return intersection.getId();
+                candidates.add(intersection.getId());
             }
         }
-        return null;
+        return randomCandidate(candidates);
     }
 
-    private Integer firstValidSettlement(Game game, Player bot) {
+    private Integer randomValidSettlement(Game game, Player bot) {
         if (resourceValue(bot.getWood()) < 1 || resourceValue(bot.getBrick()) < 1
             || resourceValue(bot.getWool()) < 1 || resourceValue(bot.getWheat()) < 1) {
             return null;
         }
 
+        List<Integer> candidates = new ArrayList<>();
         for (Intersection intersection : intersections(game)) {
             if (intersection == null || intersection.isOccupied() || hasAdjacentBuilding(game, intersection.getId())) {
                 continue;
             }
             if (hasOwnRoadAtIntersection(game, intersection.getId(), bot.getId())) {
-                return intersection.getId();
+                candidates.add(intersection.getId());
             }
         }
-        return null;
+        return randomCandidate(candidates);
     }
 
-    private Integer firstValidRoad(Game game, Player bot) {
+    private Integer randomValidRoad(Game game, Player bot) {
         if (resourceValue(bot.getFreeRoadBuildsRemaining()) <= 0
             && (resourceValue(bot.getWood()) < 1 || resourceValue(bot.getBrick()) < 1)) {
             return null;
         }
 
+        List<Integer> candidates = new ArrayList<>();
         for (Edge edge : edges(game)) {
             if (edge == null || edge.isOccupied()) {
                 continue;
@@ -179,10 +186,10 @@ public class BotFallbackService {
                 hasOwnRoadAtIntersection(game, edge.getIntersectionAId(), bot.getId())
                 || hasOwnRoadAtIntersection(game, edge.getIntersectionBId(), bot.getId());
             if (connectedToOwnBuilding || connectedToOwnRoad) {
-                return edge.getId();
+                candidates.add(edge.getId());
             }
         }
-        return null;
+        return randomCandidate(candidates);
     }
 
     private boolean canBuyDevelopmentCard(Game game, Player bot) {
@@ -203,13 +210,21 @@ public class BotFallbackService {
         if (board == null || board.getHexTiles() == null) {
             return null;
         }
+        List<Integer> candidates = new ArrayList<>();
         for (int i = 0; i < board.getHexTiles().size(); i++) {
             int hexId = i + 1;
             if (!Integer.valueOf(hexId).equals(game.getRobberTileIndex())) {
-                return hexId;
+                candidates.add(hexId);
             }
         }
-        return null;
+        return randomCandidate(candidates);
+    }
+
+    private Integer randomCandidate(List<Integer> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        return candidates.get(ThreadLocalRandom.current().nextInt(candidates.size()));
     }
 
     private int countPlayerSettlements(Game game, Long playerId) {

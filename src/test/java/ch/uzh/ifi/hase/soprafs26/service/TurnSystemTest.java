@@ -2,6 +2,7 @@ package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -263,6 +264,35 @@ public class TurnSystemTest {
 
         assertEquals(8, beforeTotal);
         assertEquals(4, afterTotal);
+    }
+
+    @Test
+    public void applySevenRollEffects_currentPlayerWithDiscardChoices_discardsChosenResourcesToBank() {
+        player1.setWood(3);
+        player1.setBrick(2);
+        player1.setWool(2);
+        player1.setWheat(1);
+        player1.setOre(0);
+        player2.setWood(0);
+        player2.setBrick(0);
+        player2.setWool(0);
+        player2.setWheat(0);
+        player2.setOre(0);
+        player3.setWood(0);
+        player3.setBrick(0);
+        player3.setWool(0);
+        player3.setWheat(0);
+        player3.setOre(0);
+
+        gameService.applySevenRollEffects(testGame, player1, Map.of("brick", 2, "wool", 2));
+
+        assertEquals(3, player1.getWood());
+        assertEquals(0, player1.getBrick());
+        assertEquals(0, player1.getWool());
+        assertEquals(1, player1.getWheat());
+        assertEquals(0, player1.getOre());
+        assertEquals(21, testGame.getBankBrick());
+        assertEquals(21, testGame.getBankWool());
     }
 
     @Test

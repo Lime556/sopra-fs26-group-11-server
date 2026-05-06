@@ -1,6 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.service.bot;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 
@@ -37,7 +38,7 @@ public class BotFallbackServiceTest {
         BotAction action = botFallbackService.chooseFallbackAction(game);
 
         assertEquals(BotActionType.BUILD_INITIAL_SETTLEMENT, action.getType());
-        assertEquals(1, action.getIntersectionId());
+        assertTrue(List.of(1, 2, 3).contains(action.getIntersectionId()));
     }
 
     @Test
