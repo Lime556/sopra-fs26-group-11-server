@@ -769,8 +769,18 @@ public class GameService {
         }
 
         ensureCurrentPlayerCanRollDice(currentPlayer, authenticatedUser);
-
         String currentPhase = game.getTurnPhase();
+        
+        // Discard call
+        if (request != null && request.getDiscardResources() != null) {
+            if (!TurnPhase.DISCARD.toString().equals(currentPhase)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Current phase is: " + currentPhase + ". Must be in DISCARD phase.");
+            }
+            applySevenRollEffects(game, currentPlayer, request.getDiscardResources());
+            game.setTurnPhase(TurnPhase.ACTION);
+            return gameRepository.save(game);
+        }
+
         if (!TurnPhase.ROLL_DICE.toString().equals(currentPhase)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Cannot roll dice. Current phase is: " + currentPhase + ". Must be in ROLL_DICE phase.");
@@ -780,10 +790,19 @@ public class GameService {
         int die2 = 1 + (int) (Math.random() * 6);
         int diceSum = die1 + die2;
 
-            game.setDiceValue(diceSum);
-            game.setDiceRolledAt(java.time.Instant.now());
+        game.setDiceValue(diceSum);
+        game.setDiceRolledAt(java.time.Instant.now());
+
         if (diceSum == 7) {
-            applySevenRollEffects(game, currentPlayer, request != null ? request.getDiscardResources() : null);
+            applySevenRollEffects(game, currentPlayer, null);
+
+            if (totalResourceCards(currentPlayer) > 7) {
+                game.setTurnPhase(TurnPhase.DISCARD);
+            } else {
+                game.setTurnPhase(TurnPhase.ACTION);
+            }
+            return gameRepository.save(game);
+            
         } else {
             distributeResourcesForDiceValue(game, diceSum);
         }
@@ -882,7 +901,17 @@ public class GameService {
             }
 
             int resourcesToDiscard = totalResources / 2;
-            discardResourcesInFixedOrder(game, player, resourcesToDiscard);
+
+            // If this is the current player, use provided discard choices
+            if (currentPlayer != null && player.getId().equals(currentPlayer.getId())) {
+                if (discardChoices != null && !discardChoices.isEmpty()) {
+                    discardResourcesByChoice(game, player, discardChoices);
+                }
+                // else: frontend input
+            } else {
+                // For other players
+                discardResourcesRandomly(game, player, resourcesToDiscard);
+            }
         }
     }
 
@@ -1949,6 +1978,7 @@ public class GameService {
         return Optional.ofNullable(value).orElse(fallback);
     }
 
+    
     private Player findPlayerById(List<Player> players, Long playerId) {
         if (players == null || playerId == null) {
             return null;
@@ -1976,7 +2006,7 @@ public class GameService {
             + resourceValue(player.getOre());
     }
 
-    private void discardResourcesByChoice(Player player, Map<String, Integer> discardChoices) {
+    private void discardResourcesByChoice(Game game, Player player, Map<String, Integer> discardChoices) {
         if (player == null || discardChoices == null || discardChoices.isEmpty()) {
             return;
         }
@@ -1988,33 +2018,38 @@ public class GameService {
                 int available = getResourceByName(player, resource);
                 int toDiscard = Math.min(amount, available);
                 setResourceByName(player, resource, available - toDiscard);
+                addToBank(game, resource, toDiscard);
             }
         }
     }
-    
-    private void discardResourcesInFixedOrder(Game game, Player player, int toDiscard) {
-        if (player == null || toDiscard <= 0) {
+
+    private void discardResourcesRandomly(Game game, Player player, int toDiscard) {
+        List<String> pool = new ArrayList<>();
+
+        addResource(pool, "wood", player.getWood());
+        addResource(pool, "brick", player.getBrick());
+        addResource(pool, "wool", player.getWool());
+        addResource(pool, "wheat", player.getWheat());
+        addResource(pool, "ore", player.getOre());
+
+        Collections.shuffle(pool);
+
+        for (int i = 0; i < toDiscard && i < pool.size(); i++) {
+            String resource = pool.get(i);
+            int current = getResourceByName(player, resource);
+            setResourceByName(player, resource, current - 1);
+            addToBank(game, resource, 1);
+        }
+    }
+
+    private void addResource(List<String> pool, String resource, Integer amount) {
+        if (pool == null || resource == null || amount == null || amount <= 0) {
             return;
         }
 
-        int remaining = toDiscard;
-        remaining = discardSingleResource(game, player, "wood", remaining);
-        remaining = discardSingleResource(game, player, "brick", remaining);
-        remaining = discardSingleResource(game, player, "wool", remaining);
-        remaining = discardSingleResource(game, player, "wheat", remaining);
-        remaining = discardSingleResource(game, player, "ore", remaining);
-    }
-
-    private int discardSingleResource(Game game, Player player, String resource, int remainingToDiscard) {
-        if (remainingToDiscard <= 0) {
-            return 0;
+        for (int i = 0; i < amount; i++) {
+            pool.add(resource);
         }
-
-        int available = getResourceByName(player, resource);
-        int discarded = Math.min(available, remainingToDiscard);
-        setResourceByName(player, resource, available - discarded);
-        addToBank(game, resource, discarded);
-        return remainingToDiscard - discarded;
     }
 
     private int resourceMultiplierForBuilding(Building building) {
