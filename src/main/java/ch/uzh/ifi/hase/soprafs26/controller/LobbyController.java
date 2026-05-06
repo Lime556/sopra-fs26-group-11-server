@@ -142,6 +142,33 @@ public class LobbyController {
         return updatedDTO;
     }
 
+    @PostMapping("/lobbies/{lobbyId}/bots")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public LobbyGetDTO addBot(
+        @PathVariable Long lobbyId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        Lobby updatedLobby = lobbyService.addBot(lobbyId, authorizationHeader);
+        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        messaging.convertAndSend("/topic/lobbies", updatedDTO);
+        return updatedDTO;
+    }
+
+    @PostMapping("/lobbies/{lobbyId}/bots/{participantId}/remove")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public LobbyGetDTO removeBot(
+        @PathVariable Long lobbyId,
+        @PathVariable Long participantId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        Lobby updatedLobby = lobbyService.removeBot(lobbyId, authorizationHeader, participantId);
+        LobbyGetDTO updatedDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(updatedLobby);
+        messaging.convertAndSend("/topic/lobbies", updatedDTO);
+        return updatedDTO;
+    }
+
     @PostMapping("/lobbies/{lobbyId}/host/transfer")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody

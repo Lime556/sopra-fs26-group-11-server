@@ -307,6 +307,55 @@ public class LobbyServiceTest {
     }
 
     @Test
+    public void addBot_hostAddsBot_success() {
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setUser(host);
+        hostParticipant.setLobby(lobby);
+        hostParticipant.setBot(false);
+        lobby.getParticipants().add(hostParticipant);
+        lobby.setHostParticipant(hostParticipant);
+        lobby.setCapacity(4);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        Lobby updatedLobby = lobbyService.addBot(1L, "valid-token");
+
+        assertEquals(2, updatedLobby.getCurrentParticipants());
+        assertTrue(updatedLobby.getParticipants().stream().anyMatch(LobbyParticipant::isBot));
+        Mockito.verify(lobbyParticipantRepository).saveAndFlush(Mockito.argThat(LobbyParticipant::isBot));
+    }
+
+    @Test
+    public void removeBot_hostRemovesBot_success() {
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setUser(host);
+        hostParticipant.setLobby(lobby);
+        hostParticipant.setBot(false);
+
+        LobbyParticipant botParticipant = new LobbyParticipant();
+        botParticipant.setId(101L);
+        botParticipant.setUser(null);
+        botParticipant.setLobby(lobby);
+        botParticipant.setBot(true);
+
+        lobby.getParticipants().add(hostParticipant);
+        lobby.getParticipants().add(botParticipant);
+        lobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        Lobby updatedLobby = lobbyService.removeBot(1L, "valid-token", 101L);
+
+        assertEquals(1, updatedLobby.getCurrentParticipants());
+        assertTrue(updatedLobby.getParticipants().stream().noneMatch(LobbyParticipant::isBot));
+        Mockito.verify(lobbyParticipantRepository).delete(botParticipant);
+    }
+
+    @Test
     public void leaveLobby_participantLeaves_success() {
         LobbyParticipant existingParticipant = new LobbyParticipant();
         existingParticipant.setId(100L);
@@ -499,5 +548,36 @@ public class LobbyServiceTest {
         assertEquals(2, game.getDevelopmentYearOfPlentyRemaining());
         assertEquals(2, game.getDevelopmentMonopolyRemaining());
         assertEquals(game.getId(), lobby.getGameId());
+    }
+
+    @Test
+    public void startGame_lobbyWithBot_includesBotPlayer() {
+        host.setUsername("hostUser");
+
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setLobby(lobby);
+        hostParticipant.setUser(host);
+        hostParticipant.setBot(false);
+
+        LobbyParticipant botParticipant = new LobbyParticipant();
+        botParticipant.setId(101L);
+        botParticipant.setLobby(lobby);
+        botParticipant.setUser(null);
+        botParticipant.setBot(true);
+
+        lobby.getParticipants().add(hostParticipant);
+        lobby.getParticipants().add(botParticipant);
+        lobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.of(lobby));
+
+        Game game = lobbyService.startGame(1L, "valid-token");
+
+        assertNotNull(game.getPlayers());
+        assertEquals(2, game.getPlayers().size());
+        assertTrue(game.getPlayers().stream().anyMatch(player -> "hostUser".equals(player.getName()) && !player.isBot()));
+        assertTrue(game.getPlayers().stream().anyMatch(player -> player.isBot() && player.getUser() == null));
     }
 }

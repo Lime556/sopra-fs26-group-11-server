@@ -446,6 +446,7 @@ public class GameController {
         PlayerGetDTO dto = new PlayerGetDTO();
         dto.setId(player.getId());
         dto.setName(player.getName());
+        dto.setBot(player.isBot());
         dto.setVictoryPoints(player.getVictoryPoints());
         dto.setSettlementPoints(player.getSettlementPoints());
         dto.setCityPoints(player.getCityPoints());

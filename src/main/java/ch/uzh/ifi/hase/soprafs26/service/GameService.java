@@ -1658,10 +1658,13 @@ public class GameService {
         Player player = new Player();
         player.setId(playerDto.getId());
         player.setName(playerDto.getName());
+        player.setBot(playerDto.isBot());
 
         // Fetch the managed User entity when available, otherwise attach a lightweight
         // fallback User so player identity checks/tests never dereference null.
-        if (playerDto.getId() != null) {
+        if (playerDto.isBot()) {
+            player.setUser(null);
+        } else if (playerDto.getId() != null) {
             try {
                 User existingUser = userService.getUserById(playerDto.getId());
                 if (existingUser != null) {

@@ -60,7 +60,7 @@ public interface DTOMapper {
 	@Mapping(source = "id", target = "id")
 	@Mapping(source = "bot", target = "bot")
 	@Mapping(target = "userId", expression = "java(participant.getUser() != null ? participant.getUser().getId() : null)")
-	@Mapping(target = "username", expression = "java(participant.getUser() != null ? participant.getUser().getUsername() : \"Bot\")")
+	@Mapping(target = "username", expression = "java(participant.getUser() != null ? participant.getUser().getUsername() : (participant.isBot() && participant.getId() != null ? \"Bot \" + participant.getId() : \"Bot\"))")
 	LobbyParticipantGetDTO convertEntityToLobbyParticipantGetDTO(LobbyParticipant participant);
 
 	@Mapping(source = "id", target = "gameId")

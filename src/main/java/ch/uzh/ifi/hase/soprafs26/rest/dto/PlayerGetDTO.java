@@ -7,6 +7,7 @@ public class PlayerGetDTO {
 
     private Long id;
     private String name;
+    private boolean bot;
     private int victoryPoints;
     private Integer settlementPoints;
     private Integer cityPoints;
@@ -41,6 +42,14 @@ public class PlayerGetDTO {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public boolean isBot() {
+        return bot;
+    }
+
+    public void setBot(boolean bot) {
+        this.bot = bot;
     }
 
     public int getVictoryPoints() {
