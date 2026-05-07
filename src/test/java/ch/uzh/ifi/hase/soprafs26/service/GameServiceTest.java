@@ -1523,11 +1523,11 @@ class GameServiceTest {
         Player player2 = new Player();
         player2.setId(11L);
         player2.setName("Player2");
-        player2.setWood(2);
-        player2.setBrick(2);
-        player2.setWool(1);
-        player2.setWheat(1);
-        player2.setOre(0); // Total: 6 cards (<= 7)
+        player2.setWood(5);
+        player2.setBrick(4);
+        player2.setWool(3);
+        player2.setWheat(2);
+        player2.setOre(1); // Total: 15 cards (> 7)
 
         game.setPlayers(List.of(player1, player2));
 
@@ -1551,9 +1551,12 @@ class GameServiceTest {
 
         // If dice value is 7, verify discard happened
         if (result.getDiceValue() != null && result.getDiceValue() == 7) {
-            // Player1 should have discarded half (15/2 = 7, so 8 cards remain)
-            assertEquals(8, totalResources1, "Player1 should have discarded to 8 cards after rolling 7");
-            assertEquals(6, totalResources2, "Player2 should keep all 6 cards");
+            // Player1 (active) does not discard automatically; they must choose discards in DISCARD phase
+            assertEquals(15, totalResources1, "Player1 should keep cards until manual discard");
+            assertEquals("DISCARD", result.getTurnPhase());
+            
+            // Player2 (passive) should have discarded half (15/2 = 7, so 8 cards remain)
+            assertEquals(8, totalResources2, "Player2 should have discarded to 8 cards after rolling 7");
         }
         // For non-7 rolls, just verify resources are non-negative (distributed or unchanged)
         assertTrue(totalResources1 >= 0, "Player1 total resources must be non-negative");
