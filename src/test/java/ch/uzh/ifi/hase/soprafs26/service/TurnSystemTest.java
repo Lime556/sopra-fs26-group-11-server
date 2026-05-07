@@ -112,6 +112,14 @@ public class TurnSystemTest {
 
     @Test
     public void rollDice_initialPhase_transitionsToAction() {
+        // Clear resources to ensure that rolling a 7 doesn't trigger the DISCARD phase,
+        // which would cause the test to fail non-deterministically.
+        player1.setWood(0);
+        player1.setBrick(0);
+        player1.setWool(0);
+        player1.setWheat(0);
+        player1.setOre(0);
+
         assertEquals(TurnPhase.ROLL_DICE.toString(), testGame.getTurnPhase());
         assertEquals(0, testGame.getCurrentTurnIndex());
 
@@ -370,6 +378,13 @@ public class TurnSystemTest {
 
     @Test
     public void completeTurnCycle_rollDiceActionEndTurn() {
+        // Clear resources to ensure that rolling a 7 doesn't trigger the DISCARD phase
+        player1.setWood(0);
+        player1.setBrick(0);
+        player1.setWool(0);
+        player1.setWheat(0);
+        player1.setOre(0);
+
         // Player 1's turn in ROLL_DICE phase
         assertEquals(TurnPhase.ROLL_DICE.toString(), testGame.getTurnPhase());
         assertEquals(0, testGame.getCurrentTurnIndex());
