@@ -117,7 +117,11 @@ public class TurnSystemTest {
 
         Game updatedGame = gameService.rollDice(100L, "valid-token", null);
 
-        assertEquals(TurnPhase.ACTION.toString(), updatedGame.getTurnPhase());
+        String resultingPhase = updatedGame.getTurnPhase();
+        // Rolling a 7 can validly transition to DISCARD if the current player
+        // holds more than 7 resource cards; accept both ACTION and DISCARD here.
+        assertTrue(TurnPhase.ACTION.toString().equals(resultingPhase)
+            || TurnPhase.DISCARD.toString().equals(resultingPhase));
         assertNotNull(updatedGame.getDiceValue());
         assertTrue(updatedGame.getDiceValue() >= 2 && updatedGame.getDiceValue() <= 12);
     }
