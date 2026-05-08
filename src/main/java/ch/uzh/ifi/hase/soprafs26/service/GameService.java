@@ -813,14 +813,14 @@ public class GameService {
 
         if (diceSum == 7) {
             game.setRobberMovedAfterSevenRoll(false);
-            applySevenRollEffects(game, currentPlayer, request != null ? request.getDiscardResources() : null);
             applySevenRollEffects(game, currentPlayer, null);
 
-            if (totalResourceCards(currentPlayer) > 7) {
+            if (totalResourceCards(currentPlayer) > 7 && !currentPlayer.isBot()) {
                 game.setTurnPhase(TurnPhase.DISCARD);
             } else {
                 game.setTurnPhase(TurnPhase.ACTION);
             }
+            recalculateVictoryState(game);
             return gameRepository.save(game);
             
         } else {
@@ -922,21 +922,16 @@ public class GameService {
             }
 
             int resourcesToDiscard = totalResources / 2;
-            if (currentPlayer != null && currentPlayer.getId() != null
-                && currentPlayer.getId().equals(player.getId())
-                && discardChoices != null && !discardChoices.isEmpty()) {
-                discardResourcesByChoice(game, player, discardChoices, resourcesToDiscard);
-            } else {
-                discardResourcesInFixedOrder(game, player, resourcesToDiscard);
+            boolean isCurrentPlayer = currentPlayer != null
+                && currentPlayer.getId() != null
+                && currentPlayer.getId().equals(player.getId());
 
-            // If this is the current player, use provided discard choices
-            if (currentPlayer != null && player.getId().equals(currentPlayer.getId())) {
-                if (discardChoices != null && !discardChoices.isEmpty()) {
-                    discardResourcesByChoice(game, player, discardChoices);
-                }
-                // else: frontend input
+            if (isCurrentPlayer && discardChoices != null && !discardChoices.isEmpty()) {
+                discardResourcesByChoice(game, player, discardChoices, resourcesToDiscard);
+            } else if (isCurrentPlayer && !currentPlayer.isBot()) {
+                // The active human player must choose resources in a follow-up DISCARD request.
+                continue;
             } else {
-                // For other players
                 discardResourcesRandomly(game, player, resourcesToDiscard);
             }
         }
