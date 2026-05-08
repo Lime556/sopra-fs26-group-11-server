@@ -16,6 +16,7 @@ public class GameGetDTO {
     private RobberGetDTO robber;
     private DiceGetDTO dice;
     private Integer diceValue;
+    private String diceRolledAt;
     private Integer robberTileIndex;
     private DevelopmentDeckGetDTO developmentDeck;
     private PlayerGetDTO longestRoad;
@@ -110,6 +111,14 @@ public class GameGetDTO {
         this.diceValue = diceValue;
     }
 
+    public String getDiceRolledAt() {
+        return diceRolledAt;
+    }
+    
+    public void setDiceRolledAt(String diceRolledAt) {
+        this.diceRolledAt = diceRolledAt;
+    }
+    
     public Integer getRobberTileIndex() {
         return robberTileIndex;
     }

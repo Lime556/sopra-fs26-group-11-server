@@ -46,12 +46,15 @@ public class Game{
     @Transient
     private Dice dice;
 
-
     @Column
     private Integer diceValue;
 
     @Column
     private Instant diceRolledAt;
+
+    @Column
+    private Long gameVersion = 0L;
+
     public Instant getDiceRolledAt() {
         return diceRolledAt;
     }
@@ -422,4 +425,15 @@ public class Game{
         this.chatMessages = chatMessages;
     }    
 
+    public Long getGameVersion() {
+        return gameVersion;
+    }
+    
+    public void setGameVersion(Long gameVersion) {
+        this.gameVersion = gameVersion;
+    }
+    
+    public void incrementGameVersion() {
+        this.gameVersion = this.gameVersion == null ? 1L : this.gameVersion + 1L;
+    }
 }

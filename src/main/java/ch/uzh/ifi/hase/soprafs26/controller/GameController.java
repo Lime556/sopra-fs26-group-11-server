@@ -36,6 +36,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameSyncDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
@@ -260,75 +261,36 @@ public class GameController {
     @PostMapping("/games/{gameId}/actions/roll-dice")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
-    public GameStateDTO rollDice(@PathVariable Long gameId,
+    public GameGetDTO rollDice(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestBody(required = false) RollDiceRequestDTO request) {
         Game game = gameService.rollDice(gameId, extractToken(authorizationHeader), request);
-        Player currentPlayer = gameService.getCurrentPlayer(game);
-        int totalResources = currentPlayer != null ? 
-            (Optional.ofNullable(currentPlayer.getWood()).orElse(0) +
-             Optional.ofNullable(currentPlayer.getBrick()).orElse(0) +
-             Optional.ofNullable(currentPlayer.getWool()).orElse(0) +
-             Optional.ofNullable(currentPlayer.getWheat()).orElse(0) +
-             Optional.ofNullable(currentPlayer.getOre()).orElse(0)) : 0;
-        Boolean currentPlayerMustDiscard = (game.getDiceValue() != null && game.getDiceValue() == 7 && totalResources > 7);
-        GameStateDTO stateDTO = new GameStateDTO(
-            game.getId(),
-            game.getCurrentTurnIndex(),
-            game.getTurnPhase(),
-            game.getDiceValue(),
-            currentPlayer != null ? currentPlayer.getId() : null,
-            currentPlayer != null ? currentPlayer.getName() : null,
-            game.getFinishedAt() != null && game.getWinner() != null,
-            currentPlayerMustDiscard
-        );
-        GameGetDTO fullDTO = convertGameToDto(game);
-        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), fullDTO);
-        return stateDTO;
+        GameGetDTO dto = convertGameToDto(game);
+        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
+        return dto;
     }
 
     @PostMapping("/games/{gameId}/actions/move-robber")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
-    public GameStateDTO moveRobber(@PathVariable Long gameId,
+    public GameGetDTO moveRobber(@PathVariable Long gameId,
             @RequestBody Integer hexId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game game = gameService.moveRobber(gameId, extractToken(authorizationHeader), hexId);
-        Player currentPlayer = gameService.getCurrentPlayer(game);
-        GameStateDTO stateDTO = new GameStateDTO(
-            game.getId(),
-            game.getCurrentTurnIndex(),
-            game.getTurnPhase(),
-            game.getDiceValue(),
-            currentPlayer != null ? currentPlayer.getId() : null,
-            currentPlayer != null ? currentPlayer.getName() : null,
-            game.getFinishedAt() != null && game.getWinner() != null,
-            false
-        );
-        GameGetDTO fullDTO = convertGameToDto(game);
-        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), fullDTO);
-        return stateDTO;
+        GameGetDTO dto = convertGameToDto(game);
+        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
+        return dto;
     }
 
     @PostMapping("/games/{gameId}/actions/end-turn")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
-    public GameStateDTO endTurn(@PathVariable Long gameId,
+    public GameGetDTO endTurn(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game game = gameService.endTurn(gameId, extractToken(authorizationHeader));
-        Player currentPlayer = gameService.getCurrentPlayer(game);
-        GameStateDTO stateDTO = new GameStateDTO(
-            game.getId(),
-            game.getCurrentTurnIndex(),
-            game.getTurnPhase(),
-            game.getDiceValue(),
-            currentPlayer != null ? currentPlayer.getId() : null,
-            currentPlayer != null ? currentPlayer.getName() : null,
-            game.getFinishedAt() != null && game.getWinner() != null,
-            false
-        );
-        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), stateDTO);
-        return stateDTO;
+        GameGetDTO dto = convertGameToDto(game);
+        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
+        return dto;
     }
 
     @PostMapping("/games/{gameId}/actions/bot/fallback")
@@ -411,6 +373,7 @@ public class GameController {
         dto.setTurnPhase(game.getTurnPhase());
         dto.setGamePhase(game.getGamePhase());
         dto.setDiceValue(game.getDiceValue());
+        dto.setDiceRolledAt(game.getDiceRolledAt() == null ? null : game.getDiceRolledAt().toString());
         dto.setRobberTileIndex(game.getRobberTileIndex());
         dto.setTargetVictoryPoints(game.getTargetVictoryPoints());
         dto.setStartedAt(game.getStartedAt());
@@ -457,6 +420,8 @@ public class GameController {
 
         PlayerGetDTO dto = new PlayerGetDTO();
         dto.setId(player.getId());
+        dto.setUserId(player.getUser() != null ? player.getUser().getId() : null);
+        dto.setColor(player.getColor());
         dto.setName(player.getName());
         dto.setBot(player.isBot());
         dto.setVictoryPoints(player.getVictoryPoints());
@@ -594,4 +559,42 @@ public class GameController {
         }
         return number.intValue();
     }
+
+    @GetMapping("/games/{gameId}/sync")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameSyncDTO getGameSync(@PathVariable Long gameId,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Game game = gameService.getGameById(gameId, extractToken(authorizationHeader));
+        Player currentPlayer = gameService.getCurrentPlayer(game);
+
+        int totalResources = currentPlayer != null
+            ? (Optional.ofNullable(currentPlayer.getWood()).orElse(0)
+                + Optional.ofNullable(currentPlayer.getBrick()).orElse(0)
+                + Optional.ofNullable(currentPlayer.getWool()).orElse(0)
+                + Optional.ofNullable(currentPlayer.getWheat()).orElse(0)
+                + Optional.ofNullable(currentPlayer.getOre()).orElse(0))
+            : 0;
+
+        Boolean currentPlayerMustDiscard = game.getDiceValue() != null
+            && game.getDiceValue() == 7
+            && totalResources > 7;
+
+        GameSyncDTO dto = new GameSyncDTO();
+        dto.setGameId(game.getId());
+        dto.setGameVersion(game.getGameVersion());
+        dto.setCurrentTurnIndex(game.getCurrentTurnIndex());
+        dto.setTurnPhase(game.getTurnPhase());
+        dto.setGamePhase(game.getGamePhase());
+        dto.setDiceValue(game.getDiceValue());
+        dto.setDiceRolledAt(game.getDiceRolledAt() == null ? null : game.getDiceRolledAt().toString());
+        dto.setCurrentPlayerId(currentPlayer != null ? currentPlayer.getId() : null);
+        dto.setCurrentPlayerName(currentPlayer != null ? currentPlayer.getName() : null);
+        dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
+        dto.setCurrentPlayerMustDiscard(currentPlayerMustDiscard);
+
+        return dto;
+    }
+
+
 }

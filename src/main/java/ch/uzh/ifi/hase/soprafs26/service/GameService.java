@@ -169,7 +169,7 @@ public class GameService {
         ensureBankInitialized(game);
 
         recalculateVictoryState(game);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game moveRobber(Long gameId, String token, Integer hexId) {
@@ -191,7 +191,7 @@ public class GameService {
         if (Integer.valueOf(7).equals(game.getDiceValue())) {
             game.setRobberMovedAfterSevenRoll(true);
         }
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game moveRobberAndStealFromFirstAdjacentPlayer(Long gameId, String token, Long sourcePlayerId, Integer hexId) {
@@ -203,7 +203,7 @@ public class GameService {
             stealRandomResource(target, source);
             game.setPlayers(game.getPlayers());
             recalculateVictoryState(game);
-            return gameRepository.save(game);
+            return saveChangedGame(game);
         }
 
         return game;
@@ -239,7 +239,7 @@ public class GameService {
         );
         chatMessages.add(message);
         game.setChatMessages(chatMessages);
-        gameRepository.save(game);
+        saveChangedGame(game);
     }
 
     public Game addRoadToPlayer(Long gameId, String playerToken, Long playerId, Integer edgeId) {
@@ -311,7 +311,7 @@ public class GameService {
         game.setPlayers(players);
         recalculateVictoryState(game);
     
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game addSettlementToPlayer(Long gameId, String playerToken, Long playerId, Integer intersectionId) {
@@ -388,7 +388,7 @@ public class GameService {
         game.setPlayers(players);
         recalculateVictoryState(game);
     
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game upgradeSettlementToCity(Long gameId, String playerToken, Long playerId, Integer intersectionId) {
@@ -456,7 +456,7 @@ public class GameService {
         game.setPlayers(players);
         recalculateVictoryState(game);
     
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game applyBankTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
@@ -521,7 +521,7 @@ public class GameService {
         }
 
         game.setPlayers(players);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public void validatePlayerTradeRequest(Long gameId, String playerToken, GameEventDTO tradeEvent) {
@@ -673,7 +673,7 @@ public class GameService {
         }
 
         game.setPlayers(players);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     private void validatePlayerTradePayload(Long gameId, GameEventDTO tradeEvent, boolean requireTarget) {
@@ -796,7 +796,7 @@ public class GameService {
             }
             applySevenRollEffects(game, currentPlayer, request.getDiscardResources());
             game.setTurnPhase(TurnPhase.ACTION);
-            return gameRepository.save(game);
+            return saveChangedGame(game);
         }
 
         if (!TurnPhase.ROLL_DICE.toString().equals(currentPhase)) {
@@ -804,8 +804,8 @@ public class GameService {
                 "Cannot roll dice. Current phase is: " + currentPhase + ". Must be in ROLL_DICE phase.");
         }
 
-        int die1 = 1 + (int) (Math.random() * 6);
-        int die2 = 1 + (int) (Math.random() * 6);
+        int die1 = rollDie();
+        int die2 = rollDie();
         int diceSum = die1 + die2;
 
         game.setDiceValue(diceSum);
@@ -821,7 +821,7 @@ public class GameService {
                 game.setTurnPhase(TurnPhase.ACTION);
             }
             recalculateVictoryState(game);
-            return gameRepository.save(game);
+            return saveChangedGame(game);
             
         } else {
             game.setRobberMovedAfterSevenRoll(false);
@@ -830,11 +830,15 @@ public class GameService {
         game.setTurnPhase(TurnPhase.ACTION);
 
         recalculateVictoryState(game);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game rollDice(Long gameId, String playerToken) {
         return rollDice(gameId, playerToken, null);
+    }
+
+    int rollDie() {
+        return 1 + (int) (Math.random() * 6);
     }
 
     void distributeResourcesForDiceValue(Game game, int diceValue) {
@@ -990,7 +994,7 @@ public class GameService {
 
         game.setPlayers(players);
         recalculateVictoryState(game);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game playKnightCard(Long gameId, String playerToken, Long playerId, Integer targetHexId, Long targetPlayerId) {
@@ -1036,7 +1040,7 @@ public class GameService {
 
         updateLargestArmyOwnership(game);
         recalculateVictoryState(game);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game playRoadBuildingCard(Long gameId, String playerToken, Long playerId) {
@@ -1051,7 +1055,7 @@ public class GameService {
         player.setFreeRoadBuildsRemaining(safeInt(player.getFreeRoadBuildsRemaining(), 0) + 2);
 
         recalculateVictoryState(game);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game playYearOfPlentyCard(Long gameId, String playerToken, Long playerId, String resourceA, String resourceB) {
@@ -1081,7 +1085,7 @@ public class GameService {
         removeFromBank(game, resourceB, 1);
 
         recalculateVictoryState(game);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game playMonopolyCard(Long gameId, String playerToken, Long playerId, String resource) {
@@ -1118,7 +1122,7 @@ public class GameService {
         setResourceByName(source, resource, getResourceByName(source, resource) + totalCollected);
 
         recalculateVictoryState(game);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game endTurn(Long gameId, String playerToken) {
@@ -1158,7 +1162,7 @@ public class GameService {
         }
 
         recalculateVictoryState(game);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game placeInitialSettlement(Long gameId, String token, Long playerId, Integer intersectionId) {
@@ -1211,7 +1215,7 @@ public class GameService {
             safeInt(currentPlayer.getSettlementPoints(), 0) + 1
         );
         currentPlayer.setLastPlacedSetupSettlementIntersectionId(intersectionId);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     public Game placeInitialRoad(Long gameId, String token, Long playerId, Integer edgeId) {
@@ -1291,7 +1295,7 @@ public class GameService {
         }
 
         currentPlayer.setLastPlacedSetupSettlementIntersectionId(null);
-        return gameRepository.save(game);
+        return saveChangedGame(game);
     }
 
     private void advanceSetupTurn(Game game) {
@@ -1601,7 +1605,7 @@ public class GameService {
 
         int desertIndex = regeneratedBoard.getHexTiles() != null ? regeneratedBoard.getHexTiles().indexOf("DESERT") : -1;
         game.setRobberTileIndex(desertIndex >= 0 ? desertIndex + 1 : null);
-        gameRepository.save(game);
+        saveChangedGame(game);
     }
 
     private Board resolveBoard(GamePostDTO gamePostDTO) {
@@ -1688,30 +1692,22 @@ public class GameService {
         if (playerDto == null) {
             return null;
         }
-
+    
         Player player = new Player();
         player.setId(playerDto.getId());
         player.setName(playerDto.getName());
         player.setBot(playerDto.isBot());
-
-        // Fetch the managed User entity when available, otherwise attach a lightweight
-        // fallback User so player identity checks/tests never dereference null.
+        player.setColor(playerDto.getColor());
+    
         if (playerDto.isBot()) {
             player.setUser(null);
-        } else if (playerDto.getId() != null) {
+        } else if (playerDto.getUserId() != null) {
             try {
-                User existingUser = userService.getUserById(playerDto.getId());
-                if (existingUser != null) {
-                    player.setUser(existingUser);
-                } else {
-                    User fallbackUser = new User();
-                    fallbackUser.setId(playerDto.getId());
-                    fallbackUser.setUsername(playerDto.getName());
-                    player.setUser(fallbackUser);
-                }
+                User existingUser = userService.getUserById(playerDto.getUserId());
+                player.setUser(existingUser);
             } catch (ResponseStatusException e) {
                 User fallbackUser = new User();
-                fallbackUser.setId(playerDto.getId());
+                fallbackUser.setId(playerDto.getUserId());
                 fallbackUser.setUsername(playerDto.getName());
                 player.setUser(fallbackUser);
             }
@@ -1720,7 +1716,7 @@ public class GameService {
             fallbackUser.setUsername(playerDto.getName());
             player.setUser(fallbackUser);
         }
-
+    
         player.setSettlementPoints(playerDto.getSettlementPoints());
         player.setCityPoints(playerDto.getCityPoints());
         player.setDevelopmentCardVictoryPoints(playerDto.getDevelopmentCardVictoryPoints());
@@ -1735,6 +1731,7 @@ public class GameService {
         player.setKnightsPlayed(playerDto.getKnightsPlayed());
         player.setFreeRoadBuildsRemaining(playerDto.getFreeRoadBuildsRemaining());
         player.recalculateVictoryPoints();
+    
         return player;
     }
 
@@ -2536,5 +2533,10 @@ public class GameService {
         cornerKeyToIntersectionId.put("368:473", 53);
 
         return cornerKeyToIntersectionId.get(cornerKey);
+    }
+
+    private Game saveChangedGame(Game game) {
+        game.incrementGameVersion();
+        return gameRepository.save(game);
     }
 }

@@ -20,7 +20,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameBuildActionDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameChatMessageDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.WebSocketErrorDTO;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
@@ -63,21 +63,21 @@ public class GameStompController {
     }
 
     @MessageMapping("/games/{gameId}/actions/roll-dice")
-    public GameStateDTO rollDice(@DestinationVariable Long gameId,
+    public GameGetDTO rollDice(@DestinationVariable Long gameId,
             @Payload(required = false) RollDiceRequestDTO request,
             SimpMessageHeaderAccessor headers) {
         return gameController.rollDice(gameId, requireToken(headers), request);
     }
 
     @MessageMapping("/games/{gameId}/actions/move-robber")
-    public GameStateDTO moveRobber(@DestinationVariable Long gameId,
+    public GameGetDTO moveRobber(@DestinationVariable Long gameId,
             @Payload Integer hexId,
             SimpMessageHeaderAccessor headers) {
         return gameController.moveRobber(gameId, hexId, requireToken(headers));
     }
 
     @MessageMapping("/games/{gameId}/actions/end-turn")
-    public GameStateDTO endTurn(@DestinationVariable Long gameId,
+    public GameGetDTO endTurn(@DestinationVariable Long gameId,
             SimpMessageHeaderAccessor headers) {
         return gameController.endTurn(gameId, requireToken(headers));
     }

@@ -409,14 +409,17 @@ public class TurnSystemTest {
         assertEquals(0, testGame.getCurrentTurnIndex());
 
         // Roll dice: Transition to ACTION phase
-        Game afterRoll = gameService.rollDice(100L, "valid-token", null);
+        GameService deterministicGameService = Mockito.spy(gameService);
+        Mockito.doReturn(3, 3).when(deterministicGameService).rollDie();
+
+        Game afterRoll = deterministicGameService.rollDice(100L, "valid-token", null);
         assertEquals(TurnPhase.ACTION.toString(), afterRoll.getTurnPhase());
         assertNotNull(afterRoll.getDiceValue());
 
         // End turn: Transition to Player 2
         testGame.setTurnPhase(TurnPhase.ACTION.toString());
         testGame.setDiceValue(afterRoll.getDiceValue());
-        Game afterEndTurn = gameService.endTurn(100L, "valid-token");
+        Game afterEndTurn = deterministicGameService.endTurn(100L, "valid-token");
         assertEquals(1, afterEndTurn.getCurrentTurnIndex());
         assertEquals(TurnPhase.ROLL_DICE.toString(), afterEndTurn.getTurnPhase());
     }
