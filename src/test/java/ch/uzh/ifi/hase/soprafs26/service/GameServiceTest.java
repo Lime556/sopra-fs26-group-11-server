@@ -1538,6 +1538,7 @@ class GameServiceTest {
         Player player1 = new Player();
         player1.setId(10L);
         player1.setName("Player1");
+        player1.setBot(true);
         player1.setWood(5);
         player1.setBrick(4);
         player1.setWool(3);
@@ -1564,7 +1565,10 @@ class GameServiceTest {
         Mockito.when(gameRepository.save(Mockito.any(Game.class)))
             .thenAnswer(invocation -> invocation.getArgument(0));
 
-        Game result = gameService.rollDice(1L, "valid-token", null);
+        GameService deterministicGameService = Mockito.spy(gameService);
+        Mockito.doReturn(3, 4).when(deterministicGameService).rollDie();
+
+        Game result = deterministicGameService.rollDice(1L, "valid-token", null);
 
         int totalResources1 = result.getPlayers().get(0).getWood() + result.getPlayers().get(0).getBrick()
             + result.getPlayers().get(0).getWool() + result.getPlayers().get(0).getWheat()
@@ -1573,12 +1577,10 @@ class GameServiceTest {
             + result.getPlayers().get(1).getWool() + result.getPlayers().get(1).getWheat()
             + result.getPlayers().get(1).getOre();
 
-        // If dice value is 7, verify discard happened
-        if (result.getDiceValue() != null && result.getDiceValue() == 7) {
-            // Player1 should have discarded half (15/2 = 7, so 8 cards remain)
-            assertEquals(8, totalResources1, "Player1 should have discarded to 8 cards after rolling 7");
-            assertEquals(6, totalResources2, "Player2 should keep all 6 cards");
-        }
+        assertEquals(7, result.getDiceValue());
+        // Player1 should have discarded half (15/2 = 7, so 8 cards remain)
+        assertEquals(8, totalResources1, "Player1 should have discarded to 8 cards after rolling 7");
+        assertEquals(6, totalResources2, "Player2 should keep all 6 cards");
         // For non-7 rolls, just verify resources are non-negative (distributed or unchanged)
         assertTrue(totalResources1 >= 0, "Player1 total resources must be non-negative");
         assertTrue(totalResources2 >= 0, "Player2 total resources must be non-negative");
@@ -1691,6 +1693,7 @@ class GameServiceTest {
 
         Player sourcePlayer = game.getPlayers().get(0); // Player 1
         Player targetPlayer = game.getPlayers().get(1); // Player 2
+        attachTestUsers(game);
 
         // Set initial resources
         sourcePlayer.setWood(5);
@@ -1707,7 +1710,7 @@ class GameServiceTest {
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
         Mockito.when(gameRepository.save(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        Mockito.when(userService.authenticate("valid-token")).thenReturn(user); // Authenticate as source player
+        authenticateAs("valid-token", sourcePlayer);
 
         Game result = gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent);
 
@@ -1726,6 +1729,7 @@ class GameServiceTest {
 
         Player sourcePlayer = game.getPlayers().get(0); // Player 1
         Player targetPlayer = game.getPlayers().get(1); // Player 2
+        attachTestUsers(game);
 
         // Set initial resources (source has only 1 wood)
         sourcePlayer.setWood(1);
@@ -1741,8 +1745,7 @@ class GameServiceTest {
         tradeEvent.setReceiveResources(Map.of("brick", 1));
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
-        user.setId(sourcePlayer.getUser().getId());
+        authenticateAs("valid-token", sourcePlayer);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
             () -> gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent));
@@ -1759,6 +1762,7 @@ class GameServiceTest {
 
         Player sourcePlayer = game.getPlayers().get(0); // Player 1
         Player targetPlayer = game.getPlayers().get(1); // Player 2
+        attachTestUsers(game);
 
         // Set initial resources (target has only 0 brick)
         sourcePlayer.setWood(5);
@@ -1774,8 +1778,7 @@ class GameServiceTest {
         tradeEvent.setReceiveResources(Map.of("brick", 1));
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
-        user.setId(sourcePlayer.getUser().getId());
+        authenticateAs("valid-token", sourcePlayer);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
             () -> gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent));
@@ -1792,6 +1795,7 @@ class GameServiceTest {
 
         Player sourcePlayer = game.getPlayers().get(0); // Player 1
         Player targetPlayer = game.getPlayers().get(1); // Player 2
+        attachTestUsers(game);
 
         GameEventDTO tradeEvent = new GameEventDTO();
         tradeEvent.setSourcePlayerId(sourcePlayer.getId());
@@ -1800,8 +1804,7 @@ class GameServiceTest {
         tradeEvent.setReceiveResources(Map.of("brick", 1));
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
-        user.setId(targetPlayer.getUser().getId()); // Authenticate as target player, not source
+        authenticateAs("valid-token", targetPlayer); // Authenticate as target player, not source
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
             () -> gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent));
@@ -1817,6 +1820,7 @@ class GameServiceTest {
         game.setId(gameId);
 
         Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        attachTestUsers(game);
         sourcePlayer.setWood(5);
 
         GameEventDTO tradeEvent = new GameEventDTO();
@@ -1826,8 +1830,7 @@ class GameServiceTest {
         tradeEvent.setTradeAction("REQUEST");
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
-        user.setId(sourcePlayer.getUser().getId());
+        authenticateAs("valid-token", sourcePlayer);
 
         gameService.validatePlayerTradeRequest(gameId, "valid-token", tradeEvent);
         // No exception means success
@@ -1840,6 +1843,7 @@ class GameServiceTest {
         game.setId(gameId);
 
         Player sourcePlayer = game.getPlayers().get(0); // Player 1
+        attachTestUsers(game);
         sourcePlayer.setWood(0); // Source has no wood
 
         GameEventDTO tradeEvent = new GameEventDTO();
@@ -1849,8 +1853,7 @@ class GameServiceTest {
         tradeEvent.setTradeAction("REQUEST");
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
-        user.setId(sourcePlayer.getUser().getId());
+        authenticateAs("valid-token", sourcePlayer);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
             () -> gameService.validatePlayerTradeRequest(gameId, "valid-token", tradeEvent));
@@ -1867,6 +1870,7 @@ class GameServiceTest {
 
         Player sourcePlayer = game.getPlayers().get(0); // Player 1
         Player targetPlayer = game.getPlayers().get(1); // Player 2
+        attachTestUsers(game);
         targetPlayer.setBrick(5); // Target has brick to give
 
         GameEventDTO tradeEvent = new GameEventDTO();
@@ -1877,8 +1881,7 @@ class GameServiceTest {
         tradeEvent.setTradeAction("ACCEPT");
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
-        user.setId(targetPlayer.getUser().getId()); // Authenticate as target player
+        authenticateAs("valid-token", targetPlayer);
 
         gameService.validatePlayerTradeResponse(gameId, "valid-token", tradeEvent);
         // No exception means success
@@ -1892,6 +1895,7 @@ class GameServiceTest {
 
         Player sourcePlayer = game.getPlayers().get(0); // Player 1
         Player targetPlayer = game.getPlayers().get(1); // Player 2
+        attachTestUsers(game);
         targetPlayer.setBrick(0); // Target has no brick to give
 
         GameEventDTO tradeEvent = new GameEventDTO();
@@ -1902,8 +1906,7 @@ class GameServiceTest {
         tradeEvent.setTradeAction("ACCEPT");
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
-        user.setId(targetPlayer.getUser().getId());
+        authenticateAs("valid-token", targetPlayer);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
             () -> gameService.validatePlayerTradeResponse(gameId, "valid-token", tradeEvent));
@@ -1920,6 +1923,7 @@ class GameServiceTest {
 
         Player sourcePlayer = game.getPlayers().get(0); // Player 1
         Player targetPlayer = game.getPlayers().get(1); // Player 2
+        attachTestUsers(game);
 
         GameEventDTO tradeEvent = new GameEventDTO();
         tradeEvent.setSourcePlayerId(sourcePlayer.getId());
@@ -1929,8 +1933,7 @@ class GameServiceTest {
         tradeEvent.setTradeAction("DENY");
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
-        user.setId(targetPlayer.getUser().getId());
+        authenticateAs("valid-token", targetPlayer);
 
         gameService.validatePlayerTradeResponse(gameId, "valid-token", tradeEvent);
         // No exception means success
@@ -1944,6 +1947,7 @@ class GameServiceTest {
 
         Player sourcePlayer = game.getPlayers().get(0); // Player 1
         Player targetPlayer = game.getPlayers().get(1); // Player 2
+        attachTestUsers(game);
 
         // Set initial resources
         sourcePlayer.setWood(5); sourcePlayer.setBrick(5); sourcePlayer.setWool(5);
@@ -1958,8 +1962,7 @@ class GameServiceTest {
 
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
         Mockito.when(gameRepository.save(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
-        user.setId(sourcePlayer.getUser().getId());
+        authenticateAs("valid-token", sourcePlayer);
 
         Game result = gameService.applyPlayerTrade(gameId, "valid-token", tradeEvent);
 
@@ -1975,6 +1978,24 @@ class GameServiceTest {
     }
 
     // ============ Helper Methods ============
+
+    private void attachTestUsers(Game game) {
+        for (int i = 0; i < game.getPlayers().size(); i++) {
+            Player player = game.getPlayers().get(i);
+            User playerUser = new User();
+            playerUser.setId(1000L + i);
+            playerUser.setUsername(player.getName());
+            player.setUser(playerUser);
+        }
+    }
+
+    private void authenticateAs(String token, Player player) {
+        User authenticatedUser = new User();
+        authenticatedUser.setId(player.getUser().getId());
+        authenticatedUser.setUsername(player.getUser().getUsername());
+        authenticatedUser.setToken(token);
+        Mockito.when(userService.authenticate(token)).thenReturn(authenticatedUser);
+    }
 
     private Game createGameWithPlayers(String token, int playerCount) {
         GamePostDTO gamePostDTO = new GamePostDTO();

@@ -235,8 +235,8 @@ public class GameControllerTest {
                 .andExpect(jsonPath("$.currentTurnIndex", is(0)))
                 .andExpect(jsonPath("$.turnPhase", is("ACTION")))
                 .andExpect(jsonPath("$.diceValue", is(8)))
-                .andExpect(jsonPath("$.currentPlayerId", is(10)))
-                .andExpect(jsonPath("$.currentPlayerName", is("ActivePlayer")));
+                .andExpect(jsonPath("$.players[0].id", is(10)))
+                .andExpect(jsonPath("$.players[0].name", is("ActivePlayer")));
 
         verify(messagingTemplate).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
