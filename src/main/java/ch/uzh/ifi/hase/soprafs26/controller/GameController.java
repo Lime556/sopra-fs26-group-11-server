@@ -39,15 +39,18 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
+import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
 
 @RestController
 public class GameController {
 
     private final GameService gameService;
+    private final BotActionExecutorService botActionExecutorService;
     private final SimpMessagingTemplate messaging;
 
-    public GameController(GameService gameService, SimpMessagingTemplate messaging) {
+    public GameController(GameService gameService, BotActionExecutorService botActionExecutorService, SimpMessagingTemplate messaging) {
         this.gameService = gameService;
+        this.botActionExecutorService = botActionExecutorService;
         this.messaging = messaging;
     }
 
@@ -328,6 +331,15 @@ public class GameController {
         return stateDTO;
     }
 
+    @PostMapping("/games/{gameId}/actions/bot/fallback")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameGetDTO executeBotFallbackAction(@PathVariable Long gameId,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Game game = botActionExecutorService.executeFallbackAction(gameId, extractToken(authorizationHeader));
+        return convertGameToDto(game);
+    }
+
     @PostMapping("/games/{gameId}/actions/build-settlement")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
@@ -446,6 +458,7 @@ public class GameController {
         PlayerGetDTO dto = new PlayerGetDTO();
         dto.setId(player.getId());
         dto.setName(player.getName());
+        dto.setBot(player.isBot());
         dto.setVictoryPoints(player.getVictoryPoints());
         dto.setSettlementPoints(player.getSettlementPoints());
         dto.setCityPoints(player.getCityPoints());

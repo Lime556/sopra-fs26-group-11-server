@@ -15,7 +15,7 @@ public class Player implements Serializable {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_id")
     private User user;
 
     @Column(nullable = false)
@@ -28,6 +28,9 @@ public class Player implements Serializable {
     private int victoryPoints;
   
     private String name;
+
+    @Column(nullable = false)
+    private boolean bot;
 
     private Integer settlementPoints;
 
@@ -105,6 +108,14 @@ public class Player implements Serializable {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public boolean isBot() {
+        return bot;
+    }
+
+    public void setBot(boolean bot) {
+        this.bot = bot;
     }
 
     public Integer getSettlementPoints() {

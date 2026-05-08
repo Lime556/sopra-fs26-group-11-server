@@ -406,6 +406,79 @@ public class LobbyControllerTest {
     }
 
     @Test
+    public void addBot_validInput_success() throws Exception {
+        Lobby lobby = new Lobby();
+        lobby.setId(1L);
+        lobby.setName("Bot Lobby");
+        lobby.setCapacity(4);
+
+        User host = new User();
+        host.setId(10L);
+        host.setUsername("host");
+
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setUser(host);
+        hostParticipant.setBot(false);
+        hostParticipant.setLobby(lobby);
+
+        LobbyParticipant botParticipant = new LobbyParticipant();
+        botParticipant.setId(200L);
+        botParticipant.setUser(null);
+        botParticipant.setBot(true);
+        botParticipant.setLobby(lobby);
+
+        lobby.setParticipants(new HashSet<>(List.of(hostParticipant, botParticipant)));
+        lobby.setHostParticipant(hostParticipant);
+
+        given(lobbyService.addBot(1L, "token-123")).willReturn(lobby);
+
+        MockHttpServletRequestBuilder postRequest = post("/lobbies/1/bots")
+                .header("Authorization", "token-123")
+                .contentType(MediaType.APPLICATION_JSON);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(1)))
+                .andExpect(jsonPath("$.currentParticipants", is(2)))
+                .andExpect(jsonPath("$.participants", hasSize(2)))
+                .andExpect(jsonPath("$.participants[?(@.bot == true)]", hasSize(1)));
+    }
+
+    @Test
+    public void removeBot_validInput_success() throws Exception {
+        Lobby lobby = new Lobby();
+        lobby.setId(1L);
+        lobby.setName("Bot Lobby");
+        lobby.setCapacity(4);
+
+        User host = new User();
+        host.setId(10L);
+        host.setUsername("host");
+
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setUser(host);
+        hostParticipant.setBot(false);
+        hostParticipant.setLobby(lobby);
+
+        lobby.setParticipants(new HashSet<>(List.of(hostParticipant)));
+        lobby.setHostParticipant(hostParticipant);
+
+        given(lobbyService.removeBot(1L, "token-123", 200L)).willReturn(lobby);
+
+        MockHttpServletRequestBuilder postRequest = post("/lobbies/1/bots/200/remove")
+                .header("Authorization", "token-123")
+                .contentType(MediaType.APPLICATION_JSON);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(1)))
+                .andExpect(jsonPath("$.currentParticipants", is(1)))
+                .andExpect(jsonPath("$.participants[0].bot", is(false)));
+    }
+
+    @Test
     public void transferHost_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);

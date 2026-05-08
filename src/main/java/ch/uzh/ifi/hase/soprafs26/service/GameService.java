@@ -188,7 +188,25 @@ public class GameService {
         }
 
         game.setRobberTileIndex(hexId);
+        if (Integer.valueOf(7).equals(game.getDiceValue())) {
+            game.setRobberMovedAfterSevenRoll(true);
+        }
         return gameRepository.save(game);
+    }
+
+    public Game moveRobberAndStealFromFirstAdjacentPlayer(Long gameId, String token, Long sourcePlayerId, Integer hexId) {
+        Game game = moveRobber(gameId, token, hexId);
+
+        Player source = findPlayerById(game.getPlayers(), sourcePlayerId);
+        Player target = findFirstRobberStealTarget(game, sourcePlayerId, hexId);
+        if (source != null && target != null) {
+            stealRandomResource(target, source);
+            game.setPlayers(game.getPlayers());
+            recalculateVictoryState(game);
+            return gameRepository.save(game);
+        }
+
+        return game;
     }
 
     public Game getGameById(Long gameId, String playerToken) {
@@ -794,16 +812,19 @@ public class GameService {
         game.setDiceRolledAt(java.time.Instant.now());
 
         if (diceSum == 7) {
+            game.setRobberMovedAfterSevenRoll(false);
             applySevenRollEffects(game, currentPlayer, null);
 
-            if (totalResourceCards(currentPlayer) > 7) {
+            if (totalResourceCards(currentPlayer) > 7 && !currentPlayer.isBot()) {
                 game.setTurnPhase(TurnPhase.DISCARD);
             } else {
                 game.setTurnPhase(TurnPhase.ACTION);
             }
+            recalculateVictoryState(game);
             return gameRepository.save(game);
             
         } else {
+            game.setRobberMovedAfterSevenRoll(false);
             distributeResourcesForDiceValue(game, diceSum);
         }
         game.setTurnPhase(TurnPhase.ACTION);
@@ -901,15 +922,16 @@ public class GameService {
             }
 
             int resourcesToDiscard = totalResources / 2;
+            boolean isCurrentPlayer = currentPlayer != null
+                && currentPlayer.getId() != null
+                && currentPlayer.getId().equals(player.getId());
 
-            // If this is the current player, use provided discard choices
-            if (currentPlayer != null && player.getId().equals(currentPlayer.getId())) {
-                if (discardChoices != null && !discardChoices.isEmpty()) {
-                    discardResourcesByChoice(game, player, discardChoices);
-                }
-                // else: frontend input
+            if (isCurrentPlayer && discardChoices != null && !discardChoices.isEmpty()) {
+                discardResourcesByChoice(game, player, discardChoices, resourcesToDiscard);
+            } else if (isCurrentPlayer && !currentPlayer.isBot()) {
+                // The active human player must choose resources in a follow-up DISCARD request.
+                continue;
             } else {
-                // For other players
                 discardResourcesRandomly(game, player, resourcesToDiscard);
             }
         }
@@ -1354,23 +1376,6 @@ public class GameService {
                 continue;
             }
 
-            // Test resources - REMOVE LATER
-            //player.setWood(resourceValue(player.getWood()) + 3);
-            //player.setBrick(resourceValue(player.getBrick()) + 3);
-            //player.setWool(resourceValue(player.getWool()) + 3);
-            //player.setWheat(resourceValue(player.getWheat()) + 3);
-            //player.setOre(resourceValue(player.getOre()) + 3);
-
-            switch (tileType.toUpperCase()) {
-                case "WOOD" -> player.setWood(resourceValue(player.getWood()) + 1);
-                case "BRICK" -> player.setBrick(resourceValue(player.getBrick()) + 1);
-                case "SHEEP", "WOOL" -> player.setWool(resourceValue(player.getWool()) + 1);
-                case "WHEAT" -> player.setWheat(resourceValue(player.getWheat()) + 1);
-                case "ORE" -> player.setOre(resourceValue(player.getOre()) + 1);
-                default -> {
-                    // Ignore unknown tile labels.
-                }
-            }
             grantResourceForTile(game, player, tileType, 1);
         }
     }
@@ -1687,10 +1692,13 @@ public class GameService {
         Player player = new Player();
         player.setId(playerDto.getId());
         player.setName(playerDto.getName());
+        player.setBot(playerDto.isBot());
 
         // Fetch the managed User entity when available, otherwise attach a lightweight
         // fallback User so player identity checks/tests never dereference null.
-        if (playerDto.getId() != null) {
+        if (playerDto.isBot()) {
+            player.setUser(null);
+        } else if (playerDto.getId() != null) {
             try {
                 User existingUser = userService.getUserById(playerDto.getId());
                 if (existingUser != null) {
@@ -1769,6 +1777,38 @@ public class GameService {
         String selected = available.get(ThreadLocalRandom.current().nextInt(available.size()));
         setResourceByName(from, selected, getResourceByName(from, selected) - 1);
         setResourceByName(to, selected, getResourceByName(to, selected) + 1);
+    }
+
+    private Player findFirstRobberStealTarget(Game game, Long sourcePlayerId, Integer robberHexId) {
+        if (game == null || sourcePlayerId == null || robberHexId == null || game.getPlayers() == null || game.getBoard() == null) {
+            return null;
+        }
+
+        for (Player player : game.getPlayers()) {
+            if (player == null || player.getId() == null || player.getId().equals(sourcePlayerId)) {
+                continue;
+            }
+            if (!canStealFromPlayer(game, robberHexId, player.getId())) {
+                continue;
+            }
+            if (totalResources(player) > 0) {
+                return player;
+            }
+        }
+
+        return null;
+    }
+
+    private int totalResources(Player player) {
+        if (player == null) {
+            return 0;
+        }
+
+        return resourceValue(player.getWood())
+            + resourceValue(player.getBrick())
+            + resourceValue(player.getWool())
+            + resourceValue(player.getWheat())
+            + resourceValue(player.getOre());
     }
 
     private void addResourceIfAvailable(List<String> available, String resource, Integer amount) {
@@ -1935,6 +1975,10 @@ public class GameService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the active player can roll dice.");
         }
 
+        if (currentPlayer.isBot()) {
+            return;
+        }
+
         if (isSameUserById(currentPlayer, authenticatedUser) || isSameUserByName(currentPlayer, authenticatedUser)) {
             return;
         }
@@ -2006,19 +2050,33 @@ public class GameService {
             + resourceValue(player.getOre());
     }
 
-    private void discardResourcesByChoice(Game game, Player player, Map<String, Integer> discardChoices) {
+    private void discardResourcesByChoice(Game game, Player player, Map<String, Integer> discardChoices, int requiredDiscardCount) {
         if (player == null || discardChoices == null || discardChoices.isEmpty()) {
             return;
         }
 
-        for (Map.Entry<String, Integer> entry : discardChoices.entrySet()) {
+        Map<String, Integer> normalizedChoices = normalizeTradeBundle(discardChoices);
+        int selectedCount = sumTradeBundle(normalizedChoices);
+        if (selectedCount != requiredDiscardCount) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Exactly " + requiredDiscardCount + " resources must be discarded.");
+        }
+
+        for (String resource : TRADE_RESOURCES) {
+            int amount = normalizedChoices.get(resource);
+            if (amount > getResourceByName(player, resource)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot discard more " + resource + " than the player owns.");
+            }
+        }
+
+        for (Map.Entry<String, Integer> entry : normalizedChoices.entrySet()) {
             String resource = entry.getKey();
-            Integer amount = entry.getValue();
-            if (amount != null && amount > 0) {
+            int amount = entry.getValue();
+            if (amount > 0) {
                 int available = getResourceByName(player, resource);
-                int toDiscard = Math.min(amount, available);
-                setResourceByName(player, resource, available - toDiscard);
-                addToBank(game, resource, toDiscard);
+                setResourceByName(player, resource, available - amount);
+                addToBank(game, resource, amount);
             }
         }
     }

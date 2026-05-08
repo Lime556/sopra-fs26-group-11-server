@@ -1,6 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1002,6 +1003,29 @@ class GameServiceTest {
         int totalResources = updatedPlayer.getWood() + updatedPlayer.getBrick() + updatedPlayer.getWool() 
             + updatedPlayer.getWheat() + updatedPlayer.getOre();
         assertTrue(totalResources > 0, "Player should receive at least one resource from the settlement");
+
+        List<Integer> adjacentHexIds = board.getAdjacentHexIdsForIntersection(secondIntersectionId);
+        int expectedResources = (int) adjacentHexIds.stream()
+            .map(hexId -> board.getHexTiles().get(hexId - 1))
+            .filter(tile -> !"DESERT".equalsIgnoreCase(tile))
+            .count();
+        assertEquals(expectedResources, totalResources, "Initial setup resources should be granted once per non-desert adjacent hex.");
+    }
+
+    @Test
+    void boardAdjacentHexIdsForIntersection_hasNoDuplicateHexIdsAroundDesert() {
+        Board board = new Board();
+        board.generateBoard();
+        int desertHexId = board.getHexTiles().indexOf("DESERT") + 1;
+
+        for (Integer intersectionId : board.getIntersectionIdsForHex(desertHexId)) {
+            List<Integer> adjacentHexIds = board.getAdjacentHexIdsForIntersection(intersectionId);
+            assertEquals(
+                new HashSet<>(adjacentHexIds).size(),
+                adjacentHexIds.size(),
+                "Adjacent hex ids should not contain duplicates for intersection " + intersectionId
+            );
+        }
     }
 
     private boolean areAdjacent(Board board, int intersectionAId, int intersectionBId) {

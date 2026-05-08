@@ -1,6 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 
@@ -134,19 +135,28 @@ public class LobbyService {
         game = gameRepository.saveAndFlush(game);
 
         List<LobbyParticipant> orderedParticipants = lobby.getParticipants().stream()
-            .filter(participant -> participant.getUser() != null)
-            .sorted((p1, p2) -> p1.getUser().getId().compareTo(p2.getUser().getId()))
+            .sorted(Comparator
+                .comparing((LobbyParticipant participant) -> participant.isBot())
+                .thenComparing(participant -> participant.getUser() != null ? participant.getUser().getId() : Long.MAX_VALUE)
+                .thenComparing(participant -> participant.getId() != null ? participant.getId() : Long.MAX_VALUE))
             .toList();
 
         String[] colors = {"RED", "BLUE", "WHITE", "ORANGE"};
         List<Player> gamePlayers = new ArrayList<>();
+        int botCount = 0;
 
         for (int i = 0; i < orderedParticipants.size(); i++) {
+            LobbyParticipant participant = orderedParticipants.get(i);
+            if (participant.isBot()) {
+                botCount++;
+            }
+
             Player player = new Player();
-            player.setUser(orderedParticipants.get(i).getUser());
+            player.setUser(participant.getUser());
             player.setGameId(game.getId());
             player.setColor(colors[i]);
-            player.setName(orderedParticipants.get(i).getUser().getUsername());
+            player.setBot(participant.isBot());
+            player.setName(resolvePlayerName(participant, i, botCount));
             player.setVictoryPoints(0);
             player.setWood(0);
             player.setBrick(0);
@@ -164,6 +174,54 @@ public class LobbyService {
         lobbyRepository.saveAndFlush(lobby);
 
         return game;
+    }
+
+    public Lobby addBot(Long lobbyId, String playerToken) {
+        User requester = userService.authenticate(playerToken);
+        Lobby lobby = lobbyRepository.findByIdWithLock(lobbyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lobby with id " + lobbyId + " was not found."));
+
+        LobbyParticipant requesterParticipant = findParticipantByUserOrThrow(lobby, requester);
+        ensureRequesterIsHost(lobby, requesterParticipant);
+        ensureLobbyNotFull(lobby);
+
+        if (lobby.getGameId() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Game already started");
+        }
+
+        LobbyParticipant botParticipant = new LobbyParticipant();
+        botParticipant.setLobby(lobby);
+        botParticipant.setUser(null);
+        botParticipant.setBot(true);
+        botParticipant = lobbyParticipantRepository.saveAndFlush(botParticipant);
+        lobby.getParticipants().add(botParticipant);
+
+        return lobbyRepository.saveAndFlush(lobby);
+    }
+
+    public Lobby removeBot(Long lobbyId, String playerToken, Long participantId) {
+        User requester = userService.authenticate(playerToken);
+        Lobby lobby = lobbyRepository.findByIdWithLock(lobbyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lobby with id " + lobbyId + " was not found."));
+
+        LobbyParticipant requesterParticipant = findParticipantByUserOrThrow(lobby, requester);
+        ensureRequesterIsHost(lobby, requesterParticipant);
+
+        if (lobby.getGameId() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Game already started");
+        }
+
+        LobbyParticipant targetParticipant = findParticipantByIdOrThrow(lobby, participantId);
+        if (!targetParticipant.isBot()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Participant is not a bot.");
+        }
+
+        lobby.getParticipants().remove(targetParticipant);
+        lobbyParticipantRepository.delete(targetParticipant);
+
+        return lobbyRepository.saveAndFlush(lobby);
     }
 
     public Lobby getLobbyById(Long lobbyId, String playerToken) {
@@ -358,6 +416,16 @@ public class LobbyService {
                     "Lobby with id " + lobby.getId() + " is full."
             );
         }
+    }
+
+    private String resolvePlayerName(LobbyParticipant participant, int index, int botCount) {
+        if (participant.getUser() != null) {
+            return participant.getUser().getUsername();
+        }
+        if (participant.isBot()) {
+            return "Bot " + botCount;
+        }
+        return "Player " + (index + 1);
     }
 
     private LobbyParticipant findParticipantByUserOrThrow(Lobby lobby, User user) {
