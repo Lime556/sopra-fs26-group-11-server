@@ -195,6 +195,15 @@ public class GameController {
                         gameEventDTO.getSourcePlayerId(),
                         gameEventDTO.getGiveResource()
                     );
+        } else if ("ROBBER_MOVE".equalsIgnoreCase(gameEventDTO.getType())
+                && gameEventDTO.getSourcePlayerId() != null) {
+                    updatedGame = gameService.moveRobber(
+                        gameId,
+                        token,
+                        gameEventDTO.getSourcePlayerId(),
+                        gameEventDTO.getHexId(),
+                        gameEventDTO.getTargetPlayerId()
+                    );
         }
         messaging.convertAndSend(String.format("/topic/games/%d/events", gameId), gameEventDTO);
         if (updatedGame != null) {
