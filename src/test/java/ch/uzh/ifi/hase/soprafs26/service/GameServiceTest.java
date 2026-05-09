@@ -28,6 +28,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.Road;
 import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
+import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
@@ -193,7 +194,7 @@ class GameServiceTest {
         testGame.setGamePhase("ACTIVE");
         testGame.setCurrentTurnIndex(0);
         testGame.setTurnPhase("ACTION");
-        testGame.setDiceValue(7);
+        testGame.setDiceValue(6);
 
         Player alice = new Player();
         alice.setId(30L);
@@ -1525,11 +1526,17 @@ class GameServiceTest {
     public void moveRobber_stealRandomResource_transfersExactlyOneResource() {
         Game game = new Game();
         game.setId(200L);
+        game.setDiceValue(7);
         game.setRobberTileIndex(1);
+        game.setRobberMovedAfterSevenRoll(false);
+        game.setGamePhase("ACTIVE");
+        game.setTurnPhase("ACTION");
+        game.setCurrentTurnIndex(0);
 
         Board board = new Board();
         board.generateBoard();
         game.setBoard(board);
+        
 
         Player attacker = new Player();
         attacker.setId(10L);
@@ -1539,6 +1546,15 @@ class GameServiceTest {
         attacker.setWool(0);
         attacker.setWheat(0);
         attacker.setOre(0);
+
+        User attackerUser = new User();
+        attackerUser.setId(attacker.getId());
+        attackerUser.setUsername(attacker.getName());
+        attackerUser.setToken("valid-token");
+
+        attacker.setUser(attackerUser);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(attackerUser);
 
         Player victim = new Player();
         victim.setId(11L);
@@ -1552,14 +1568,19 @@ class GameServiceTest {
 
         game.setPlayers(List.of(attacker, victim));
 
-        Intersection intersection = board.getIntersections().get(0);
-
+        Integer targetHexId = 2;
+        Integer adjacentIntersectionId = board.getIntersectionIdsForHex(targetHexId)
+            .stream()
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("No intersection found for target hex " + targetHexId));
+        
+        Intersection intersection = findIntersection(board, adjacentIntersectionId);
+        
         Settlement settlement = new Settlement();
         settlement.setOwnerPlayerId(victim.getId());
-        settlement.setIntersectionId(intersection.getId());
-
+        settlement.setIntersectionId(adjacentIntersectionId);
+        
         intersection.setBuilding(settlement);
-
         Mockito.when(gameRepository.findById(200L)).thenReturn(Optional.of(game));
         Mockito.when(gameRepository.save(Mockito.any(Game.class)))
             .thenAnswer(invocation -> invocation.getArgument(0));
@@ -1568,7 +1589,7 @@ class GameServiceTest {
             200L,
             "valid-token",
             attacker.getId(),
-            2,
+            targetHexId,
             victim.getId()
         );
 
@@ -1586,6 +1607,9 @@ class GameServiceTest {
         assertNotNull(updatedVictim);
 
         // Exactly one wood transferred
+        assertEquals(targetHexId, result.getRobberTileIndex());
+        assertEquals(Boolean.TRUE, result.getRobberMovedAfterSevenRoll());
+        assertEquals(TurnPhase.ACTION.toString(), result.getTurnPhase());
         assertEquals(1, updatedAttacker.getWood());
         assertEquals(0, updatedVictim.getWood());
     }
@@ -1594,7 +1618,12 @@ class GameServiceTest {
     public void moveRobber_targetPlayerHasNoResources_nothingStolen() {
         Game game = new Game();
         game.setId(201L);
+        game.setDiceValue(7);
         game.setRobberTileIndex(1);
+        game.setRobberMovedAfterSevenRoll(false);
+        game.setGamePhase("ACTIVE");
+        game.setTurnPhase("ACTION");
+        game.setCurrentTurnIndex(0);
 
         Board board = new Board();
         board.generateBoard();
@@ -1603,6 +1632,15 @@ class GameServiceTest {
         Player attacker = new Player();
         attacker.setId(10L);
         attacker.setName("Attacker");
+
+        User attackerUser = new User();
+        attackerUser.setId(attacker.getId());
+        attackerUser.setUsername(attacker.getName());
+        attackerUser.setToken("valid-token");
+        
+        attacker.setUser(attackerUser);
+        
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(attackerUser);
 
         Player victim = new Player();
         victim.setId(11L);
@@ -1623,12 +1661,18 @@ class GameServiceTest {
 
         game.setPlayers(List.of(attacker, victim));
 
-        Intersection intersection = board.getIntersections().get(0);
-
+        Integer targetHexId = 2;
+        Integer adjacentIntersectionId = board.getIntersectionIdsForHex(targetHexId)
+            .stream()
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("No intersection found for target hex " + targetHexId));
+        
+        Intersection intersection = findIntersection(board, adjacentIntersectionId);
+        
         Settlement settlement = new Settlement();
         settlement.setOwnerPlayerId(victim.getId());
-        settlement.setIntersectionId(intersection.getId());
-
+        settlement.setIntersectionId(adjacentIntersectionId);
+        
         intersection.setBuilding(settlement);
 
         Mockito.when(gameRepository.findById(201L)).thenReturn(Optional.of(game));
@@ -1639,7 +1683,7 @@ class GameServiceTest {
             201L,
             "valid-token",
             attacker.getId(),
-            2,
+            targetHexId,
             victim.getId()
         );
 
@@ -1657,6 +1701,9 @@ class GameServiceTest {
         assertNotNull(updatedVictim);
 
         // Nothing should change
+        assertEquals(targetHexId, result.getRobberTileIndex());
+        assertEquals(Boolean.TRUE, result.getRobberMovedAfterSevenRoll());
+        assertEquals(TurnPhase.ACTION.toString(), result.getTurnPhase());
         assertEquals(0, updatedAttacker.getWood());
         assertEquals(0, updatedVictim.getWood());
         assertEquals(0, updatedVictim.getBrick());
@@ -1722,12 +1769,65 @@ class GameServiceTest {
             + result.getPlayers().get(1).getOre();
 
         assertEquals(7, result.getDiceValue());
+        assertEquals(Boolean.FALSE, result.getRobberMovedAfterSevenRoll());
+        assertEquals(TurnPhase.ACTION.toString(), result.getTurnPhase());
         // Player1 should have discarded half (15/2 = 7, so 8 cards remain)
         assertEquals(8, totalResources1, "Player1 should have discarded to 8 cards after rolling 7");
         assertEquals(6, totalResources2, "Player2 should keep all 6 cards");
         // For non-7 rolls, just verify resources are non-negative (distributed or unchanged)
         assertTrue(totalResources1 >= 0, "Player1 total resources must be non-negative");
         assertTrue(totalResources2 >= 0, "Player2 total resources must be non-negative");
+    }
+
+    @Test
+    public void rollDice_sevenRoll_humanDiscardRequired_resetsRobberAndEntersDiscard() {
+        Game game = new Game();
+        game.setId(202L);
+        game.setGamePhase("ACTIVE");
+        game.setTurnPhase("ROLL_DICE");
+        game.setCurrentTurnIndex(0);
+        game.setRobberTileIndex(1);
+        game.setRobberMovedAfterSevenRoll(true);
+
+        User user = new User();
+        user.setId(10L);
+        user.setUsername("Player1");
+        user.setToken("valid-token");
+
+        Player player1 = new Player();
+        player1.setId(10L);
+        player1.setName("Player1");
+        player1.setUser(user);
+        player1.setBot(false);
+        player1.setWood(5);
+        player1.setBrick(4);
+        player1.setWool(3);
+        player1.setWheat(2);
+        player1.setOre(1);
+
+        game.setPlayers(List.of(player1));
+
+        Board board = new Board();
+        board.generateBoard();
+        game.setBoard(board);
+
+        Mockito.when(gameRepository.findById(202L)).thenReturn(Optional.of(game));
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        GameService deterministicGameService = Mockito.spy(gameService);
+        Mockito.doReturn(3, 4).when(deterministicGameService).rollDie();
+
+        Game result = deterministicGameService.rollDice(202L, "valid-token", null);
+
+        assertEquals(7, result.getDiceValue());
+        assertEquals(Boolean.FALSE, result.getRobberMovedAfterSevenRoll());
+        assertEquals(TurnPhase.DISCARD.toString(), result.getTurnPhase());
+        Player resultPlayer = result.getPlayers().get(0);
+        int totalResources = resultPlayer.getWood() + resultPlayer.getBrick()
+            + resultPlayer.getWool() + resultPlayer.getWheat() + resultPlayer.getOre();
+        assertEquals(15, totalResources);
     }
 
     @Test

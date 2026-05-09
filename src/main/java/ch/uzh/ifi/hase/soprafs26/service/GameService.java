@@ -173,18 +173,33 @@ public class GameService {
     }
 
     public Game moveRobber(Long gameId, String playerToken, Long playerId, Integer targetHexId, Long targetPlayerId) {
-        authenticate(playerToken);
-
+        User authenticatedUser = authenticate(playerToken);
+    
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+    
+        if (TurnPhase.DISCARD.toString().equals(game.getTurnPhase()) || hasHumanPlayersWhoMustDiscard(game)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "All required discards must be completed before moving the robber.");
+        }
         
         Player player = requirePlayer(game, playerId);
-
+        ensurePlayerMatchesAuthenticatedUser(player, authenticatedUser, "move the robber");
+    
+        if (Integer.valueOf(7).equals(game.getDiceValue())) {
+            Player currentPlayer = getCurrentPlayer(game);
+            if (currentPlayer == null || !player.getId().equals(currentPlayer.getId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the active player can move the robber after rolling a 7.");
+            }
+        }
+    
         robberHelper(game, player, targetHexId, targetPlayerId);
 
         if (Integer.valueOf(7).equals(game.getDiceValue())) {
             game.setRobberMovedAfterSevenRoll(true);
+            game.setTurnPhase(TurnPhase.ACTION.toString());
         }
         return saveChangedGame(game);
     }
@@ -200,6 +215,7 @@ public class GameService {
 
         if (Integer.valueOf(7).equals(game.getDiceValue())) {
             game.setRobberMovedAfterSevenRoll(true);
+            game.setTurnPhase(TurnPhase.ACTION.toString());
         }
         return saveChangedGame(game);
     }
@@ -833,10 +849,24 @@ public class GameService {
         // Discard call
         if (request != null && request.getDiscardResources() != null) {
             if (!TurnPhase.DISCARD.toString().equals(currentPhase)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Current phase is: " + currentPhase + ". Must be in DISCARD phase.");
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Current phase is: " + currentPhase + ". Must be in DISCARD phase.");
             }
-            applySevenRollEffects(game, currentPlayer, request.getDiscardResources());
-            game.setTurnPhase(TurnPhase.ACTION);
+        
+            int totalResources = totalResourceCards(currentPlayer);
+            if (totalResources <= 7) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This player does not need to discard.");
+            }
+        
+            int requiredDiscardCount = totalResources / 2;
+            discardResourcesByChoice(game, currentPlayer, request.getDiscardResources(), requiredDiscardCount);
+        
+            if (!hasHumanPlayersWhoMustDiscard(game)) {
+                game.setTurnPhase(TurnPhase.ACTION.toString());
+            }
+        
+            recalculateVictoryState(game);
             return saveChangedGame(game);
         }
 
@@ -854,21 +884,22 @@ public class GameService {
 
         if (diceSum == 7) {
             game.setRobberMovedAfterSevenRoll(false);
+        
             applySevenRollEffects(game, currentPlayer, null);
-
-            if (totalResourceCards(currentPlayer) > 7 && !currentPlayer.isBot()) {
-                game.setTurnPhase(TurnPhase.DISCARD);
+        
+            if (hasHumanPlayersWhoMustDiscard(game)) {
+                game.setTurnPhase(TurnPhase.DISCARD.toString());
             } else {
-                game.setTurnPhase(TurnPhase.ACTION);
+                game.setTurnPhase(TurnPhase.ACTION.toString());
             }
+        
             recalculateVictoryState(game);
             return saveChangedGame(game);
-            
         } else {
             game.setRobberMovedAfterSevenRoll(false);
             distributeResourcesForDiceValue(game, diceSum);
         }
-        game.setTurnPhase(TurnPhase.ACTION);
+        game.setTurnPhase(TurnPhase.ACTION.toString());
 
         recalculateVictoryState(game);
         return saveChangedGame(game);
@@ -973,10 +1004,11 @@ public class GameService {
 
             if (isCurrentPlayer && discardChoices != null && !discardChoices.isEmpty()) {
                 discardResourcesByChoice(game, player, discardChoices, resourcesToDiscard);
-            } else if (isCurrentPlayer && !currentPlayer.isBot()) {
-                // The active human player must choose resources in a follow-up DISCARD request.
+            } else if (!player.isBot()) {
+                // Every human player with more than 7 cards must choose their own discard.
                 continue;
             } else {
+                // Bots discard automatically.
                 discardResourcesRandomly(game, player, resourcesToDiscard);
             }
         }
@@ -1155,6 +1187,16 @@ public class GameService {
         if (players == null || players.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Game has no players.");
         }
+
+        if (!game.isSetupPhase()
+            && Integer.valueOf(7).equals(game.getDiceValue())
+            && !Boolean.TRUE.equals(game.getRobberMovedAfterSevenRoll())
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "You must move the robber before ending your turn."
+            );
+        }  
 
         if (game.isSetupPhase()) {
             int settlements = countPlayerSettlements(game, currentPlayer.getId());
@@ -2552,5 +2594,76 @@ public class GameService {
     private Game saveChangedGame(Game game) {
         game.incrementGameVersion();
         return gameRepository.save(game);
+    }
+
+    public Game discardResources(Long gameId, String playerToken, Map<String, Integer> discardChoices) {
+        User authenticatedUser = authenticate(playerToken);
+    
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+    
+        ensureBankInitialized(game);
+    
+        if (!TurnPhase.DISCARD.toString().equals(game.getTurnPhase())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Current phase is: " + game.getTurnPhase() + ". Must be in DISCARD phase.");
+        }
+    
+        Player discardingPlayer = findAuthenticatedPlayer(game, authenticatedUser);
+        if (discardingPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Only a player in this game can discard resources.");
+        }
+    
+        int totalResources = totalResourceCards(discardingPlayer);
+        if (totalResources <= 7) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "This player does not need to discard.");
+        }
+    
+        int requiredDiscardCount = totalResources / 2;
+        discardResourcesByChoice(game, discardingPlayer, discardChoices, requiredDiscardCount);
+    
+        if (!hasHumanPlayersWhoMustDiscard(game)) {
+            game.setTurnPhase(TurnPhase.ACTION.toString());
+        }
+    
+        recalculateVictoryState(game);
+        return saveChangedGame(game);
+    }
+
+    public Player getAuthenticatedPlayer(Game game, String playerToken) {
+        User authenticatedUser = authenticate(playerToken);
+        return findAuthenticatedPlayer(game, authenticatedUser);
+    }
+
+    private Player findAuthenticatedPlayer(Game game, User authenticatedUser) {
+        if (game == null || authenticatedUser == null || game.getPlayers() == null) {
+            return null;
+        }
+    
+        for (Player player : game.getPlayers()) {
+            if (player == null) {
+                continue;
+            }
+    
+            if (isSameUserById(player, authenticatedUser) || isSameUserByName(player, authenticatedUser)) {
+                return player;
+            }
+        }
+    
+        return null;
+    }
+
+    private boolean hasHumanPlayersWhoMustDiscard(Game game) {
+        if (game == null || game.getPlayers() == null) {
+            return false;
+        }
+    
+        return game.getPlayers().stream()
+            .filter(Objects::nonNull)
+            .filter(player -> !player.isBot())
+            .anyMatch(player -> totalResourceCards(player) > 7);
     }
 }
