@@ -172,30 +172,71 @@ public class GameService {
         return saveChangedGame(game);
     }
 
-    public Game moveRobber(Long gameId, String token, Integer hexId) {
-        authenticate(token);
+    public Game moveRobber(Long gameId, String playerToken, Long playerId, Integer targetHexId, Long targetPlayerId) {
+        authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        
+        Player player = requirePlayer(game, playerId);
 
-        if (hexId == null || !isValidHexId(game, hexId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid hex id.");
-        }
+        robberHelper(game, player, targetHexId, targetPlayerId);
 
-        if (hexId.equals(game.getRobberTileIndex())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot move robber to the same tile.");
-        }
-
-        game.setRobberTileIndex(hexId);
         if (Integer.valueOf(7).equals(game.getDiceValue())) {
             game.setRobberMovedAfterSevenRoll(true);
         }
         return saveChangedGame(game);
     }
 
+    public Game moveRobber(Long gameId, String playerToken, Integer targetHexId) {
+        authenticate(playerToken);
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        robberHelper(game, null, targetHexId, null);
+
+        if (Integer.valueOf(7).equals(game.getDiceValue())) {
+            game.setRobberMovedAfterSevenRoll(true);
+        }
+        return saveChangedGame(game);
+    }
+
+    private void robberHelper(Game game, Player player, Integer targetHexId, Long targetPlayerId) {
+        if (targetHexId != null) {
+            if (!isValidHexId(game, targetHexId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Hex tile with id " + targetHexId + " was not found.");
+            }
+            if (targetHexId.equals(game.getRobberTileIndex())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Robber is already on this tile.");
+            }
+            game.setRobberTileIndex(targetHexId);
+        }
+
+        if (targetPlayerId != null && !targetPlayerId.equals(player.getId())) {
+            Player target = requirePlayer(game, targetPlayerId);
+            Integer effectiveRobberHexId = targetHexId != null ? targetHexId : game.getRobberTileIndex();
+
+            if (effectiveRobberHexId == null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Robber position is required to steal from a target player.");
+            }
+
+            if (!canStealFromPlayer(game, effectiveRobberHexId, targetPlayerId)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Target player has no settlements or cities adjacent to robber position on hex " + effectiveRobberHexId + ".");
+            }
+
+            stealRandomResource(target, player);
+        }
+    }
+
     public Game moveRobberAndStealFromFirstAdjacentPlayer(Long gameId, String token, Long sourcePlayerId, Integer hexId) {
-        Game game = moveRobber(gameId, token, hexId);
+        Game game = moveRobber(gameId, token, sourcePlayerId, hexId, null);
 
         Player source = findPlayerById(game.getPlayers(), sourcePlayerId);
         Player target = findFirstRobberStealTarget(game, sourcePlayerId, hexId);
@@ -1009,34 +1050,7 @@ public class GameService {
 
         player.setKnightsPlayed(safeInt(player.getKnightsPlayed(), 0) + 1);
 
-        if (targetHexId != null) {
-            if (!isValidHexId(game, targetHexId)) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Hex tile with id " + targetHexId + " was not found.");
-            }
-            if (targetHexId.equals(game.getRobberTileIndex())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Robber is already on this tile.");
-            }
-            game.setRobberTileIndex(targetHexId);
-        }
-
-        if (targetPlayerId != null && !targetPlayerId.equals(playerId)) {
-            Player target = requirePlayer(game, targetPlayerId);
-            Integer effectiveRobberHexId = targetHexId != null ? targetHexId : game.getRobberTileIndex();
-
-            if (effectiveRobberHexId == null) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Robber position is required to steal from a target player.");
-            }
-
-            if (!canStealFromPlayer(game, effectiveRobberHexId, targetPlayerId)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Target player has no settlements or cities adjacent to robber position on hex " + effectiveRobberHexId + ".");
-            }
-
-            stealRandomResource(target, player);
-        }
+        robberHelper(game, player, targetHexId, targetPlayerId);
 
         updateLargestArmyOwnership(game);
         recalculateVictoryState(game);

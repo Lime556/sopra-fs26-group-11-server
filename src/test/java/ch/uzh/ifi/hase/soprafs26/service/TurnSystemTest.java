@@ -29,6 +29,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 
 /**
  * Test suite for the turn system implementation.
@@ -324,6 +325,49 @@ public class TurnSystemTest {
 
         assertEquals(403, exception.getStatusCode().value());
         assertTrue(exception.getReason().contains("active player"));
+    }
+
+    @Test
+    public void rollDice_discardRequestInDiscardPhase_transitionToActionPhase() {
+        testGame.setTurnPhase(TurnPhase.DISCARD.toString());
+
+        player1.setWood(3);
+        player1.setBrick(2);
+        player1.setWool(2);
+        player1.setWheat(1);
+        player1.setOre(0);
+
+        RollDiceRequestDTO request = new RollDiceRequestDTO();
+        request.setDiscardResources(Map.of(
+            "brick", 2,
+            "wool", 2
+        ));
+
+        Game updatedGame = gameService.rollDice(100L, "valid-token", request);
+
+        assertEquals(3, player1.getWood());
+        assertEquals(0, player1.getBrick());
+        assertEquals(0, player1.getWool());
+        assertEquals(1, player1.getWheat());
+        assertEquals(0, player1.getOre());
+
+        assertEquals(TurnPhase.ACTION.toString(), updatedGame.getTurnPhase());
+    }
+
+    @Test
+    public void rollDice_discardRequestOutsideDiscardPhase_throwsConflict() {
+        testGame.setTurnPhase(TurnPhase.ACTION.toString());
+
+        RollDiceRequestDTO request = new RollDiceRequestDTO();
+        request.setDiscardResources(Map.of("wood", 1));
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.rollDice(100L, "valid-token", request)
+        );
+
+        assertEquals(409, exception.getStatusCode().value());
+        assertTrue(exception.getReason().contains("DISCARD phase"));
     }
 
     @Test

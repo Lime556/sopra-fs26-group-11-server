@@ -1522,6 +1522,150 @@ class GameServiceTest {
     }
 
     @Test
+    public void moveRobber_stealRandomResource_transfersExactlyOneResource() {
+        Game game = new Game();
+        game.setId(200L);
+        game.setRobberTileIndex(1);
+
+        Board board = new Board();
+        board.generateBoard();
+        game.setBoard(board);
+
+        Player attacker = new Player();
+        attacker.setId(10L);
+        attacker.setName("Attacker");
+        attacker.setWood(0);
+        attacker.setBrick(0);
+        attacker.setWool(0);
+        attacker.setWheat(0);
+        attacker.setOre(0);
+
+        Player victim = new Player();
+        victim.setId(11L);
+        victim.setName("Victim");
+
+        victim.setWood(1);
+        victim.setBrick(0);
+        victim.setWool(0);
+        victim.setWheat(0);
+        victim.setOre(0);
+
+        game.setPlayers(List.of(attacker, victim));
+
+        Intersection intersection = board.getIntersections().get(0);
+
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(victim.getId());
+        settlement.setIntersectionId(intersection.getId());
+
+        intersection.setBuilding(settlement);
+
+        Mockito.when(gameRepository.findById(200L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game result = gameService.moveRobber(
+            200L,
+            "valid-token",
+            attacker.getId(),
+            2,
+            victim.getId()
+        );
+
+        Player updatedAttacker = result.getPlayers().stream()
+            .filter(p -> p.getId().equals(attacker.getId()))
+            .findFirst()
+            .orElse(null);
+
+        Player updatedVictim = result.getPlayers().stream()
+            .filter(p -> p.getId().equals(victim.getId()))
+            .findFirst()
+            .orElse(null);
+
+        assertNotNull(updatedAttacker);
+        assertNotNull(updatedVictim);
+
+        // Exactly one wood transferred
+        assertEquals(1, updatedAttacker.getWood());
+        assertEquals(0, updatedVictim.getWood());
+    }
+
+    @Test
+    public void moveRobber_targetPlayerHasNoResources_nothingStolen() {
+        Game game = new Game();
+        game.setId(201L);
+        game.setRobberTileIndex(1);
+
+        Board board = new Board();
+        board.generateBoard();
+        game.setBoard(board);
+
+        Player attacker = new Player();
+        attacker.setId(10L);
+        attacker.setName("Attacker");
+
+        Player victim = new Player();
+        victim.setId(11L);
+        victim.setName("Victim");
+
+        attacker.setWood(0);
+        attacker.setBrick(0);
+        attacker.setWool(0);
+        attacker.setWheat(0);
+        attacker.setOre(0);
+
+        // Victim has no resources
+        victim.setWood(0);
+        victim.setBrick(0);
+        victim.setWool(0);
+        victim.setWheat(0);
+        victim.setOre(0);
+
+        game.setPlayers(List.of(attacker, victim));
+
+        Intersection intersection = board.getIntersections().get(0);
+
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(victim.getId());
+        settlement.setIntersectionId(intersection.getId());
+
+        intersection.setBuilding(settlement);
+
+        Mockito.when(gameRepository.findById(201L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game result = gameService.moveRobber(
+            201L,
+            "valid-token",
+            attacker.getId(),
+            2,
+            victim.getId()
+        );
+
+        Player updatedAttacker = result.getPlayers().stream()
+            .filter(p -> p.getId().equals(attacker.getId()))
+            .findFirst()
+            .orElse(null);
+
+        Player updatedVictim = result.getPlayers().stream()
+            .filter(p -> p.getId().equals(victim.getId()))
+            .findFirst()
+            .orElse(null);
+
+        assertNotNull(updatedAttacker);
+        assertNotNull(updatedVictim);
+
+        // Nothing should change
+        assertEquals(0, updatedAttacker.getWood());
+        assertEquals(0, updatedVictim.getWood());
+        assertEquals(0, updatedVictim.getBrick());
+        assertEquals(0, updatedVictim.getWool());
+        assertEquals(0, updatedVictim.getWheat());
+        assertEquals(0, updatedVictim.getOre());
+    }
+
+    @Test
     public void rollDice_sevenRoll_discardsResourcesForPlayersWithMoreThanSevenCards() {
         Game game = new Game();
         game.setId(1L);
