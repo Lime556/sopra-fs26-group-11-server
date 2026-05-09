@@ -579,6 +579,45 @@ public class GameControllerTest {
     }
 
     @Test
+    public void moveRobber_withSourceAndTarget_successAndBroadcastsFullState() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setRobberTileIndex(12);
+        game.setCurrentTurnIndex(0);
+        game.setTurnPhase("ACTION");
+        game.setRobberMovedAfterSevenRoll(true);
+
+        Player currentPlayer = new Player();
+        currentPlayer.setId(10L);
+        currentPlayer.setName("ActivePlayer");
+        game.setPlayers(List.of(currentPlayer));
+
+        given(gameService.moveRobber(1L, "token-123", 10L, 12, 11L)).willReturn(game);
+        given(gameService.getCurrentPlayer(game)).willReturn(currentPlayer);
+
+        String body = """
+            {
+              "sourcePlayerId": 10,
+              "hexId": 12,
+              "targetPlayerId": 11
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/move-robber")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.robberTileIndex", is(12)))
+                .andExpect(jsonPath("$.robberMovedAfterSevenRoll", is(true)))
+                .andExpect(jsonPath("$.turnPhase", is("ACTION")));
+
+        verify(messagingTemplate).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
+    }
+
+    @Test
     public void moveRobber_invalidHexId_returnsBadRequest() throws Exception {
         given(gameService.moveRobber(1L, "token-123", 99))
                 .willThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid hex id."));

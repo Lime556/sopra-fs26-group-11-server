@@ -27,6 +27,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
+import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
@@ -283,9 +284,22 @@ public class GameController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public GameGetDTO moveRobber(@PathVariable Long gameId,
-            @RequestBody Integer hexId,
+            @RequestBody Object body,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-        Game game = gameService.moveRobber(gameId, extractToken(authorizationHeader), hexId);
+        String token = extractToken(authorizationHeader);
+        Game game;
+        if (body instanceof Number number) {
+            game = gameService.moveRobber(gameId, token, number.intValue());
+        } else if (body instanceof Map<?, ?> payload) {
+            Integer hexId = readRequiredInteger(payload, "hexId");
+            Long sourcePlayerId = readOptionalLong(payload, "sourcePlayerId");
+            Long targetPlayerId = readOptionalLong(payload, "targetPlayerId");
+            game = sourcePlayerId == null
+                ? gameService.moveRobber(gameId, token, hexId)
+                : gameService.moveRobber(gameId, token, sourcePlayerId, hexId, targetPlayerId);
+        } else {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid robber move payload.");
+        }
         GameGetDTO dto = convertGameToDto(game);
         messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
         return dto;
@@ -393,6 +407,7 @@ public class GameController {
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
         dto.setChatMessages(game.getChatMessages());
         dto.setBankResources(readBankResources(game));
+        dto.setRobberMovedAfterSevenRoll(game.getRobberMovedAfterSevenRoll());
         return dto;
     }
 
@@ -561,7 +576,7 @@ public class GameController {
         return number.longValue();
     }
 
-    private static Integer readRequiredInteger(Map<String, Object> body, String key) {
+    private static Integer readRequiredInteger(Map<?, ?> body, String key) {
         Object value = body == null ? null : body.get(key);
         if (!(value instanceof Number number)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing or invalid field: " + key);
@@ -569,25 +584,39 @@ public class GameController {
         return number.intValue();
     }
 
+    private static Long readOptionalLong(Map<?, ?> body, String key) {
+        Object value = body == null ? null : body.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (!(value instanceof Number number)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid field: " + key);
+        }
+        return number.longValue();
+    }
+
     @GetMapping("/games/{gameId}/sync")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public GameSyncDTO getGameSync(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-        Game game = gameService.getGameById(gameId, extractToken(authorizationHeader));
-        Player currentPlayer = gameService.getCurrentPlayer(game);
+        String token = extractToken(authorizationHeader);
+        Game game = gameService.getGameById(gameId, token);
 
-        int totalResources = currentPlayer != null
-            ? (Optional.ofNullable(currentPlayer.getWood()).orElse(0)
-                + Optional.ofNullable(currentPlayer.getBrick()).orElse(0)
-                + Optional.ofNullable(currentPlayer.getWool()).orElse(0)
-                + Optional.ofNullable(currentPlayer.getWheat()).orElse(0)
-                + Optional.ofNullable(currentPlayer.getOre()).orElse(0))
+        Player currentPlayer = gameService.getCurrentPlayer(game);
+        Player requestingPlayer = gameService.getAuthenticatedPlayer(game, token);
+
+        int requestingPlayerTotalResources = requestingPlayer != null
+            ? (Optional.ofNullable(requestingPlayer.getWood()).orElse(0)
+                + Optional.ofNullable(requestingPlayer.getBrick()).orElse(0)
+                + Optional.ofNullable(requestingPlayer.getWool()).orElse(0)
+                + Optional.ofNullable(requestingPlayer.getWheat()).orElse(0)
+                + Optional.ofNullable(requestingPlayer.getOre()).orElse(0))
             : 0;
 
-        Boolean currentPlayerMustDiscard = game.getDiceValue() != null
-            && game.getDiceValue() == 7
-            && totalResources > 7;
+        Boolean currentPlayerMustDiscard = TurnPhase.DISCARD.toString().equals(game.getTurnPhase())
+            && requestingPlayer != null
+            && requestingPlayerTotalResources > 7;
 
         GameSyncDTO dto = new GameSyncDTO();
         dto.setGameId(game.getId());
@@ -601,7 +630,27 @@ public class GameController {
         dto.setCurrentPlayerName(currentPlayer != null ? currentPlayer.getName() : null);
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
         dto.setCurrentPlayerMustDiscard(currentPlayerMustDiscard);
+        dto.setRobberMovedAfterSevenRoll(game.getRobberMovedAfterSevenRoll());
 
+        return dto;
+    }
+
+    @PostMapping("/games/{gameId}/actions/discard-resources")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameGetDTO discardResources(
+            @PathVariable Long gameId,
+            @RequestBody Map<String, Integer> discardResources,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+
+        Game game = gameService.discardResources(
+            gameId,
+            extractToken(authorizationHeader),
+            discardResources
+        );
+
+        GameGetDTO dto = convertGameToDto(game);
+        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
         return dto;
     }
 

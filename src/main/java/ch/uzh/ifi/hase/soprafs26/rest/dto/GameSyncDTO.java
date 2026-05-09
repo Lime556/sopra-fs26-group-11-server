@@ -12,6 +12,7 @@ public class GameSyncDTO {
     private String currentPlayerName;
     private Boolean gameFinished;
     private Boolean currentPlayerMustDiscard;
+    private Boolean robberMovedAfterSevenRoll;
 
     public Long getGameId() {
         return gameId;
@@ -99,5 +100,13 @@ public class GameSyncDTO {
 
     public void setCurrentPlayerMustDiscard(Boolean currentPlayerMustDiscard) {
         this.currentPlayerMustDiscard = currentPlayerMustDiscard;
+    }
+
+    public Boolean getRobberMovedAfterSevenRoll() {
+        return robberMovedAfterSevenRoll;
+    }
+
+    public void setRobberMovedAfterSevenRoll(Boolean robberMovedAfterSevenRoll) {
+        this.robberMovedAfterSevenRoll = robberMovedAfterSevenRoll;
     }
 }
