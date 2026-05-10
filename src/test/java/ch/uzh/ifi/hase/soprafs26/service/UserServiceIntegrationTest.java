@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.web.WebAppConfiguration;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -24,6 +26,8 @@ import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
 @WebAppConfiguration
 @SpringBootTest
 public class UserServiceIntegrationTest {
+
+	private static final PasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
 
 	@Qualifier("userRepository")
 	@Autowired
@@ -46,6 +50,7 @@ public class UserServiceIntegrationTest {
 		testUser.setUsername("testUsername");
 		testUser.setEmail("test@email.com");
 		testUser.setPasswordHash("testPassword");
+		String rawPassword = testUser.getPasswordHash();
 	
 		// when
 		User createdUser = userService.createUser(testUser);
@@ -53,7 +58,9 @@ public class UserServiceIntegrationTest {
 		// then
 		assertNotNull(createdUser.getId());
 		assertEquals(testUser.getUsername(), createdUser.getUsername());
-		assertEquals(testUser.getPasswordHash(), createdUser.getPasswordHash());
+		assertNotNull(createdUser.getPasswordHash());
+		org.junit.jupiter.api.Assertions.assertNotEquals(rawPassword, createdUser.getPasswordHash());
+		org.junit.jupiter.api.Assertions.assertTrue(PASSWORD_ENCODER.matches(rawPassword, createdUser.getPasswordHash()));
 		assertNotNull(createdUser.getToken());
 		assertNotNull(createdUser.getCreationDate());
 		assertEquals(UserStatus.ONLINE, createdUser.getUserStatus());
