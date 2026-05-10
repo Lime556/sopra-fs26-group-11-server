@@ -1,5 +1,10 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -11,8 +16,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.constant.UserStatus;
+import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameHistoryEntryDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.PasswordUpdateDTO;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -22,6 +32,9 @@ public class UserServiceTest {
 
 	@Mock
 	private UserRepository userRepository;
+
+	@Mock
+	private GameRepository gameRepository;
 
 	@InjectMocks
 	private UserService userService;
@@ -263,5 +276,187 @@ public class UserServiceTest {
 		Mockito.when(userRepository.findByToken("invalid-token")).thenReturn(null);
 
 		assertThrows(ResponseStatusException.class, () -> userService.logout("invalid-token"));
+	}
+
+	// Profile and history tests
+	@Test
+	public void getUserById_success_returnsUser() {
+		Mockito.when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+
+		User result = userService.getUserById(1L);
+
+		assertEquals(testUser, result);
+	}
+
+	@Test
+	public void getUserById_missingUser_throwsNotFound() {
+		Mockito.when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+		assertThrows(ResponseStatusException.class, () -> userService.getUserById(999L));
+	}
+
+	@Test
+	public void getUserByIdWithWinRate_calculatesAndSavesWinRate() {
+		User profileUser = new User();
+		profileUser.setId(1L);
+		profileUser.setUsername("testUsername");
+		profileUser.setPasswordHash("testPassword");
+		profileUser.setEmail("test@email.com");
+		profileUser.setUserStatus(UserStatus.ONLINE);
+		profileUser.setWinRate(0.0);
+
+		User opponentUser = new User();
+		opponentUser.setId(2L);
+		opponentUser.setUsername("opponent");
+		opponentUser.setPasswordHash("opponentPassword");
+		opponentUser.setEmail("opponent@email.com");
+		opponentUser.setUserStatus(UserStatus.ONLINE);
+
+		Game wonGame = createGame(
+			1L,
+			LocalDateTime.of(2026, 1, 1, 10, 0),
+			LocalDateTime.of(2026, 1, 1, 11, 0),
+			11L,
+			createPlayer(11L, profileUser, 9, 1L),
+			createPlayer(12L, opponentUser, 5, 1L)
+		);
+
+		Game lostGame = createGame(
+			2L,
+			LocalDateTime.of(2026, 1, 2, 10, 0),
+			LocalDateTime.of(2026, 1, 2, 11, 0),
+			22L,
+			createPlayer(21L, profileUser, 7, 2L),
+			createPlayer(22L, opponentUser, 10, 2L)
+		);
+
+		Game unfinishedGame = createGame(
+			3L,
+			LocalDateTime.of(2026, 1, 3, 10, 0),
+			null,
+			31L,
+			createPlayer(31L, profileUser, 6, 3L),
+			createPlayer(32L, opponentUser, 4, 3L)
+		);
+
+		Mockito.when(userRepository.findById(1L)).thenReturn(Optional.of(profileUser));
+		Mockito.when(gameRepository.findAll()).thenReturn(List.of(wonGame, lostGame, unfinishedGame));
+
+		User result = userService.getUserByIdWithWinRate(1L);
+
+		assertEquals(0.5, result.getWinRate());
+		Mockito.verify(userRepository, Mockito.times(1)).save(profileUser);
+	}
+
+	@Test
+	public void getGameHistory_returnsSortedLastTenGames() {
+		User profileUser = new User();
+		profileUser.setId(1L);
+		profileUser.setUsername("testUsername");
+		profileUser.setPasswordHash("testPassword");
+		profileUser.setEmail("test@email.com");
+		profileUser.setUserStatus(UserStatus.ONLINE);
+
+		User opponentUser = new User();
+		opponentUser.setId(2L);
+		opponentUser.setUsername("opponent");
+		opponentUser.setPasswordHash("opponentPassword");
+		opponentUser.setEmail("opponent@email.com");
+		opponentUser.setUserStatus(UserStatus.ONLINE);
+
+		List<Game> games = new ArrayList<>();
+		for (int i = 1; i <= 11; i++) {
+			boolean userWon = i % 2 == 1;
+			games.add(createGame(
+				(long) i,
+				LocalDateTime.of(2026, 1, i, 10, 0),
+				LocalDateTime.of(2026, 1, i, 11, 0),
+				userWon ? (long) (i * 10 + 1) : (long) (i * 10 + 2),
+				createPlayer((long) (i * 10 + 1), profileUser, userWon ? 10 : 6, (long) i),
+				createPlayer((long) (i * 10 + 2), opponentUser, userWon ? 6 : 10, (long) i)
+			));
+		}
+
+		Mockito.when(userRepository.findById(1L)).thenReturn(Optional.of(profileUser));
+		Mockito.when(gameRepository.findAll()).thenReturn(games);
+
+		List<GameHistoryEntryDTO> result = userService.getGameHistory(1L);
+
+		assertEquals(10, result.size());
+		assertEquals(11L, result.get(0).getGameId());
+		assertEquals(2L, result.get(9).getGameId());
+		assertTrue(result.get(0).isWon());
+		assertEquals(10, result.get(0).getPlayerVictoryPoints());
+		assertTrue(result.get(0).getPlayerNames().contains("testUsername"));
+		assertTrue(result.get(0).getPlayerNames().contains("opponent"));
+	}
+
+	@Test
+	public void getGameHistory_missingUser_throwsNotFound() {
+		Mockito.when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+		assertThrows(ResponseStatusException.class, () -> userService.getGameHistory(999L));
+	}
+
+	@Test
+	public void updatePassword_validInput_updatesPassword() {
+		User requester = new User();
+		requester.setId(1L);
+		requester.setUsername("testUsername");
+		requester.setPasswordHash("oldPassword");
+		requester.setEmail("test@email.com");
+		requester.setUserStatus(UserStatus.ONLINE);
+
+		PasswordUpdateDTO dto = new PasswordUpdateDTO();
+		dto.setCurrentPassword("oldPassword");
+		dto.setNewPassword("newPassword");
+
+		Mockito.when(userRepository.findByToken("valid-token")).thenReturn(requester);
+
+		userService.updatePassword(1L, "valid-token", dto);
+
+		assertEquals("newPassword", requester.getPasswordHash());
+		Mockito.verify(userRepository, Mockito.times(1)).save(requester);
+	}
+
+	@Test
+	public void updatePassword_otherUser_throwsForbidden() {
+		User requester = new User();
+		requester.setId(2L);
+		requester.setUsername("otherUser");
+		requester.setPasswordHash("oldPassword");
+		requester.setEmail("other@email.com");
+		requester.setUserStatus(UserStatus.ONLINE);
+
+		PasswordUpdateDTO dto = new PasswordUpdateDTO();
+		dto.setCurrentPassword("oldPassword");
+		dto.setNewPassword("newPassword");
+
+		Mockito.when(userRepository.findByToken("valid-token")).thenReturn(requester);
+
+		assertThrows(ResponseStatusException.class, () -> userService.updatePassword(1L, "valid-token", dto));
+	}
+
+	private Game createGame(Long gameId, LocalDateTime startedAt, LocalDateTime finishedAt,
+			Long winnerPlayerId, Player... players) {
+		Game game = new Game();
+		game.setId(gameId);
+		game.setStartedAt(startedAt);
+		game.setFinishedAt(finishedAt);
+		game.setWinnerPlayerId(winnerPlayerId);
+		game.setPlayers(List.of(players));
+		return game;
+	}
+
+	private Player createPlayer(Long playerId, User user, int victoryPoints, Long gameId) {
+		Player player = new Player();
+		player.setId(playerId);
+		player.setUser(user);
+		player.setVictoryPoints(victoryPoints);
+		player.setGameId(gameId);
+		player.setColor("red");
+		player.setBot(false);
+		player.setName(user.getUsername());
+		return player;
 	}
 }
