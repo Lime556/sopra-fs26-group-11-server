@@ -31,6 +31,8 @@ public class GameGetDTO {
     private List<String> chatMessages;
     private Map<String, Integer> bankResources;
 
+    private Boolean robberMovedAfterSevenRoll;
+
     public Long getId() {
         return id;
     }
@@ -213,6 +215,14 @@ public class GameGetDTO {
 
     public void setBankResources(Map<String, Integer> bankResources) {
         this.bankResources = bankResources;
+    }
+
+    public Boolean getRobberMovedAfterSevenRoll() {
+        return robberMovedAfterSevenRoll;
+    }
+    
+    public void setRobberMovedAfterSevenRoll(Boolean robberMovedAfterSevenRoll) {
+        this.robberMovedAfterSevenRoll = robberMovedAfterSevenRoll;
     }
 
 }

@@ -256,7 +256,8 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void applySevenRollEffects_playerWithMoreThanSeven_discardsHalf() {
+    public void applySevenRollEffects_botWithMoreThanSeven_discardsHalf() {
+        player1.setBot(true);
         player1.setWood(3);
         player1.setBrick(2);
         player1.setWool(2);
@@ -336,6 +337,18 @@ public class TurnSystemTest {
         player1.setWool(2);
         player1.setWheat(1);
         player1.setOre(0);
+
+        player2.setWood(0);
+        player2.setBrick(0);
+        player2.setWool(0);
+        player2.setWheat(0);
+        player2.setOre(0);
+
+        player3.setWood(0);
+        player3.setBrick(0);
+        player3.setWool(0);
+        player3.setWheat(0);
+        player3.setOre(0);
 
         RollDiceRequestDTO request = new RollDiceRequestDTO();
         request.setDiscardResources(Map.of(
@@ -439,7 +452,7 @@ public class TurnSystemTest {
     @Test
     public void turnPhaseEnforcement_clearsDiceOnTurnEnd() {
         testGame.setTurnPhase(TurnPhase.ACTION.toString());
-        testGame.setDiceValue(7);
+        testGame.setDiceValue(6);
 
         Game updatedGame = gameService.endTurn(100L, "valid-token");
 
