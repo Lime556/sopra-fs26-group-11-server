@@ -13,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 import ch.uzh.ifi.hase.soprafs26.constant.UserStatus;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.UserRepository;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.PasswordUpdateDTO;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -223,6 +224,27 @@ public class UserServiceTest {
 	}
 
 	@Test
+	public void login_legacyPlaintextPassword_success() {
+		User existingUser = new User();
+		existingUser.setId(1L);
+		existingUser.setUsername("testUsername");
+		existingUser.setPasswordHash("testPassword");
+		existingUser.setEmail("test@email.com");
+
+		Mockito.when(userRepository.findByUsername("testUsername")).thenReturn(existingUser);
+
+		User loginUser = new User();
+		loginUser.setUsername("testUsername");
+		loginUser.setPasswordHash("testPassword");
+
+		User result = userService.login(loginUser);
+
+		assertNotNull(result.getToken());
+		assertEquals(UserStatus.ONLINE, result.getUserStatus());
+		Mockito.verify(userRepository, Mockito.times(1)).save(existingUser);
+	}
+
+	@Test
 	public void login_unknownUser_throwsNotFound() {
 		Mockito.when(userRepository.findByUsername("unknownUser")).thenReturn(null);
 
@@ -231,6 +253,70 @@ public class UserServiceTest {
 		loginUser.setPasswordHash("anyPassword");
 
 		assertThrows(ResponseStatusException.class, () -> userService.login(loginUser));
+	}
+
+	// Password update tests
+	@Test
+	public void updatePassword_validInput_updatesPasswordWithBCryptHash() {
+		User requester = new User();
+		requester.setId(1L);
+		requester.setUsername("testUsername");
+		requester.setToken("valid-token");
+		requester.setUserStatus(UserStatus.ONLINE);
+		requester.setPasswordHash(PASSWORD_ENCODER.encode("oldPassword"));
+
+		PasswordUpdateDTO dto = new PasswordUpdateDTO();
+		dto.setCurrentPassword("oldPassword");
+		dto.setNewPassword("newPassword");
+
+		Mockito.when(userRepository.findByToken("valid-token")).thenReturn(requester);
+
+		userService.updatePassword(1L, "valid-token", dto);
+
+		assertNotEquals("newPassword", requester.getPasswordHash());
+		assertTrue(PASSWORD_ENCODER.matches("newPassword", requester.getPasswordHash()));
+		Mockito.verify(userRepository, Mockito.times(1)).save(requester);
+	}
+
+	@Test
+	public void updatePassword_legacyPlaintextCurrentPassword_rehashesNewPassword() {
+		User requester = new User();
+		requester.setId(1L);
+		requester.setUsername("testUsername");
+		requester.setToken("valid-token");
+		requester.setUserStatus(UserStatus.ONLINE);
+		requester.setPasswordHash("oldPassword");
+
+		PasswordUpdateDTO dto = new PasswordUpdateDTO();
+		dto.setCurrentPassword("oldPassword");
+		dto.setNewPassword("newPassword");
+
+		Mockito.when(userRepository.findByToken("valid-token")).thenReturn(requester);
+
+		userService.updatePassword(1L, "valid-token", dto);
+
+		assertNotEquals("newPassword", requester.getPasswordHash());
+		assertTrue(PASSWORD_ENCODER.matches("newPassword", requester.getPasswordHash()));
+		Mockito.verify(userRepository, Mockito.times(1)).save(requester);
+	}
+
+	@Test
+	public void updatePassword_wrongCurrentPassword_throwsUnauthorized() {
+		User requester = new User();
+		requester.setId(1L);
+		requester.setUsername("testUsername");
+		requester.setToken("valid-token");
+		requester.setUserStatus(UserStatus.ONLINE);
+		requester.setPasswordHash(PASSWORD_ENCODER.encode("oldPassword"));
+
+		PasswordUpdateDTO dto = new PasswordUpdateDTO();
+		dto.setCurrentPassword("wrongPassword");
+		dto.setNewPassword("newPassword");
+
+		Mockito.when(userRepository.findByToken("valid-token")).thenReturn(requester);
+
+		assertThrows(ResponseStatusException.class, () -> userService.updatePassword(1L, "valid-token", dto));
+		Mockito.verify(userRepository, Mockito.never()).save(Mockito.any(User.class));
 	}
 
 
