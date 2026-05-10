@@ -91,6 +91,7 @@ public class LobbyService {
         participant.setLobby(lobby);
         participant.setUser(user);
         participant.setBot(false);
+        lobby.getParticipants().add(participant);
         lobbyParticipantRepository.saveAndFlush(participant);
 
         return lobby;
@@ -217,7 +218,7 @@ public class LobbyService {
         if (!targetParticipant.isBot()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Participant is not a bot.");
         }
-
+        
         lobby.getParticipants().remove(targetParticipant);
         lobbyParticipantRepository.delete(targetParticipant);
 
