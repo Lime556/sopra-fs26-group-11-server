@@ -202,7 +202,7 @@ public class UserService {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
 		}
 
-		if (!PASSWORD_ENCODER.matches(loginUser.getPasswordHash(), user.getPasswordHash())) {
+		if (!passwordMatches(loginUser.getPasswordHash(), user.getPasswordHash())) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid password");
 		}
 		
@@ -267,7 +267,7 @@ public class UserService {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password must not be empty");
 		}
 
-		if (!PASSWORD_ENCODER.matches(dto.getCurrentPassword(), requester.getPasswordHash())) {
+		if (!passwordMatches(dto.getCurrentPassword(), requester.getPasswordHash())) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect");
 		}
 
@@ -285,6 +285,20 @@ public class UserService {
 
 		requester.setPasswordHash(PASSWORD_ENCODER.encode(dto.getNewPassword()));
 		userRepository.save(requester);
+	}
+
+	private boolean passwordMatches(String rawPassword, String storedPasswordHash) {
+		if (rawPassword == null || storedPasswordHash == null) {
+			return false;
+		}
+
+		if (storedPasswordHash.startsWith("$2a$")
+				|| storedPasswordHash.startsWith("$2b$")
+				|| storedPasswordHash.startsWith("$2y$")) {
+			return PASSWORD_ENCODER.matches(rawPassword, storedPasswordHash);
+		}
+
+		return rawPassword.equals(storedPasswordHash);
 	}
 
 	private String extractToken(String authorizationHeader) {
