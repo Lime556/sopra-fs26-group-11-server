@@ -20,7 +20,6 @@ import org.springframework.web.server.ResponseStatusException;
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.City;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
-import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
@@ -39,7 +38,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
  * - Phase enforcement for actions
  * - Turn progression to next player
  */
-public class TurnSystemTest {
+class TurnSystemTest {
 
     @Mock
     private GameRepository gameRepository;
@@ -57,7 +56,8 @@ public class TurnSystemTest {
     private Player player3;
 
     @BeforeEach
-    public void setup() {
+    @SuppressWarnings("unused")
+    void setup() {
         MockitoAnnotations.openMocks(this);
 
         testUser = new User();
@@ -113,7 +113,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void rollDice_initialPhase_transitionsToAction() {
+    void rollDice_initialPhase_transitionsToAction() {
         assertEquals(TurnPhase.ROLL_DICE.toString(), testGame.getTurnPhase());
         assertEquals(0, testGame.getCurrentTurnIndex());
 
@@ -129,7 +129,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void rollDice_notInRollPhase_throwsConflict() {
+    void rollDice_notInRollPhase_throwsConflict() {
         testGame.setTurnPhase(TurnPhase.ACTION.toString());
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -140,7 +140,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void rollDice_diceRollIsValid() {
+    void rollDice_diceRollIsValid() {
         Game updatedGame = gameService.rollDice(100L, "valid-token", null);
 
         int diceValue = updatedGame.getDiceValue();
@@ -149,7 +149,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void rollDice_setsDiceRolledAtTimestamp() {
+    void rollDice_setsDiceRolledAtTimestamp() {
         assertEquals(null, testGame.getDiceRolledAt());
 
         Game updatedGame = gameService.rollDice(100L, "valid-token");
@@ -158,7 +158,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void distributeResourcesForDiceValue_settlement_grantsResources() {
+    void distributeResourcesForDiceValue_settlement_grantsResources() {
         Board board = createUniformWoodBoardWithDice(8);
         Intersection intersection = board.getIntersections().stream()
             .filter(i -> i != null && Integer.valueOf(0).equals(i.getId()))
@@ -181,7 +181,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void distributeResourcesForDiceValue_city_grantsDoubleSettlementResources() {
+    void distributeResourcesForDiceValue_city_grantsDoubleSettlementResources() {
         Board settlementBoard = createUniformWoodBoardWithDice(9);
         Board cityBoard = createUniformWoodBoardWithDice(9);
         Integer productiveIntersectionId = settlementBoard.getIntersections().stream()
@@ -256,7 +256,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void applySevenRollEffects_botWithMoreThanSeven_discardsHalf() {
+    void applySevenRollEffects_botWithMoreThanSeven_discardsHalf() {
         player1.setBot(true);
         player1.setWood(3);
         player1.setBrick(2);
@@ -273,7 +273,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void applySevenRollEffects_currentPlayerWithDiscardChoices_discardsChosenResourcesToBank() {
+    void applySevenRollEffects_currentPlayerWithDiscardChoices_discardsChosenResourcesToBank() {
         player1.setWood(3);
         player1.setBrick(2);
         player1.setWool(2);
@@ -302,7 +302,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void applySevenRollEffects_playerWithSevenOrLess_keepsResources() {
+    void applySevenRollEffects_playerWithSevenOrLess_keepsResources() {
         player2.setWood(2);
         player2.setBrick(2);
         player2.setWool(1);
@@ -318,7 +318,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void rollDice_notActivePlayer_throwsForbidden() {
+    void rollDice_notActivePlayer_throwsForbidden() {
         testUser.setUsername("Player2");
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -329,7 +329,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void rollDice_discardRequestInDiscardPhase_transitionToActionPhase() {
+    void rollDice_discardRequestInDiscardPhase_transitionToActionPhase() {
         testGame.setTurnPhase(TurnPhase.DISCARD.toString());
 
         player1.setWood(3);
@@ -368,7 +368,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void rollDice_discardRequestOutsideDiscardPhase_throwsConflict() {
+    void rollDice_discardRequestOutsideDiscardPhase_throwsConflict() {
         testGame.setTurnPhase(TurnPhase.ACTION.toString());
 
         RollDiceRequestDTO request = new RollDiceRequestDTO();
@@ -384,7 +384,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void endTurn_progressesToNextPlayer() {
+    void endTurn_progressesToNextPlayer() {
         testGame.setTurnPhase(TurnPhase.ACTION.toString());
         assertEquals(0, testGame.getCurrentTurnIndex());
         Player currentPlayer = gameService.getCurrentPlayer(testGame);
@@ -399,7 +399,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void endTurn_wrapsAroundToFirstPlayer() {
+    void endTurn_wrapsAroundToFirstPlayer() {
         testGame.setCurrentTurnIndex(2); // Last player
         testGame.setTurnPhase(TurnPhase.ACTION.toString());
 
@@ -410,7 +410,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void getCurrentPlayer_returnsCorrectPlayer() {
+    void getCurrentPlayer_returnsCorrectPlayer() {
         testGame.setCurrentTurnIndex(1);
 
         Player currentPlayer = gameService.getCurrentPlayer(testGame);
@@ -421,14 +421,14 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void getCurrentPlayer_withNullGame_returnsNull() {
+    void getCurrentPlayer_withNullGame_returnsNull() {
         Player currentPlayer = gameService.getCurrentPlayer(null);
 
         assertEquals(null, currentPlayer);
     }
 
     @Test
-    public void getCurrentPlayer_withEmptyPlayerList_returnsNull() {
+    void getCurrentPlayer_withEmptyPlayerList_returnsNull() {
         testGame.setPlayers(Arrays.asList());
 
         Player currentPlayer = gameService.getCurrentPlayer(testGame);
@@ -437,7 +437,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void turnPhaseEnforcement_createdGameStartsInRollDice() {
+    void turnPhaseEnforcement_createdGameStartsInRollDice() {
         GamePostDTO gamePostDTO = new GamePostDTO();
         PlayerGetDTO player = new PlayerGetDTO();
         player.setId(1L);
@@ -450,7 +450,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void turnPhaseEnforcement_clearsDiceOnTurnEnd() {
+    void turnPhaseEnforcement_clearsDiceOnTurnEnd() {
         testGame.setTurnPhase(TurnPhase.ACTION.toString());
         testGame.setDiceValue(6);
 
@@ -460,7 +460,7 @@ public class TurnSystemTest {
     }
 
     @Test
-    public void completeTurnCycle_rollDiceActionEndTurn() {
+    void completeTurnCycle_rollDiceActionEndTurn() {
         // Player 1's turn in ROLL_DICE phase
         assertEquals(TurnPhase.ROLL_DICE.toString(), testGame.getTurnPhase());
         assertEquals(0, testGame.getCurrentTurnIndex());

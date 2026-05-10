@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -24,16 +23,16 @@ import org.springframework.web.server.ResponseStatusException;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyHostTransferDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyJoinDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyKickDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyPostDTO;
 import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 @WebMvcTest(LobbyController.class)
-public class LobbyControllerTest {
+class LobbyControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -41,11 +40,8 @@ public class LobbyControllerTest {
     @MockitoBean
     private LobbyService lobbyService;
 
-    @MockitoBean
-    private SimpMessagingTemplate messagingTemplate;
-
     @Test
-    public void getLobbies_returnsLobbies() throws Exception {
+    void getLobbies_returnsLobbies() throws Exception {
         Lobby first = new Lobby();
         first.setId(1L);
         first.setName("First");
@@ -71,7 +67,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void createLobby_validInput_success() throws Exception {
+    void createLobby_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
         lobby.setName("Test Lobby");
@@ -116,7 +112,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void createLobby_missingToken_returnsUnauthorized() throws Exception {
+    void createLobby_missingToken_returnsUnauthorized() throws Exception {
         LobbyPostDTO lobbyPostDTO = new LobbyPostDTO();
         lobbyPostDTO.setName("Test Lobby");
         lobbyPostDTO.setCapacity(4);
@@ -133,7 +129,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void joinLobby_validInput_success() throws Exception {
+    void joinLobby_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
         lobby.setCapacity(2);
@@ -176,7 +172,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void joinLobby_wrongPassword_returnsForbidden() throws Exception {
+    void joinLobby_wrongPassword_returnsForbidden() throws Exception {
         LobbyJoinDTO lobbyJoinDTO = new LobbyJoinDTO();
         lobbyJoinDTO.setLobbyId(1L);
         lobbyJoinDTO.setPassword("wrong");
@@ -193,7 +189,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void joinLobby_protectedLobby_correctPassword_success() throws Exception {
+    void joinLobby_protectedLobby_correctPassword_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
         lobby.setCapacity(4);
@@ -231,7 +227,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void joinLobby_fullLobby_returnsConflict() throws Exception {
+    void joinLobby_fullLobby_returnsConflict() throws Exception {
         LobbyJoinDTO lobbyJoinDTO = new LobbyJoinDTO();
         lobbyJoinDTO.setLobbyId(1L);
 
@@ -247,7 +243,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void joinLobby_unauthorized_returnsUnauthorized() throws Exception {
+    void joinLobby_unauthorized_returnsUnauthorized() throws Exception {
         LobbyJoinDTO lobbyJoinDTO = new LobbyJoinDTO();
         lobbyJoinDTO.setLobbyId(1L);
 
@@ -262,7 +258,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void joinLobby_notFound_returnsNotFound() throws Exception {
+    void joinLobby_notFound_returnsNotFound() throws Exception {
         LobbyJoinDTO lobbyJoinDTO = new LobbyJoinDTO();
         lobbyJoinDTO.setLobbyId(1L);
 
@@ -278,7 +274,7 @@ public class LobbyControllerTest {
     }
     
     @Test
-    public void getLobbyById_validId_success() throws Exception {
+    void getLobbyById_validId_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
         lobby.setName("Lobby Detail");
@@ -318,7 +314,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void getLobbyById_notFound_returnsNotFound() throws Exception {
+    void getLobbyById_notFound_returnsNotFound() throws Exception {
         given(lobbyService.getLobbyById(1L, "Bearer token-123"))
                 .willThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Lobby not found"));
 
@@ -331,7 +327,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void getLobbyById_missingToken_returnsUnauthorized() throws Exception {
+    void getLobbyById_missingToken_returnsUnauthorized() throws Exception {
         given(lobbyService.getLobbyById(1L, null))
                 .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing token"));
 
@@ -343,7 +339,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void getLobbyById_invalidToken_returnsUnauthorized() throws Exception {
+    void getLobbyById_invalidToken_returnsUnauthorized() throws Exception {
         given(lobbyService.getLobbyById(1L, "Bearer invalid-token"))
                 .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token"));
 
@@ -356,7 +352,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void leaveLobby_validInput_returnsNoContent() throws Exception {
+    void leaveLobby_validInput_returnsNoContent() throws Exception {
         MockHttpServletRequestBuilder postRequest = post("/lobbies/1/leave")
                 .header("Authorization", "token-123")
                 .contentType(MediaType.APPLICATION_JSON);
@@ -366,7 +362,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void closeLobby_validInput_returnsNoContent() throws Exception {
+    void closeLobby_validInput_returnsNoContent() throws Exception {
         MockHttpServletRequestBuilder postRequest = post("/lobbies/1/close")
                 .header("Authorization", "token-123")
                 .contentType(MediaType.APPLICATION_JSON);
@@ -376,7 +372,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void kickParticipant_validInput_success() throws Exception {
+    void kickParticipant_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
         lobby.setName("Kick Test");
@@ -406,7 +402,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void addBot_validInput_success() throws Exception {
+    void addBot_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
         lobby.setName("Bot Lobby");
@@ -446,7 +442,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void removeBot_validInput_success() throws Exception {
+    void removeBot_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
         lobby.setName("Bot Lobby");
@@ -479,7 +475,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void transferHost_validInput_success() throws Exception {
+    void transferHost_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
         lobby.setName("Transfer Test");
@@ -514,7 +510,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void kickPlayer_specEndpoint_validInput_success() throws Exception {
+    void kickPlayer_specEndpoint_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
         lobby.setName("Kick Player Spec");
@@ -548,7 +544,7 @@ public class LobbyControllerTest {
     }
 
     @Test
-    public void transferHost_specEndpoint_validInput_success() throws Exception {
+    void transferHost_specEndpoint_validInput_success() throws Exception {
         Lobby lobby = new Lobby();
         lobby.setId(1L);
         lobby.setName("Transfer Host Spec");

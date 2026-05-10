@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * This tests if the UserController works.
  */
 @WebMvcTest(UserController.class)
-public class UserControllerTest {
+class UserControllerTest {
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -57,7 +57,7 @@ public class UserControllerTest {
 
 	// GET /users tests
 	@Test
-	public void givenUsers_whenGetUsers_thenReturnJsonArray() throws Exception {
+	void givenUsers_whenGetUsers_thenReturnJsonArray() throws Exception {
 		// given
 		String token = "valid-token";
 	
@@ -91,7 +91,7 @@ public class UserControllerTest {
 	}
 
 	@Test
-	public void givenNoToken_whenGetUsers_thenReturnUnauthorized() throws Exception {
+	void givenNoToken_whenGetUsers_thenReturnUnauthorized() throws Exception {
 		// given
 		given(userService.authenticate(Mockito.isNull()))
 				.willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"));
@@ -106,7 +106,7 @@ public class UserControllerTest {
 	}
 
 	@Test
-	public void givenInvalidToken_whenGetUsers_thenReturnUnauthorized() throws Exception {
+	void givenInvalidToken_whenGetUsers_thenReturnUnauthorized() throws Exception {
 		String token = "invalid-token";
 
 		// given
@@ -127,7 +127,7 @@ public class UserControllerTest {
 
 	// POST /users tests
 	@Test
-	public void createUser_validInput_userCreated() throws Exception {
+	void createUser_validInput_userCreated() throws Exception {
 		// given
 		User user = new User();
 		user.setId(1L);
@@ -159,7 +159,7 @@ public class UserControllerTest {
 	}
 
 	@Test
-	public void createUser_duplicateUsername_returnsBadRequest() throws Exception {
+	void createUser_duplicateUsername_returnsBadRequest() throws Exception {
 		UserPostDTO userPostDTO = new UserPostDTO();
 		userPostDTO.setUsername("testUsername");
 		userPostDTO.setPassword("testPassword");
@@ -179,7 +179,7 @@ public class UserControllerTest {
 	}
 
 	@Test
-	public void login_validInput_returnsUserAuthDTO() throws Exception {
+	void login_validInput_returnsUserAuthDTO() throws Exception {
 		// given
 		User user = new User();
 		user.setId(1L);
@@ -210,7 +210,7 @@ public class UserControllerTest {
 	}
 
 	@Test
-	public void login_invalidCredentials_returnsUnauthorized() throws Exception {
+	void login_invalidCredentials_returnsUnauthorized() throws Exception {
 		UserPostDTO userPostDTO = new UserPostDTO();
 		userPostDTO.setUsername("testUsername");
 		userPostDTO.setPassword("wrongPassword");
@@ -230,7 +230,7 @@ public class UserControllerTest {
 	}
 
 	@Test
-	public void logout_validToken_returnsNoContent() throws Exception {
+	void logout_validToken_returnsNoContent() throws Exception {
 		String token = "valid-token";
 		
 		Mockito.doNothing().when(userService).logout(token);
@@ -244,7 +244,7 @@ public class UserControllerTest {
 	}
 
 	@Test
-	public void logout_invalidToken_returnsUnauthorized() throws Exception {
+	void logout_invalidToken_returnsUnauthorized() throws Exception {
 		String token = "invalid-token";
 
 		Mockito.doThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"))

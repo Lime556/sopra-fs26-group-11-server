@@ -5,17 +5,14 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -48,17 +45,14 @@ public class GameController {
 
     private final GameService gameService;
     private final BotActionExecutorService botActionExecutorService;
-    private final SimpMessagingTemplate messaging;
 
-    public GameController(GameService gameService, BotActionExecutorService botActionExecutorService, SimpMessagingTemplate messaging) {
+    public GameController(GameService gameService, BotActionExecutorService botActionExecutorService) {
         this.gameService = gameService;
         this.botActionExecutorService = botActionExecutorService;
-        this.messaging = messaging;
     }
 
     @PostMapping("/games")
     @ResponseStatus(HttpStatus.CREATED)
-    @ResponseBody
     public GameGetDTO createGame(@RequestBody(required = false) GamePostDTO gamePostDTO,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game createdGame = gameService.createGame(extractToken(authorizationHeader), gamePostDTO);
@@ -67,7 +61,6 @@ public class GameController {
 
     @GetMapping("/games/{gameId}")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameGetDTO getGameById(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game game = gameService.getGameById(gameId, extractToken(authorizationHeader));
@@ -85,63 +78,63 @@ public class GameController {
 
     @PutMapping("/games/{gameId}")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameGetDTO updateGame(@PathVariable Long gameId,
             @RequestBody(required = false) GamePostDTO gamePostDTO,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game updatedGame = gameService.updateGameState(gameId, extractToken(authorizationHeader), gamePostDTO);
-        GameGetDTO dto = convertGameToDto(updatedGame);
-        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
-        return dto;
+        return convertGameToDto(updatedGame);
     }
 
     @PostMapping("/games/{gameId}/events")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    @ResponseBody
     public GameEventDTO publishGameEvent(@PathVariable Long gameId,
             @RequestBody GameEventDTO gameEventDTO,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         String token = extractToken(authorizationHeader);
         gameService.getGameById(gameId, token);
-        Game updatedGame = null;
+        boolean eventHandled = false;
         if ("ROAD_BUILT".equalsIgnoreCase(gameEventDTO.getType())
             && gameEventDTO.getSourcePlayerId() != null
             && gameEventDTO.getEdge() != null) {
-            updatedGame = gameService.addRoadToPlayer(
+            gameService.addRoadToPlayer(
                 gameId,
                 token,
                 gameEventDTO.getSourcePlayerId(),
                 gameEventDTO.getEdge()
             );
+            eventHandled = true;
         } else if ("SETTLEMENT_BUILT".equalsIgnoreCase(gameEventDTO.getType())
             && gameEventDTO.getSourcePlayerId() != null
             && gameEventDTO.getIntersectionId() != null) {
-            updatedGame = gameService.addSettlementToPlayer(
+            gameService.addSettlementToPlayer(
                 gameId,
                 token,
                 gameEventDTO.getSourcePlayerId(),
                 gameEventDTO.getIntersectionId()
             );
+            eventHandled = true;
         } else if ("CITY_BUILT".equalsIgnoreCase(gameEventDTO.getType())
             && gameEventDTO.getSourcePlayerId() != null
             && gameEventDTO.getIntersectionId() != null) {
-            updatedGame = gameService.upgradeSettlementToCity(
+            gameService.upgradeSettlementToCity(
                 gameId,
                 token,
                 gameEventDTO.getSourcePlayerId(),
                 gameEventDTO.getIntersectionId()
             );
+            eventHandled = true;
         } else if ("BANK_TRADE".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null
                 && ((gameEventDTO.getGiveResources() != null && gameEventDTO.getReceiveResources() != null)
                         || (gameEventDTO.getGiveResource() != null
                             && gameEventDTO.getReceiveResource() != null
                             && gameEventDTO.getAmount() != null))) {
-            updatedGame = gameService.applyBankTrade(
+            gameService.applyBankTrade(
                 gameId,
                 token,
                 gameEventDTO
             );
+            eventHandled = true;
         } else if ("PLAYER_TRADE".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null
                 && ((gameEventDTO.getGiveResources() != null && gameEventDTO.getReceiveResources() != null)
@@ -150,81 +143,88 @@ public class GameController {
                             && (gameEventDTO.getGiveAmount() != null || gameEventDTO.getReceiveAmount() != null || gameEventDTO.getAmount() != null)))) {
             if ("REQUEST".equalsIgnoreCase(gameEventDTO.getTradeAction())) {
                 gameService.validatePlayerTradeRequest(gameId, token, gameEventDTO);
+                eventHandled = true;
             } else if ("ACCEPT".equalsIgnoreCase(gameEventDTO.getTradeAction()) || "DENY".equalsIgnoreCase(gameEventDTO.getTradeAction())) {
                 gameService.validatePlayerTradeResponse(gameId, token, gameEventDTO);
+                eventHandled = true;
             } else {
                 if (gameEventDTO.getTargetPlayerId() == null) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
                 }
-                updatedGame = gameService.applyPlayerTrade(
+                gameService.applyPlayerTrade(
                     gameId,
                     token,
                     gameEventDTO
                 );
+                eventHandled = true;
             }
         } else if ("DEVELOPMENT_CARD_BOUGHT".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null) {
-            updatedGame = gameService.buyDevelopmentCard(
+            gameService.buyDevelopmentCard(
                 gameId,
                 token,
                 gameEventDTO.getSourcePlayerId()
             );
+            eventHandled = true;
         } else if ("DEVELOPMENT_CARD_PLAYED_KNIGHT".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null) {
-                    updatedGame = gameService.playKnightCard(
+                    gameService.playKnightCard(
                         gameId,
                         token,
                         gameEventDTO.getSourcePlayerId(),
                         gameEventDTO.getHexId(),
                         gameEventDTO.getTargetPlayerId()
                     );
+                    eventHandled = true;
         } else if ("DEVELOPMENT_CARD_PLAYED_ROAD_BUILDING".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null) {
-                    updatedGame = gameService.playRoadBuildingCard(
+                    gameService.playRoadBuildingCard(
                         gameId,
                         token,
                         gameEventDTO.getSourcePlayerId()
             );
+            eventHandled = true;
         } else if ("DEVELOPMENT_CARD_PLAYED_YEAR_OF_PLENTY".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null
                 && gameEventDTO.getGiveResource() != null
                 && gameEventDTO.getSecondResource() != null) {
-                    updatedGame = gameService.playYearOfPlentyCard(
+                    gameService.playYearOfPlentyCard(
                         gameId,
                         token,
                         gameEventDTO.getSourcePlayerId(),
                         gameEventDTO.getGiveResource(),
                         gameEventDTO.getSecondResource()
                     );
+                    eventHandled = true;
         } else if ("DEVELOPMENT_CARD_PLAYED_MONOPOLY".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null
                 && gameEventDTO.getGiveResource() != null) {
-                    updatedGame = gameService.playMonopolyCard(
+                    gameService.playMonopolyCard(
                         gameId,
                         token,
                         gameEventDTO.getSourcePlayerId(),
                         gameEventDTO.getGiveResource()
                     );
+                    eventHandled = true;
         } else if ("ROBBER_MOVE".equalsIgnoreCase(gameEventDTO.getType())
                 && gameEventDTO.getSourcePlayerId() != null) {
-                    updatedGame = gameService.moveRobber(
+                    gameService.moveRobber(
                         gameId,
                         token,
                         gameEventDTO.getSourcePlayerId(),
                         gameEventDTO.getHexId(),
                         gameEventDTO.getTargetPlayerId()
                     );
+                    eventHandled = true;
         }
-        messaging.convertAndSend(String.format("/topic/games/%d/events", gameId), gameEventDTO);
-        if (updatedGame != null) {
-            messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), convertGameToDto(updatedGame));
+        if (eventHandled) {
+            gameService.appendGameEvent(gameId, token, gameEventDTO);
         }
         return gameEventDTO;
     }
 
     @PostMapping("/games/{gameId}/chat")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    @ResponseBody
     public GameChatMessageDTO publishGameChatMessage(@PathVariable Long gameId,
             @RequestBody GameChatMessageDTO gameChatMessageDTO,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
@@ -239,13 +239,11 @@ public class GameController {
             gameService.appendChatMessage(gameId, extractToken(authorizationHeader), formattedMessage);
         }
 
-        messaging.convertAndSend(String.format("/topic/games/%d/chat", gameId), gameChatMessageDTO);
         return gameChatMessageDTO;
     }
 
     @GetMapping("/games/{gameId}/board")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public BoardGetDTO getBoardById(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         return convertBoardToDto(gameService.getBoardById(gameId, extractToken(authorizationHeader)));
@@ -253,7 +251,6 @@ public class GameController {
 
     @GetMapping("/games/{gameId}/state")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameStateDTO getGameState(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game game = gameService.getGameById(gameId, extractToken(authorizationHeader));
@@ -279,19 +276,15 @@ public class GameController {
 
     @PostMapping("/games/{gameId}/actions/roll-dice")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameGetDTO rollDice(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestBody(required = false) RollDiceRequestDTO request) {
         Game game = gameService.rollDice(gameId, extractToken(authorizationHeader), request);
-        GameGetDTO dto = convertGameToDto(game);
-        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
-        return dto;
+        return convertGameToDto(game);
     }
 
     @PostMapping("/games/{gameId}/actions/move-robber")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameGetDTO moveRobber(@PathVariable Long gameId,
             @RequestBody Object body,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
@@ -309,25 +302,19 @@ public class GameController {
         } else {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid robber move payload.");
         }
-        GameGetDTO dto = convertGameToDto(game);
-        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
-        return dto;
+        return convertGameToDto(game);
     }
 
     @PostMapping("/games/{gameId}/actions/end-turn")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameGetDTO endTurn(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game game = gameService.endTurn(gameId, extractToken(authorizationHeader));
-        GameGetDTO dto = convertGameToDto(game);
-        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
-        return dto;
+        return convertGameToDto(game);
     }
 
     @PostMapping("/games/{gameId}/actions/bot/fallback")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameGetDTO executeBotFallbackAction(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game game = botActionExecutorService.executeFallbackAction(gameId, extractToken(authorizationHeader));
@@ -336,7 +323,6 @@ public class GameController {
 
     @PostMapping("/games/{gameId}/actions/build-settlement")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameGetDTO buildSettlement(
             @PathVariable Long gameId,
             @RequestBody Map<String, Object> body,
@@ -361,14 +347,11 @@ public class GameController {
                     intersectionId
             );
         }
-        GameGetDTO dto = convertGameToDto(updatedGame);
-        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
-        return dto;
+        return convertGameToDto(updatedGame);
     }
 
     @PostMapping("/games/{gameId}/actions/build-road")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameGetDTO buildRoad(
             @PathVariable Long gameId,
             @RequestBody Map<String, Object> body,
@@ -392,9 +375,7 @@ public class GameController {
                     edgeId
             );
         }
-        GameGetDTO dto = convertGameToDto(updatedGame);
-        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
-        return dto;
+        return convertGameToDto(updatedGame);
     }
 
     private GameGetDTO convertGameToDto(Game game) {
@@ -414,6 +395,7 @@ public class GameController {
         dto.setPlayers(convertPlayersToDto(game.getPlayers(), game.getBoard()));
         dto.setWinner(convertPlayerToDto(game.getWinner()));
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
+        dto.setEventLog(game.getEventLog() == null ? Collections.emptyList() : new ArrayList<>(game.getEventLog()));
         dto.setChatMessages(game.getChatMessages());
         dto.setBankResources(readBankResources(game));
         dto.setRobberMovedAfterSevenRoll(game.getRobberMovedAfterSevenRoll());
@@ -439,7 +421,7 @@ public class GameController {
             return Collections.emptyList();
         }
 
-        return players.stream().map(p -> convertPlayerToDto(p, board)).collect(Collectors.toList());
+        return players.stream().map(p -> convertPlayerToDto(p, board)).toList();
     }
 
     private PlayerGetDTO convertPlayerToDto(Player player) {
@@ -545,7 +527,7 @@ public class GameController {
             return Collections.emptyList();
         }
 
-        return boats.stream().map(this::convertBoatToDto).collect(Collectors.toList());
+        return boats.stream().map(this::convertBoatToDto).toList();
     }
 
     private BoatGetDTO convertBoatToDto(Boat boat) {
@@ -570,7 +552,6 @@ public class GameController {
 
     @GetMapping("/games/{gameId}/dice")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public DiceRollDTO getDiceRoll(
             @PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
@@ -609,7 +590,6 @@ public class GameController {
 
     @GetMapping("/games/{gameId}/sync")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameSyncDTO getGameSync(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         String token = extractToken(authorizationHeader);
@@ -649,7 +629,6 @@ public class GameController {
 
     @PostMapping("/games/{gameId}/actions/discard-resources")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameGetDTO discardResources(
             @PathVariable Long gameId,
             @RequestBody Map<String, Integer> discardResources,
@@ -661,9 +640,7 @@ public class GameController {
             discardResources
         );
 
-        GameGetDTO dto = convertGameToDto(game);
-        messaging.convertAndSend(String.format("/topic/games/%d/state", gameId), dto);
-        return dto;
+        return convertGameToDto(game);
     }
 
 

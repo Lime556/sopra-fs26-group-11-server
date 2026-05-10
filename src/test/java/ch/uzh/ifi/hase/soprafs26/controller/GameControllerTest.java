@@ -1,25 +1,13 @@
 package ch.uzh.ifi.hase.soprafs26.controller;
 
-import ch.uzh.ifi.hase.soprafs26.entity.Game;
-import ch.uzh.ifi.hase.soprafs26.entity.Player;
-import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
-import ch.uzh.ifi.hase.soprafs26.service.GameService;
-import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
 import java.util.List;
 
 import static org.hamcrest.Matchers.is;
 import org.junit.jupiter.api.Test;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.never;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpStatus;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -29,8 +17,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.web.server.ResponseStatusException;
 
+import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Player;
+import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
+import ch.uzh.ifi.hase.soprafs26.service.GameService;
+import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
+
 @WebMvcTest(GameController.class)
-public class GameControllerTest {
+class GameControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -39,13 +33,11 @@ public class GameControllerTest {
     private GameService gameService;
 
     @MockitoBean
+    @SuppressWarnings("unused")
     private BotActionExecutorService botActionExecutorService;
 
-    @MockitoBean
-    private SimpMessagingTemplate messagingTemplate;
-
     @Test
-    public void endTurn_validRequest_success() throws Exception {
+    void endTurn_validRequest_success() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setCurrentTurnIndex(1);
@@ -75,7 +67,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void endTurn_missingToken_returnsUnauthorized() throws Exception {
+    void endTurn_missingToken_returnsUnauthorized() throws Exception {
         given(gameService.endTurn(1L, null))
                 .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token."));
 
@@ -86,7 +78,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void endTurn_gameNotFound_returnsNotFound() throws Exception {
+    void endTurn_gameNotFound_returnsNotFound() throws Exception {
         given(gameService.endTurn(999L, "token-123"))
                 .willThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Game with id 999 was not found."));
 
@@ -98,7 +90,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void endTurn_noCurrentPlayer_returnsConflict() throws Exception {
+    void endTurn_noCurrentPlayer_returnsConflict() throws Exception {
         given(gameService.endTurn(1L, "token-123"))
                 .willThrow(new ResponseStatusException(HttpStatus.CONFLICT, "No current player found."));
 
@@ -110,7 +102,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void getGameState_validRequest_success() throws Exception {
+    void getGameState_validRequest_success() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setCurrentTurnIndex(0);
@@ -140,7 +132,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void getGameState_missingToken_returnsUnauthorized() throws Exception {
+    void getGameState_missingToken_returnsUnauthorized() throws Exception {
         given(gameService.getGameById(1L, null))
                 .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token."));
 
@@ -151,7 +143,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void getGameState_gameNotFound_returnsNotFound() throws Exception {
+    void getGameState_gameNotFound_returnsNotFound() throws Exception {
         given(gameService.getGameById(999L, "token-123"))
                 .willThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Game with id 999 was not found."));
 
@@ -163,7 +155,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void getGameState_gameFinished_returnsCorrectStatus() throws Exception {
+    void getGameState_gameFinished_returnsCorrectStatus() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setCurrentTurnIndex(2);
@@ -209,7 +201,7 @@ public class GameControllerTest {
     }
 
         @Test
-        public void getDiceRoll_validRequest_success() throws Exception {
+        void getDiceRoll_validRequest_success() throws Exception {
                 Game game = new Game();
                 game.setId(1L);
                 game.setDiceValue(11);
@@ -227,7 +219,7 @@ public class GameControllerTest {
         }
 
     @Test
-    public void rollDice_validRequest_successAndBroadcastsState() throws Exception {
+    void rollDice_validRequest_successAndBroadcastsState() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setCurrentTurnIndex(0);
@@ -253,11 +245,10 @@ public class GameControllerTest {
                 .andExpect(jsonPath("$.players[0].id", is(10)))
                 .andExpect(jsonPath("$.players[0].name", is("ActivePlayer")));
 
-        verify(messagingTemplate).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
 
     @Test
-    public void rollDice_notInRollPhase_returnsConflictAndDoesNotBroadcast() throws Exception {
+    void rollDice_notInRollPhase_returnsConflictAndDoesNotBroadcast() throws Exception {
         given(gameService.rollDice(1L, "token-123", null))
                 .willThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Cannot roll dice."));
 
@@ -267,11 +258,10 @@ public class GameControllerTest {
         mockMvc.perform(postRequest)
                 .andExpect(status().isConflict());
 
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
 
     @Test
-    public void rollDice_notActivePlayer_returnsForbiddenAndDoesNotBroadcast() throws Exception {
+    void rollDice_notActivePlayer_returnsForbiddenAndDoesNotBroadcast() throws Exception {
         given(gameService.rollDice(1L, "token-123", null))
                 .willThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the active player can roll dice."));
 
@@ -281,11 +271,10 @@ public class GameControllerTest {
         mockMvc.perform(postRequest)
                 .andExpect(status().isForbidden());
 
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
 
     @Test
-    public void publishGameEvent_roadBuilt_callsServiceAndReturnsAccepted() throws Exception {
+    void publishGameEvent_roadBuilt_callsServiceAndReturnsAccepted() throws Exception {
         Game updatedGame = new Game();
         updatedGame.setId(1L);
     
@@ -313,7 +302,7 @@ public class GameControllerTest {
     }
     
     @Test
-    public void publishGameEvent_settlementBuilt_callsServiceAndReturnsAccepted() throws Exception {
+    void publishGameEvent_settlementBuilt_callsServiceAndReturnsAccepted() throws Exception {
         Game updatedGame = new Game();
         updatedGame.setId(1L);
     
@@ -341,7 +330,7 @@ public class GameControllerTest {
     }
     
     @Test
-    public void publishGameEvent_cityBuilt_callsServiceAndReturnsAccepted() throws Exception {
+    void publishGameEvent_cityBuilt_callsServiceAndReturnsAccepted() throws Exception {
         Game updatedGame = new Game();
         updatedGame.setId(1L);
     
@@ -369,7 +358,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void getGameState_setupPhase_success() throws Exception {
+    void getGameState_setupPhase_success() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setCurrentTurnIndex(0);
@@ -397,7 +386,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void buildSettlement_setupPhase_validPlacement_success() throws Exception {
+    void buildSettlement_setupPhase_validPlacement_success() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setGamePhase("SETUP");
@@ -430,7 +419,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void buildSettlement_invalidPlacement_occupied_badRequest() throws Exception {
+    void buildSettlement_invalidPlacement_occupied_badRequest() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setGamePhase("SETUP");
@@ -456,7 +445,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void buildSettlement_notPlayerTurn_conflict() throws Exception {
+    void buildSettlement_notPlayerTurn_conflict() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setGamePhase("SETUP");
@@ -482,7 +471,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void buildRoad_setupPhase_validPlacement_success() throws Exception {
+    void buildRoad_setupPhase_validPlacement_success() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setGamePhase("SETUP");
@@ -513,7 +502,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void buildRoad_invalidPlacement_occupied_badRequest() throws Exception {
+    void buildRoad_invalidPlacement_occupied_badRequest() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setGamePhase("SETUP");
@@ -539,7 +528,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void buildRoad_notPlayerTurn_conflict() throws Exception {
+    void buildRoad_notPlayerTurn_conflict() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setGamePhase("SETUP");
@@ -565,7 +554,7 @@ public class GameControllerTest {
     }
 
     @Test
-    public void moveRobber_validRequest_successAndBroadcasts() throws Exception {
+    void moveRobber_validRequest_successAndBroadcasts() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setRobberTileIndex(8);
@@ -590,11 +579,10 @@ public class GameControllerTest {
                 .andExpect(jsonPath("$.currentTurnIndex", is(0)))
                 .andExpect(jsonPath("$.turnPhase", is("ACTION")));
 
-        verify(messagingTemplate).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
 
     @Test
-    public void moveRobber_withSourceAndTarget_successAndBroadcastsFullState() throws Exception {
+    void moveRobber_withSourceAndTarget_successAndBroadcastsFullState() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setRobberTileIndex(12);
@@ -629,11 +617,10 @@ public class GameControllerTest {
                 .andExpect(jsonPath("$.robberMovedAfterSevenRoll", is(true)))
                 .andExpect(jsonPath("$.turnPhase", is("ACTION")));
 
-        verify(messagingTemplate).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
 
     @Test
-    public void moveRobber_invalidHexId_returnsBadRequest() throws Exception {
+    void moveRobber_invalidHexId_returnsBadRequest() throws Exception {
         given(gameService.moveRobber(1L, "token-123", 99))
                 .willThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid hex id."));
 
@@ -645,11 +632,10 @@ public class GameControllerTest {
         mockMvc.perform(postRequest)
                 .andExpect(status().isBadRequest());
 
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
 
     @Test
-    public void moveRobber_missingToken_returnsUnauthorized() throws Exception {
+    void moveRobber_missingToken_returnsUnauthorized() throws Exception {
         given(gameService.moveRobber(1L, null, 12))
                 .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token."));
 
@@ -660,11 +646,10 @@ public class GameControllerTest {
         mockMvc.perform(postRequest)
                 .andExpect(status().isUnauthorized());
 
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
 
     @Test
-    public void moveRobber_sameHexAsCurrentRobber_returnsConflict() throws Exception {
+    void moveRobber_sameHexAsCurrentRobber_returnsConflict() throws Exception {
         given(gameService.moveRobber(1L, "token-123", 8))
                 .willThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Cannot move robber to the same tile."));
 
@@ -676,11 +661,10 @@ public class GameControllerTest {
         mockMvc.perform(postRequest)
                 .andExpect(status().isConflict());
 
-        verify(messagingTemplate, never()).convertAndSend(eq("/topic/games/1/state"), any(GameGetDTO.class));
     }
 
     @Test
-    public void moveRobber_gameNotFound_returnsNotFound() throws Exception {
+    void moveRobber_gameNotFound_returnsNotFound() throws Exception {
         given(gameService.moveRobber(999L, "token-123", 12))
                 .willThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Game with id 999 was not found."));
 

@@ -14,6 +14,9 @@ import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -59,6 +62,7 @@ public class GameService {
 
     private final GameRepository gameRepository;
     private final UserService userService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
     
     public GameService(
         @Qualifier("gameRepository") GameRepository gameRepository,
@@ -87,6 +91,9 @@ public class GameService {
         game.setStartedAt(gamePostDTO == null ? null : gamePostDTO.getStartedAt());
         game.setFinishedAt(gamePostDTO == null ? null : gamePostDTO.getFinishedAt());
         game.setWinner(convertPlayerDtoToEntity(gamePostDTO == null ? null : gamePostDTO.getWinner()));
+        game.setEventLog(gamePostDTO == null || gamePostDTO.getEventLog() == null
+            ? new ArrayList<>()
+            : new ArrayList<>(gamePostDTO.getEventLog()));
         game.setChatMessages(gamePostDTO == null || gamePostDTO.getChatMessages() == null
             ? new ArrayList<>()
             : new ArrayList<>(gamePostDTO.getChatMessages()));
@@ -325,6 +332,33 @@ public class GameService {
         );
         chatMessages.add(message);
         game.setChatMessages(chatMessages);
+        saveChangedGame(game);
+    }
+
+    public void appendGameEvent(Long gameId, String playerToken, GameEventDTO gameEventDTO) {
+        authenticate(playerToken);
+
+        if (gameEventDTO == null) {
+            return;
+        }
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        List<String> eventLog = new ArrayList<>(Optional.ofNullable(game.getEventLog()).orElse(Collections.emptyList()));
+
+        try {
+            eventLog.add(objectMapper.writeValueAsString(gameEventDTO));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize game event.", exception);
+        }
+
+        if (eventLog.size() > 50) {
+            eventLog = new ArrayList<>(eventLog.subList(eventLog.size() - 50, eventLog.size()));
+        }
+
+        game.setEventLog(eventLog);
         saveChangedGame(game);
     }
 
