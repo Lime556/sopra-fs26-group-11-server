@@ -11,6 +11,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.constant.UserStatus;
@@ -25,6 +27,8 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.PasswordUpdateDTO;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class UserServiceTest {
+
+	private static final PasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
 
 	@Mock
 	private UserRepository userRepository;
@@ -59,6 +63,7 @@ public class UserServiceTest {
     @Test
     public void createUser_validInputs_success() {
         Mockito.when(userRepository.findByUsername(Mockito.any())).thenReturn(null);
+        String rawPassword = testUser.getPasswordHash();
 
         User createdUser = userService.createUser(testUser);
 
@@ -66,7 +71,8 @@ public class UserServiceTest {
         Mockito.verify(userRepository, Mockito.times(1)).flush();
 
         assertEquals(testUser.getUsername(), createdUser.getUsername());
-        assertEquals(testUser.getPasswordHash(), createdUser.getPasswordHash());
+        assertNotEquals(rawPassword, createdUser.getPasswordHash());
+        assertTrue(PASSWORD_ENCODER.matches(rawPassword, createdUser.getPasswordHash()));
         assertNotNull(createdUser.getToken());
         assertNotNull(createdUser.getCreationDate());
         assertEquals(UserStatus.ONLINE, createdUser.getUserStatus());
@@ -197,7 +203,7 @@ public class UserServiceTest {
 		User existingUser = new User();
 		existingUser.setId(1L);
 		existingUser.setUsername("testUsername");
-		existingUser.setPasswordHash("testPassword");
+		existingUser.setPasswordHash(PASSWORD_ENCODER.encode("testPassword"));
 		existingUser.setEmail("test@email.com");
 
 		Mockito.when(userRepository.findByUsername("testUsername")).thenReturn(existingUser);
@@ -218,7 +224,7 @@ public class UserServiceTest {
 	public void login_wrongPassword_throwsUnauthorized() {
 		User existingUser = new User();
 		existingUser.setUsername("testUsername");
-		existingUser.setPasswordHash("password");
+		existingUser.setPasswordHash(PASSWORD_ENCODER.encode("password"));
 
 		Mockito.when(userRepository.findByUsername("testUsername")).thenReturn(existingUser);
 

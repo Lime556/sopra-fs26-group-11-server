@@ -185,10 +185,17 @@ public class GameService {
         }
         
         Player player = requirePlayer(game, playerId);
-        ensurePlayerMatchesAuthenticatedUser(player, authenticatedUser, "move the robber");
+        Player currentPlayer = getCurrentPlayer(game);
+        if (player.isBot()) {
+            if (currentPlayer == null || !player.getId().equals(currentPlayer.getId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the active bot can move the robber.");
+            }
+        } else {
+            ensurePlayerMatchesAuthenticatedUser(player, authenticatedUser, "move the robber");
+        }
     
         if (Integer.valueOf(7).equals(game.getDiceValue())) {
-            Player currentPlayer = getCurrentPlayer(game);
             if (currentPlayer == null || !player.getId().equals(currentPlayer.getId())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Only the active player can move the robber after rolling a 7.");
@@ -1008,8 +1015,10 @@ public class GameService {
                 // Every human player with more than 7 cards must choose their own discard.
                 continue;
             } else {
-                // Bots discard automatically.
-                discardResourcesRandomly(game, player, resourcesToDiscard);
+                // Bots discard automatically for now. This is the single decision point
+                // to replace when the AI bot chooses discard cards deliberately.
+                Map<String, Integer> botDiscardChoices = chooseBotDiscardResources(player, resourcesToDiscard);
+                discardResourcesByChoice(game, player, botDiscardChoices, resourcesToDiscard);
             }
         }
     }
@@ -1300,9 +1309,7 @@ public class GameService {
         }
         
         boolean isSecondSetupRound = game.isSecondSetupRound();
-        Integer secondSetupSettlementIntersectionId = isSecondSetupRound
-            ? findUnconnectedSetupSettlementIntersection(game, playerId)
-            : null;
+        Integer secondSetupSettlementIntersectionId = isSecondSetupRound ? settlementId : null;
 
         int roads = countPlayerRoads(game, playerId);
 
@@ -1398,29 +1405,6 @@ public class GameService {
             .filter(e -> e.getRoad() != null)
             .filter(e -> playerId.equals(e.getRoad().getOwnerPlayerId()))
             .count();
-    }
-
-    private Integer findUnconnectedSetupSettlementIntersection(Game game, Long playerId) {
-        if (game == null || playerId == null || game.getBoard() == null || game.getBoard().getIntersections() == null) {
-            return null;
-        }
-
-        for (Intersection intersection : game.getBoard().getIntersections()) {
-            if (intersection == null || !(intersection.getBuilding() instanceof Settlement)) {
-                continue;
-            }
-
-            Settlement settlement = (Settlement) intersection.getBuilding();
-            if (!playerId.equals(settlement.getOwnerPlayerId())) {
-                continue;
-            }
-
-            if (!hasOwnRoadAtIntersection(game, intersection.getId(), playerId)) {
-                return intersection.getId();
-            }
-        }
-
-        return null;
     }
 
     private void grantInitialSettlementResources(Game game, Player player, Integer intersectionId) {
@@ -2134,7 +2118,12 @@ public class GameService {
         }
     }
 
-    private void discardResourcesRandomly(Game game, Player player, int toDiscard) {
+    Map<String, Integer> chooseBotDiscardResources(Player player, int toDiscard) {
+        Map<String, Integer> choices = new HashMap<>();
+        for (String resource : TRADE_RESOURCES) {
+            choices.put(resource, 0);
+        }
+
         List<String> pool = new ArrayList<>();
 
         addResource(pool, "wood", player.getWood());
@@ -2147,10 +2136,10 @@ public class GameService {
 
         for (int i = 0; i < toDiscard && i < pool.size(); i++) {
             String resource = pool.get(i);
-            int current = getResourceByName(player, resource);
-            setResourceByName(player, resource, current - 1);
-            addToBank(game, resource, 1);
+            choices.put(resource, choices.get(resource) + 1);
         }
+
+        return choices;
     }
 
     private void addResource(List<String> pool, String resource, Integer amount) {
