@@ -1029,6 +1029,117 @@ class GameServiceTest {
         }
     }
 
+    @Test
+    void placeInitialRoad_botSecondSetupRound_grantsExactResourcesAroundDesert() {
+        Board referenceBoard = new Board();
+        referenceBoard.generateBoard();
+        int desertHexId = referenceBoard.getHexTiles().indexOf("DESERT") + 1;
+
+        for (Integer intersectionId : referenceBoard.getIntersectionIdsForHex(desertHexId)) {
+            Game game = createSecondSetupRoadGameForIntersection(314L, intersectionId, true);
+            Board board = game.getBoard();
+            Player player = game.getPlayers().get(0);
+            Edge setupRoad = board.getEdges().stream()
+                .filter(Objects::nonNull)
+                .filter(edge -> edge.getRoad() == null)
+                .filter(edge -> edge.getIntersectionAId().equals(intersectionId)
+                    || edge.getIntersectionBId().equals(intersectionId))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("No setup road found for intersection " + intersectionId));
+
+            Mockito.when(gameRepository.findById(314L)).thenReturn(Optional.of(game));
+            Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+            Game result = gameService.placeInitialRoad(314L, "valid-token", player.getId(), setupRoad.getId());
+
+            assertExactResourcesForIntersection(
+                board,
+                intersectionId,
+                result.getPlayers().get(0)
+            );
+        }
+    }
+
+    private Game createSecondSetupRoadGameForIntersection(Long gameId, int secondIntersectionId, boolean bot) {
+        Game game = new Game();
+        game.setId(gameId);
+        game.setGamePhase("SETUP_SECOND_ROUND");
+        game.setCurrentTurnIndex(0);
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setBot(bot);
+        player.setWood(0);
+        player.setBrick(0);
+        player.setWool(0);
+        player.setWheat(0);
+        player.setOre(0);
+        player.setLastPlacedSetupSettlementIntersectionId(secondIntersectionId);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        int firstIntersectionId = board.getIntersections().stream()
+            .map(Intersection::getId)
+            .filter(Objects::nonNull)
+            .filter(id -> id != secondIntersectionId)
+            .filter(id -> !areAdjacent(board, secondIntersectionId, id))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("No valid first setup settlement found."));
+
+        Intersection firstIntersection = findIntersection(board, firstIntersectionId);
+        Settlement firstSettlement = new Settlement();
+        firstSettlement.setOwnerPlayerId(player.getId());
+        firstSettlement.setIntersectionId(firstIntersectionId);
+        firstIntersection.setBuilding(firstSettlement);
+
+        Edge firstRoad = board.getEdges().stream()
+            .filter(Objects::nonNull)
+            .filter(edge -> edge.getIntersectionAId().equals(firstIntersectionId)
+                || edge.getIntersectionBId().equals(firstIntersectionId))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("No first setup road found."));
+        placeRoad(firstRoad, player.getId());
+
+        Intersection secondIntersection = findIntersection(board, secondIntersectionId);
+        Settlement secondSettlement = new Settlement();
+        secondSettlement.setOwnerPlayerId(player.getId());
+        secondSettlement.setIntersectionId(secondIntersectionId);
+        secondIntersection.setBuilding(secondSettlement);
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+        return game;
+    }
+
+    private void assertExactResourcesForIntersection(Board board, int intersectionId, Player player) {
+        int expectedWood = 0;
+        int expectedBrick = 0;
+        int expectedWool = 0;
+        int expectedWheat = 0;
+        int expectedOre = 0;
+
+        for (Integer hexId : board.getAdjacentHexIdsForIntersection(intersectionId)) {
+            String tile = board.getHexTiles().get(hexId - 1);
+            switch (tile) {
+                case "WOOD" -> expectedWood++;
+                case "BRICK" -> expectedBrick++;
+                case "SHEEP" -> expectedWool++;
+                case "WHEAT" -> expectedWheat++;
+                case "ORE" -> expectedOre++;
+                default -> {
+                }
+            }
+        }
+
+        assertEquals(expectedWood, player.getWood(), "wood at intersection " + intersectionId);
+        assertEquals(expectedBrick, player.getBrick(), "brick at intersection " + intersectionId);
+        assertEquals(expectedWool, player.getWool(), "wool at intersection " + intersectionId);
+        assertEquals(expectedWheat, player.getWheat(), "wheat at intersection " + intersectionId);
+        assertEquals(expectedOre, player.getOre(), "ore at intersection " + intersectionId);
+    }
+
     private boolean areAdjacent(Board board, int intersectionAId, int intersectionBId) {
         return board.getEdges().stream()
             .filter(Objects::nonNull)
@@ -1713,6 +1824,50 @@ class GameServiceTest {
     }
 
     @Test
+    public void moveRobber_activeBotAfterSeven_allowsAutomatedRobberMove() {
+        Game game = new Game();
+        game.setId(202L);
+        game.setDiceValue(7);
+        game.setRobberTileIndex(1);
+        game.setRobberMovedAfterSevenRoll(false);
+        game.setGamePhase("ACTIVE");
+        game.setTurnPhase("ACTION");
+        game.setCurrentTurnIndex(0);
+
+        Board board = new Board();
+        board.generateBoard();
+        game.setBoard(board);
+
+        Player bot = new Player();
+        bot.setId(10L);
+        bot.setName("Bot 1");
+        bot.setBot(true);
+        bot.setWood(0);
+        bot.setBrick(0);
+        bot.setWool(0);
+        bot.setWheat(0);
+        bot.setOre(0);
+
+        User humanUser = new User();
+        humanUser.setId(99L);
+        humanUser.setUsername("Host");
+        humanUser.setToken("valid-token");
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(humanUser);
+
+        game.setPlayers(List.of(bot));
+
+        Mockito.when(gameRepository.findById(202L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game result = gameService.moveRobber(202L, "valid-token", bot.getId(), 2, null);
+
+        assertEquals(2, result.getRobberTileIndex());
+        assertEquals(Boolean.TRUE, result.getRobberMovedAfterSevenRoll());
+        assertEquals(TurnPhase.ACTION.toString(), result.getTurnPhase());
+    }
+
+    @Test
     public void rollDice_sevenRoll_discardsResourcesForPlayersWithMoreThanSevenCards() {
         Game game = new Game();
         game.setId(1L);
@@ -1777,6 +1932,28 @@ class GameServiceTest {
         // For non-7 rolls, just verify resources are non-negative (distributed or unchanged)
         assertTrue(totalResources1 >= 0, "Player1 total resources must be non-negative");
         assertTrue(totalResources2 >= 0, "Player2 total resources must be non-negative");
+    }
+
+    @Test
+    public void chooseBotDiscardResources_selectsRequiredRandomDiscardCount() {
+        Player bot = new Player();
+        bot.setId(10L);
+        bot.setBot(true);
+        bot.setWood(5);
+        bot.setBrick(4);
+        bot.setWool(3);
+        bot.setWheat(2);
+        bot.setOre(1);
+
+        Map<String, Integer> choices = gameService.chooseBotDiscardResources(bot, 7);
+
+        int selectedCards = choices.values().stream().mapToInt(Integer::intValue).sum();
+        assertEquals(7, selectedCards);
+        assertTrue(choices.get("wood") <= bot.getWood());
+        assertTrue(choices.get("brick") <= bot.getBrick());
+        assertTrue(choices.get("wool") <= bot.getWool());
+        assertTrue(choices.get("wheat") <= bot.getWheat());
+        assertTrue(choices.get("ore") <= bot.getOre());
     }
 
     @Test
