@@ -69,7 +69,6 @@ public class GameController {
 
     @PostMapping("/games/{gameId}/heartbeat")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public GameGetDTO heartbeatGame(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game game = gameService.heartbeatGame(gameId, extractToken(authorizationHeader));
