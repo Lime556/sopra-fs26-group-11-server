@@ -1,5 +1,6 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
+import java.time.Instant;
 import java.io.Serializable;
 import java.util.List;
 
@@ -31,6 +32,12 @@ public class Player implements Serializable {
 
     @Column(nullable = false)
     private boolean bot;
+
+    private Boolean online = true;
+
+    private Instant lastSeenAt;
+
+    private Instant disconnectedAt;
 
     private Integer settlementPoints;
 
@@ -116,6 +123,34 @@ public class Player implements Serializable {
 
     public void setBot(boolean bot) {
         this.bot = bot;
+    }
+
+    public Boolean getOnline() {
+        return online;
+    }
+
+    public boolean isOnline() {
+        return !Boolean.FALSE.equals(online);
+    }
+
+    public void setOnline(Boolean online) {
+        this.online = online;
+    }
+
+    public Instant getLastSeenAt() {
+        return lastSeenAt;
+    }
+
+    public void setLastSeenAt(Instant lastSeenAt) {
+        this.lastSeenAt = lastSeenAt;
+    }
+
+    public Instant getDisconnectedAt() {
+        return disconnectedAt;
+    }
+
+    public void setDisconnectedAt(Instant disconnectedAt) {
+        this.disconnectedAt = disconnectedAt;
     }
 
     public Integer getSettlementPoints() {

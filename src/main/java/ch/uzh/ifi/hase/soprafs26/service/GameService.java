@@ -1,5 +1,6 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -52,6 +53,9 @@ public class GameService {
     private static final String CARD_YEAR_OF_PLENTY = "year_of_plenty";
     private static final String CARD_MONOPOLY = "monopoly";
     private static final List<String> TRADE_RESOURCES = List.of("wood", "brick", "wool", "wheat", "ore");
+    private static final long GAME_DISCONNECT_GRACE_SECONDS = 5;
+    private static final long GAME_BOT_REPLACEMENT_TIMEOUT_SECONDS = 300;
+    private static final long PRESENCE_REFRESH_SAVE_INTERVAL_SECONDS = 2;
 
     private final GameRepository gameRepository;
     private final UserService userService;
@@ -274,7 +278,7 @@ public class GameService {
     }
 
     public Game getGameById(Long gameId, String playerToken) {
-        authenticate(playerToken);
+        User authenticatedUser = authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -282,6 +286,24 @@ public class GameService {
 
         ensureBoardInitialized(game);
         ensureBankInitialized(game);
+        markAuthenticatedPlayerOnline(game, authenticatedUser);
+        markDisconnectedPlayersAndReplaceTimedOut(game);
+        return game;
+    }
+
+    public Game heartbeatGame(Long gameId, String playerToken) {
+        User authenticatedUser = authenticate(playerToken);
+
+        Game game = gameRepository.findById(gameId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Game with id " + gameId + " was not found."));
+
+        Player player = findAuthenticatedPlayer(game, authenticatedUser);
+        if (player == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this game.");
+        }
+
+        markPlayerOnline(game, player, true);
         return game;
     }
 
@@ -2583,6 +2605,103 @@ public class GameService {
     private Game saveChangedGame(Game game) {
         game.incrementGameVersion();
         return gameRepository.save(game);
+    }
+
+    private void markAuthenticatedPlayerOnline(Game game, User authenticatedUser) {
+        Player player = findAuthenticatedPlayer(game, authenticatedUser);
+        markPlayerOnline(game, player, false);
+    }
+
+    private void markPlayerOnline(Game game, Player player, boolean forcePresenceSave) {
+        if (game == null || player == null || player.isBot()) {
+            return;
+        }
+
+        Instant now = Instant.now();
+        boolean statusChanged = !player.isOnline() || player.getDisconnectedAt() != null;
+        boolean shouldRefreshTimestamp = forcePresenceSave
+                || player.getLastSeenAt() == null
+                || player.getLastSeenAt().isBefore(now.minusSeconds(PRESENCE_REFRESH_SAVE_INTERVAL_SECONDS));
+
+        if (!statusChanged && !shouldRefreshTimestamp) {
+            return;
+        }
+
+        player.setOnline(true);
+        player.setLastSeenAt(now);
+        player.setDisconnectedAt(null);
+        game.setPlayers(game.getPlayers());
+
+        if (statusChanged) {
+            saveChangedGame(game);
+        }
+        else {
+            gameRepository.save(game);
+        }
+    }
+
+    private void markDisconnectedPlayersAndReplaceTimedOut(Game game) {
+        if (game == null || game.getPlayers() == null || game.getPlayers().isEmpty()) {
+            return;
+        }
+
+        Instant now = Instant.now();
+        Instant disconnectCutoff = now.minusSeconds(GAME_DISCONNECT_GRACE_SECONDS);
+        boolean presenceOnlyChanged = false;
+        boolean gameStateChanged = false;
+
+        for (Player player : game.getPlayers()) {
+            if (player == null) {
+                continue;
+            }
+
+            if (player.isBot()) {
+                if (!player.isOnline()) {
+                    player.setOnline(true);
+                    presenceOnlyChanged = true;
+                }
+                continue;
+            }
+
+            if (player.getLastSeenAt() == null) {
+                player.setOnline(true);
+                player.setLastSeenAt(now);
+                presenceOnlyChanged = true;
+                continue;
+            }
+
+            if (!player.getLastSeenAt().isBefore(disconnectCutoff)) {
+                continue;
+            }
+
+            if (player.isOnline() || player.getDisconnectedAt() == null) {
+                player.setOnline(false);
+                player.setDisconnectedAt(now);
+                gameStateChanged = true;
+                continue;
+            }
+
+            if (!player.getDisconnectedAt().plusSeconds(GAME_BOT_REPLACEMENT_TIMEOUT_SECONDS).isAfter(now)) {
+                String previousName = player.getName() == null || player.getName().isBlank()
+                        ? "Player"
+                        : player.getName();
+                player.setName(previousName + " replacement Bot");
+                player.setUser(null);
+                player.setBot(true);
+                player.setOnline(true);
+                player.setDisconnectedAt(null);
+                gameStateChanged = true;
+            }
+        }
+
+        if (gameStateChanged) {
+            game.setPlayers(game.getPlayers());
+            saveChangedGame(game);
+        }
+        else if (presenceOnlyChanged) {
+            game.setPlayers(game.getPlayers());
+            gameRepository.save(game);
+        }
     }
 
     public Game discardResources(Long gameId, String playerToken, Map<String, Integer> discardChoices) {

@@ -74,6 +74,15 @@ public class GameController {
         return convertGameToDto(game);
     }
 
+    @PostMapping("/games/{gameId}/heartbeat")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public GameGetDTO heartbeatGame(@PathVariable Long gameId,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        Game game = gameService.heartbeatGame(gameId, extractToken(authorizationHeader));
+        return convertGameToDto(game);
+    }
+
     @PutMapping("/games/{gameId}")
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
@@ -448,6 +457,9 @@ public class GameController {
         dto.setColor(player.getColor());
         dto.setName(player.getName());
         dto.setBot(player.isBot());
+        dto.setOnline(player.getOnline() == null ? Boolean.TRUE : player.getOnline());
+        dto.setLastSeenAt(player.getLastSeenAt() == null ? null : player.getLastSeenAt().toString());
+        dto.setDisconnectedAt(player.getDisconnectedAt() == null ? null : player.getDisconnectedAt().toString());
         dto.setVictoryPoints(player.getVictoryPoints());
         dto.setSettlementPoints(player.getSettlementPoints());
         dto.setCityPoints(player.getCityPoints());

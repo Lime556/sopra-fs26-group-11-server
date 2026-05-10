@@ -61,6 +61,8 @@ public interface DTOMapper {
 	@Mapping(source = "bot", target = "bot")
 	@Mapping(target = "userId", expression = "java(participant.getUser() != null ? participant.getUser().getId() : null)")
 	@Mapping(target = "username", expression = "java(participant.getUser() != null ? participant.getUser().getUsername() : \"Bot\")")
+	@Mapping(target = "online", expression = "java(participant.isOnline())")
+	@Mapping(target = "lastSeenAt", expression = "java(participant.getLastSeenAt() == null ? null : participant.getLastSeenAt().toString())")
 	LobbyParticipantGetDTO convertEntityToLobbyParticipantGetDTO(LobbyParticipant participant);
 
 	@Mapping(source = "id", target = "gameId")
