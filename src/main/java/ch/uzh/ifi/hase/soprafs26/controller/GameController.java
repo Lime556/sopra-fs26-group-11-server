@@ -217,9 +217,6 @@ public class GameController {
                     );
                     eventHandled = true;
         }
-        if (eventHandled) {
-            gameService.appendGameEvent(gameId, token, gameEventDTO);
-        }
         return gameEventDTO;
     }
 

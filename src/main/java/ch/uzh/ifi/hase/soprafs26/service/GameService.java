@@ -223,6 +223,11 @@ public class GameService {
             game.setRobberMovedAfterSevenRoll(true);
             game.setTurnPhase(TurnPhase.ACTION.toString());
         }
+        appendEventLogEntry(
+            game,
+            describePlayer(player) + " moved the robber to hex " + targetHexId
+                + (targetPlayerId == null ? "." : " and stole from player " + targetPlayerId + ".")
+        );
         return saveChangedGame(game);
     }
 
@@ -239,6 +244,7 @@ public class GameService {
             game.setRobberMovedAfterSevenRoll(true);
             game.setTurnPhase(TurnPhase.ACTION.toString());
         }
+        appendEventLogEntry(game, "Player moved the robber to hex " + targetHexId + ".");
         return saveChangedGame(game);
     }
 
@@ -339,6 +345,21 @@ public class GameService {
         saveChangedGame(game);
     }
 
+    private void appendEventLogEntry(Game game, String message) {
+        if (game == null || message == null || message.isBlank()) {
+            return;
+        }
+
+        List<String> eventLog = new ArrayList<>(Optional.ofNullable(game.getEventLog()).orElse(Collections.emptyList()));
+        eventLog.add(message.trim());
+
+        if (eventLog.size() > 50) {
+            eventLog = new ArrayList<>(eventLog.subList(eventLog.size() - 50, eventLog.size()));
+        }
+
+        game.setEventLog(eventLog);
+    }
+
     public void appendGameEvent(Long gameId, String playerToken, GameEventDTO gameEventDTO) {
         authenticate(playerToken);
 
@@ -350,19 +371,11 @@ public class GameService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
 
-        List<String> eventLog = new ArrayList<>(Optional.ofNullable(game.getEventLog()).orElse(Collections.emptyList()));
-
         try {
-            eventLog.add(objectMapper.writeValueAsString(gameEventDTO));
+            appendEventLogEntry(game, objectMapper.writeValueAsString(gameEventDTO));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize game event.", exception);
         }
-
-        if (eventLog.size() > 50) {
-            eventLog = new ArrayList<>(eventLog.subList(eventLog.size() - 50, eventLog.size()));
-        }
-
-        game.setEventLog(eventLog);
         saveChangedGame(game);
     }
 
@@ -434,6 +447,7 @@ public class GameService {
     
         game.setPlayers(players);
         recalculateVictoryState(game);
+        appendEventLogEntry(game, describePlayer(player) + " built a road on edge " + edgeId + ".");
     
         return saveChangedGame(game);
     }
@@ -511,6 +525,7 @@ public class GameService {
     
         game.setPlayers(players);
         recalculateVictoryState(game);
+        appendEventLogEntry(game, describePlayer(player) + " built a settlement at intersection " + intersectionId + ".");
     
         return saveChangedGame(game);
     }
@@ -579,6 +594,7 @@ public class GameService {
     
         game.setPlayers(players);
         recalculateVictoryState(game);
+        appendEventLogEntry(game, describePlayer(player) + " upgraded a settlement to a city at intersection " + intersectionId + ".");
     
         return saveChangedGame(game);
     }
@@ -645,6 +661,11 @@ public class GameService {
         }
 
         game.setPlayers(players);
+        appendEventLogEntry(
+            game,
+            describePlayer(source) + " traded " + formatResourceBundle(giveBundle) + " for "
+                + formatResourceBundle(receiveBundle) + " with the bank."
+        );
         return saveChangedGame(game);
     }
 
@@ -684,6 +705,9 @@ public class GameService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for player trade.");
             }
         }
+
+        appendEventLogEntry(game, describePlayer(source) + " requested a player trade.");
+        saveChangedGame(game);
     }
 
     public void validatePlayerTradeResponse(Long gameId, String playerToken, GameEventDTO tradeEvent) {
@@ -726,6 +750,15 @@ public class GameService {
                 }
             }
         }
+
+        appendEventLogEntry(
+            game,
+            describePlayer(target) + " " + (tradeEvent.getTradeAction() == null
+                ? "responded to"
+                : tradeEvent.getTradeAction().toLowerCase(Locale.ROOT))
+                + " the trade request from " + describePlayer(source) + "."
+        );
+        saveChangedGame(game);
     }
 
     public Game applyPlayerTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
@@ -797,6 +830,11 @@ public class GameService {
         }
 
         game.setPlayers(players);
+        appendEventLogEntry(
+            game,
+            describePlayer(source) + " traded " + formatResourceBundle(giveBundle) + " for "
+                + formatResourceBundle(receiveBundle) + " with " + describePlayer(target) + "."
+        );
         return saveChangedGame(game);
     }
 
@@ -934,6 +972,7 @@ public class GameService {
             }
         
             recalculateVictoryState(game);
+            appendEventLogEntry(game, describePlayer(currentPlayer) + " discarded resources after rolling a 7.");
             return saveChangedGame(game);
         }
 
@@ -961,6 +1000,7 @@ public class GameService {
             }
         
             recalculateVictoryState(game);
+            appendEventLogEntry(game, describePlayer(currentPlayer) + " rolled a 7 and must move the robber.");
             return saveChangedGame(game);
         } else {
             game.setRobberMovedAfterSevenRoll(false);
@@ -969,6 +1009,7 @@ public class GameService {
         game.setTurnPhase(TurnPhase.ACTION.toString());
 
         recalculateVictoryState(game);
+        appendEventLogEntry(game, describePlayer(currentPlayer) + " rolled " + diceSum + ". Resources were distributed.");
         return saveChangedGame(game);
     }
 
@@ -1136,6 +1177,7 @@ public class GameService {
 
         game.setPlayers(players);
         recalculateVictoryState(game);
+        appendEventLogEntry(game, describePlayer(player) + " bought a development card.");
         return saveChangedGame(game);
     }
 
@@ -1155,6 +1197,11 @@ public class GameService {
 
         updateLargestArmyOwnership(game);
         recalculateVictoryState(game);
+        appendEventLogEntry(
+            game,
+            describePlayer(player) + " played Knight and moved the robber to hex " + targetHexId
+                + (targetPlayerId == null ? "." : " while stealing from player " + targetPlayerId + ".")
+        );
         return saveChangedGame(game);
     }
 
@@ -1170,6 +1217,7 @@ public class GameService {
         player.setFreeRoadBuildsRemaining(safeInt(player.getFreeRoadBuildsRemaining(), 0) + 2);
 
         recalculateVictoryState(game);
+        appendEventLogEntry(game, describePlayer(player) + " played Road Building.");
         return saveChangedGame(game);
     }
 
@@ -1200,6 +1248,7 @@ public class GameService {
         removeFromBank(game, resourceB, 1);
 
         recalculateVictoryState(game);
+        appendEventLogEntry(game, describePlayer(player) + " played Year of Plenty and took " + resourceA + " and " + resourceB + ".");
         return saveChangedGame(game);
     }
 
@@ -1237,6 +1286,7 @@ public class GameService {
         setResourceByName(source, resource, getResourceByName(source, resource) + totalCollected);
 
         recalculateVictoryState(game);
+        appendEventLogEntry(game, describePlayer(source) + " played Monopoly on " + resource + ".");
         return saveChangedGame(game);
     }
 
@@ -1287,6 +1337,7 @@ public class GameService {
         }
 
         recalculateVictoryState(game);
+        appendEventLogEntry(game, describePlayer(currentPlayer) + " ended their turn.");
         return saveChangedGame(game);
     }
 
@@ -1340,6 +1391,7 @@ public class GameService {
             safeInt(currentPlayer.getSettlementPoints(), 0) + 1
         );
         currentPlayer.setLastPlacedSetupSettlementIntersectionId(intersectionId);
+        appendEventLogEntry(game, describePlayer(currentPlayer) + " placed an initial settlement at intersection " + intersectionId + ".");
         return saveChangedGame(game);
     }
 
@@ -1418,7 +1470,32 @@ public class GameService {
         }
 
         currentPlayer.setLastPlacedSetupSettlementIntersectionId(null);
+        appendEventLogEntry(game, describePlayer(currentPlayer) + " placed an initial road on edge " + edgeId + ".");
         return saveChangedGame(game);
+    }
+
+    private String formatResourceBundle(Map<String, Integer> bundle) {
+        if (bundle == null || bundle.isEmpty()) {
+            return "nothing";
+        }
+
+        List<String> parts = new ArrayList<>();
+        for (String resource : TRADE_RESOURCES) {
+            int amount = bundle.getOrDefault(resource, 0);
+            if (amount > 0) {
+                parts.add(amount + " " + resource);
+            }
+        }
+
+        return parts.isEmpty() ? "nothing" : String.join(", ", parts);
+    }
+
+    private String describePlayer(Player player) {
+        if (player == null || player.getName() == null || player.getName().isBlank()) {
+            return "Player";
+        }
+
+        return player.getName();
     }
 
     private void advanceSetupTurn(Game game) {
