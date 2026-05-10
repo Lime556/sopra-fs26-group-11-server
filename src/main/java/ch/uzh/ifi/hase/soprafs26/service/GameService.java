@@ -223,10 +223,13 @@ public class GameService {
             game.setRobberMovedAfterSevenRoll(true);
             game.setTurnPhase(TurnPhase.ACTION.toString());
         }
-        appendEventLogEntry(
+        appendStructuredEvent(
             game,
-            describePlayer(player) + " moved the robber to hex " + targetHexId
-                + (targetPlayerId == null ? "." : " and stole from player " + targetPlayerId + ".")
+            describePlayer(player),
+            "ROBBER_MOVE",
+            targetPlayerId == null
+                ? "moved robber to hex " + targetHexId
+                : "moved robber to hex " + targetHexId + " and stole from player " + targetPlayerId
         );
         return saveChangedGame(game);
     }
@@ -244,7 +247,7 @@ public class GameService {
             game.setRobberMovedAfterSevenRoll(true);
             game.setTurnPhase(TurnPhase.ACTION.toString());
         }
-        appendEventLogEntry(game, "Player moved the robber to hex " + targetHexId + ".");
+        appendStructuredEvent(game, "System", "ROBBER_MOVE", "moved robber to hex " + targetHexId);
         return saveChangedGame(game);
     }
 
@@ -360,6 +363,21 @@ public class GameService {
         game.setEventLog(eventLog);
     }
 
+    private void appendStructuredEvent(Game game, String player, String action, String result) {
+        String normalizedPlayer = (player == null || player.isBlank()) ? "System" : player.trim();
+        String normalizedAction = (action == null || action.isBlank()) ? "UNKNOWN" : action.trim();
+        String normalizedResult = (result == null || result.isBlank()) ? "-" : result.trim();
+
+        String entry = String.format(
+            "player=%s | action=%s | result=%s",
+            normalizedPlayer.replace("|", "/"),
+            normalizedAction.replace("|", "/"),
+            normalizedResult.replace("|", "/")
+        );
+
+        appendEventLogEntry(game, entry);
+    }
+
     public void appendGameEvent(Long gameId, String playerToken, GameEventDTO gameEventDTO) {
         authenticate(playerToken);
 
@@ -371,11 +389,23 @@ public class GameService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
 
-        try {
-            appendEventLogEntry(game, objectMapper.writeValueAsString(gameEventDTO));
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Could not serialize game event.", exception);
+        String sourcePlayer = gameEventDTO.getSourcePlayerId() == null
+            ? "System"
+            : "playerId=" + gameEventDTO.getSourcePlayerId();
+        String action = gameEventDTO.getType() == null ? "EVENT" : gameEventDTO.getType();
+
+        String result;
+        if (gameEventDTO.getMessage() != null && !gameEventDTO.getMessage().isBlank()) {
+            result = gameEventDTO.getMessage();
+        } else {
+            try {
+                result = objectMapper.writeValueAsString(gameEventDTO);
+            } catch (JsonProcessingException exception) {
+                throw new IllegalStateException("Could not serialize game event.", exception);
+            }
         }
+
+        appendStructuredEvent(game, sourcePlayer, action, result);
         saveChangedGame(game);
     }
 
@@ -447,7 +477,7 @@ public class GameService {
     
         game.setPlayers(players);
         recalculateVictoryState(game);
-        appendEventLogEntry(game, describePlayer(player) + " built a road on edge " + edgeId + ".");
+        appendStructuredEvent(game, describePlayer(player), "BUILD_ROAD", "built road on edge " + edgeId);
     
         return saveChangedGame(game);
     }
@@ -525,7 +555,7 @@ public class GameService {
     
         game.setPlayers(players);
         recalculateVictoryState(game);
-        appendEventLogEntry(game, describePlayer(player) + " built a settlement at intersection " + intersectionId + ".");
+        appendStructuredEvent(game, describePlayer(player), "BUILD_SETTLEMENT", "built settlement at intersection " + intersectionId);
     
         return saveChangedGame(game);
     }
@@ -594,7 +624,7 @@ public class GameService {
     
         game.setPlayers(players);
         recalculateVictoryState(game);
-        appendEventLogEntry(game, describePlayer(player) + " upgraded a settlement to a city at intersection " + intersectionId + ".");
+        appendStructuredEvent(game, describePlayer(player), "BUILD_CITY", "upgraded settlement to city at intersection " + intersectionId);
     
         return saveChangedGame(game);
     }
@@ -661,10 +691,11 @@ public class GameService {
         }
 
         game.setPlayers(players);
-        appendEventLogEntry(
+        appendStructuredEvent(
             game,
-            describePlayer(source) + " traded " + formatResourceBundle(giveBundle) + " for "
-                + formatResourceBundle(receiveBundle) + " with the bank."
+            describePlayer(source),
+            "BANK_TRADE",
+            "traded " + formatResourceBundle(giveBundle) + " for " + formatResourceBundle(receiveBundle) + " with bank"
         );
         return saveChangedGame(game);
     }
@@ -706,7 +737,7 @@ public class GameService {
             }
         }
 
-        appendEventLogEntry(game, describePlayer(source) + " requested a player trade.");
+        appendStructuredEvent(game, describePlayer(source), "PLAYER_TRADE_REQUEST", "requested player trade");
         saveChangedGame(game);
     }
 
@@ -751,12 +782,12 @@ public class GameService {
             }
         }
 
-        appendEventLogEntry(
+        appendStructuredEvent(
             game,
-            describePlayer(target) + " " + (tradeEvent.getTradeAction() == null
-                ? "responded to"
-                : tradeEvent.getTradeAction().toLowerCase(Locale.ROOT))
-                + " the trade request from " + describePlayer(source) + "."
+            describePlayer(target),
+            "PLAYER_TRADE_RESPONSE",
+            (tradeEvent.getTradeAction() == null ? "responded" : tradeEvent.getTradeAction().toUpperCase(Locale.ROOT))
+                + " to trade request from " + describePlayer(source)
         );
         saveChangedGame(game);
     }
@@ -830,10 +861,12 @@ public class GameService {
         }
 
         game.setPlayers(players);
-        appendEventLogEntry(
+        appendStructuredEvent(
             game,
-            describePlayer(source) + " traded " + formatResourceBundle(giveBundle) + " for "
-                + formatResourceBundle(receiveBundle) + " with " + describePlayer(target) + "."
+            describePlayer(source),
+            "PLAYER_TRADE_FINALIZE",
+            "traded " + formatResourceBundle(giveBundle) + " for " + formatResourceBundle(receiveBundle)
+                + " with " + describePlayer(target)
         );
         return saveChangedGame(game);
     }
@@ -972,7 +1005,7 @@ public class GameService {
             }
         
             recalculateVictoryState(game);
-            appendEventLogEntry(game, describePlayer(currentPlayer) + " discarded resources after rolling a 7.");
+            appendStructuredEvent(game, describePlayer(currentPlayer), "DISCARD", "discarded resources after rolling 7");
             return saveChangedGame(game);
         }
 
@@ -1000,7 +1033,7 @@ public class GameService {
             }
         
             recalculateVictoryState(game);
-            appendEventLogEntry(game, describePlayer(currentPlayer) + " rolled a 7 and must move the robber.");
+            appendStructuredEvent(game, describePlayer(currentPlayer), "ROLL_DICE", "rolled 7 and must move robber");
             return saveChangedGame(game);
         } else {
             game.setRobberMovedAfterSevenRoll(false);
@@ -1009,7 +1042,7 @@ public class GameService {
         game.setTurnPhase(TurnPhase.ACTION.toString());
 
         recalculateVictoryState(game);
-        appendEventLogEntry(game, describePlayer(currentPlayer) + " rolled " + diceSum + ". Resources were distributed.");
+        appendStructuredEvent(game, describePlayer(currentPlayer), "ROLL_DICE", "rolled " + diceSum + "; resources distributed");
         return saveChangedGame(game);
     }
 
@@ -1177,7 +1210,7 @@ public class GameService {
 
         game.setPlayers(players);
         recalculateVictoryState(game);
-        appendEventLogEntry(game, describePlayer(player) + " bought a development card.");
+        appendStructuredEvent(game, describePlayer(player), "BUY_DEVELOPMENT_CARD", "bought development card");
         return saveChangedGame(game);
     }
 
@@ -1197,10 +1230,13 @@ public class GameService {
 
         updateLargestArmyOwnership(game);
         recalculateVictoryState(game);
-        appendEventLogEntry(
+        appendStructuredEvent(
             game,
-            describePlayer(player) + " played Knight and moved the robber to hex " + targetHexId
-                + (targetPlayerId == null ? "." : " while stealing from player " + targetPlayerId + ".")
+            describePlayer(player),
+            "PLAY_KNIGHT",
+            targetPlayerId == null
+                ? "moved robber to hex " + targetHexId
+                : "moved robber to hex " + targetHexId + " and stole from player " + targetPlayerId
         );
         return saveChangedGame(game);
     }
@@ -1217,7 +1253,7 @@ public class GameService {
         player.setFreeRoadBuildsRemaining(safeInt(player.getFreeRoadBuildsRemaining(), 0) + 2);
 
         recalculateVictoryState(game);
-        appendEventLogEntry(game, describePlayer(player) + " played Road Building.");
+        appendStructuredEvent(game, describePlayer(player), "PLAY_ROAD_BUILDING", "enabled 2 free road builds");
         return saveChangedGame(game);
     }
 
@@ -1248,7 +1284,7 @@ public class GameService {
         removeFromBank(game, resourceB, 1);
 
         recalculateVictoryState(game);
-        appendEventLogEntry(game, describePlayer(player) + " played Year of Plenty and took " + resourceA + " and " + resourceB + ".");
+        appendStructuredEvent(game, describePlayer(player), "PLAY_YEAR_OF_PLENTY", "took " + resourceA + " and " + resourceB);
         return saveChangedGame(game);
     }
 
@@ -1286,7 +1322,7 @@ public class GameService {
         setResourceByName(source, resource, getResourceByName(source, resource) + totalCollected);
 
         recalculateVictoryState(game);
-        appendEventLogEntry(game, describePlayer(source) + " played Monopoly on " + resource + ".");
+        appendStructuredEvent(game, describePlayer(source), "PLAY_MONOPOLY", "claimed all " + resource);
         return saveChangedGame(game);
     }
 
@@ -1337,7 +1373,7 @@ public class GameService {
         }
 
         recalculateVictoryState(game);
-        appendEventLogEntry(game, describePlayer(currentPlayer) + " ended their turn.");
+        appendStructuredEvent(game, describePlayer(currentPlayer), "END_TURN", "ended turn");
         return saveChangedGame(game);
     }
 
@@ -1391,7 +1427,7 @@ public class GameService {
             safeInt(currentPlayer.getSettlementPoints(), 0) + 1
         );
         currentPlayer.setLastPlacedSetupSettlementIntersectionId(intersectionId);
-        appendEventLogEntry(game, describePlayer(currentPlayer) + " placed an initial settlement at intersection " + intersectionId + ".");
+        appendStructuredEvent(game, describePlayer(currentPlayer), "SETUP_SETTLEMENT", "placed initial settlement at intersection " + intersectionId);
         return saveChangedGame(game);
     }
 
@@ -1470,7 +1506,7 @@ public class GameService {
         }
 
         currentPlayer.setLastPlacedSetupSettlementIntersectionId(null);
-        appendEventLogEntry(game, describePlayer(currentPlayer) + " placed an initial road on edge " + edgeId + ".");
+        appendStructuredEvent(game, describePlayer(currentPlayer), "SETUP_ROAD", "placed initial road on edge " + edgeId);
         return saveChangedGame(game);
     }
 
