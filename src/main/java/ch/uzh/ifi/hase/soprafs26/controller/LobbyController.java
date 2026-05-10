@@ -3,13 +3,11 @@ package ch.uzh.ifi.hase.soprafs26.controller;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -30,23 +28,19 @@ import ch.uzh.ifi.hase.soprafs26.service.LobbyService;
 public class LobbyController {
 
     private final LobbyService lobbyService;
-    private final SimpMessagingTemplate messaging;
 
-    LobbyController(LobbyService lobbyService, SimpMessagingTemplate messaging) {
+    public LobbyController(LobbyService lobbyService) {
         this.lobbyService = lobbyService;
-        this.messaging = messaging;
     }
 
     @GetMapping("/lobbies")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public List<LobbyGetDTO> getLobbies() {
         return lobbyService.getLobbies().stream().map(this::convertLobbyToDto).toList();
     }
     
     @PostMapping("/lobbies")
     @ResponseStatus(HttpStatus.CREATED)
-    @ResponseBody
     public LobbyGetDTO createLobby(
         @RequestBody(required = false) LobbyPostDTO lobbyPostDTO,
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
@@ -57,14 +51,11 @@ public class LobbyController {
                 lobbyPostDTO == null ? null : lobbyPostDTO.getPassword(),
                 lobbyPostDTO == null ? null : lobbyPostDTO.getName());
 
-        LobbyGetDTO createdDTO = convertLobbyToDto(createdLobby);
-        messaging.convertAndSend("/topic/lobbies", createdDTO);
-        return createdDTO;
+        return convertLobbyToDto(createdLobby);
     }
     
     @PostMapping("/lobbies/{lobbyId}/join")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public LobbyGetDTO joinLobby(
         @PathVariable Long lobbyId,
         @RequestBody LobbyJoinDTO lobbyJoinDTO,
@@ -80,14 +71,11 @@ public class LobbyController {
           authorizationHeader, 
           lobbyJoinDTO == null ? null : lobbyJoinDTO.getPassword());
         
-        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
-        messaging.convertAndSend("/topic/lobbies", updatedDTO);
-        return updatedDTO;
+        return convertLobbyToDto(updatedLobby);
     }
 
     @PostMapping("/lobbies/{lobbyId}/start")
     @ResponseStatus(HttpStatus.CREATED)
-    @ResponseBody
     public GameStartGetDTO startGame (
         @PathVariable Long lobbyId,
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
@@ -99,7 +87,6 @@ public class LobbyController {
 
     @GetMapping("/lobbies/{lobbyId}")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public LobbyGetDTO getLobbyById(
         @PathVariable Long lobbyId,
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
@@ -116,7 +103,6 @@ public class LobbyController {
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
         lobbyService.leaveLobby(lobbyId, authorizationHeader);
-        messaging.convertAndSend("/topic/lobbies", lobbyId);
     }
 
     @PostMapping("/lobbies/{lobbyId}/close")
@@ -126,53 +112,42 @@ public class LobbyController {
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
         lobbyService.closeLobby(lobbyId, authorizationHeader);
-        messaging.convertAndSend("/topic/lobbies", lobbyId);
     }
 
     @PostMapping("/lobbies/{lobbyId}/participants/{participantId}/kick")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public LobbyGetDTO kickParticipant(
         @PathVariable Long lobbyId,
         @PathVariable Long participantId,
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
         Lobby updatedLobby = lobbyService.kickParticipant(lobbyId, authorizationHeader, participantId);
-        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
-        messaging.convertAndSend("/topic/lobbies", updatedDTO);
-        return updatedDTO;
+        return convertLobbyToDto(updatedLobby);
     }
 
     @PostMapping("/lobbies/{lobbyId}/bots")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public LobbyGetDTO addBot(
         @PathVariable Long lobbyId,
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
         Lobby updatedLobby = lobbyService.addBot(lobbyId, authorizationHeader);
-        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
-        messaging.convertAndSend("/topic/lobbies", updatedDTO);
-        return updatedDTO;
+        return convertLobbyToDto(updatedLobby);
     }
 
     @PostMapping("/lobbies/{lobbyId}/bots/{participantId}/remove")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public LobbyGetDTO removeBot(
         @PathVariable Long lobbyId,
         @PathVariable Long participantId,
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
         Lobby updatedLobby = lobbyService.removeBot(lobbyId, authorizationHeader, participantId);
-        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
-        messaging.convertAndSend("/topic/lobbies", updatedDTO);
-        return updatedDTO;
+        return convertLobbyToDto(updatedLobby);
     }
 
     @PostMapping("/lobbies/{lobbyId}/host/transfer")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public LobbyGetDTO transferHost(
         @PathVariable Long lobbyId,
         @RequestBody LobbyHostTransferDTO transferDTO,
@@ -183,14 +158,11 @@ public class LobbyController {
             authorizationHeader,
             transferDTO == null ? null : transferDTO.getNewHostParticipantId()
         );
-        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
-        messaging.convertAndSend("/topic/lobbies", updatedDTO);
-        return updatedDTO;
+        return convertLobbyToDto(updatedLobby);
     }
 
     @PostMapping("/lobbies/{lobbyId}/kick")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public LobbyGetDTO kickPlayer(
         @PathVariable Long lobbyId,
         @RequestBody LobbyKickDTO kickDTO,
@@ -201,14 +173,11 @@ public class LobbyController {
             authorizationHeader,
             kickDTO == null ? null : kickDTO.getUserId()
         );
-        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
-        messaging.convertAndSend("/topic/lobbies", updatedDTO);
-        return updatedDTO;
+        return convertLobbyToDto(updatedLobby);
     }
 
     @PostMapping("/lobbies/{lobbyId}/host-transfer")
     @ResponseStatus(HttpStatus.OK)
-    @ResponseBody
     public LobbyGetDTO transferHostByUser(
         @PathVariable Long lobbyId,
         @RequestBody LobbyHostTransferDTO transferDTO,
@@ -219,9 +188,7 @@ public class LobbyController {
             authorizationHeader,
             transferDTO == null ? null : transferDTO.getUserId()
         );
-        LobbyGetDTO updatedDTO = convertLobbyToDto(updatedLobby);
-        messaging.convertAndSend("/topic/lobbies", updatedDTO);
-        return updatedDTO;
+        return convertLobbyToDto(updatedLobby);
     }
 
     private LobbyGetDTO convertLobbyToDto(Lobby lobby) {

@@ -1,8 +1,8 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.time.Instant;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
@@ -123,7 +123,8 @@ public class Game{
     @Transient
     private Player winner;
 
-    @Transient
+    @Convert(converter = StringListJsonConverter.class)
+    @Column(columnDefinition = "CLOB")
     private List<String> eventLog;
 
     @Convert(converter = StringListJsonConverter.class)

@@ -28,7 +28,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.service.FriendService;
 
 @WebMvcTest(FriendController.class)
-public class FriendControllerTest {
+class FriendControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -44,7 +44,7 @@ public class FriendControllerTest {
     // ============ Send Friend Request Tests ============
 
     @Test
-    public void sendFriendRequest_validInput_returnsCreatedRequest() throws Exception {
+    void sendFriendRequest_validInput_returnsCreatedRequest() throws Exception {
         User sender = new User();
         sender.setId(1L);
         sender.setUsername("sender");
@@ -82,7 +82,7 @@ public class FriendControllerTest {
     }
 
     @Test
-    public void sendFriendRequest_missingToken_returnsUnauthorized() throws Exception {
+    void sendFriendRequest_missingToken_returnsUnauthorized() throws Exception {
         given(friendService.sendFriendRequest(null, 2L))
             .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"));
 
@@ -101,7 +101,7 @@ public class FriendControllerTest {
     }
 
     @Test
-    public void sendFriendRequest_toSelf_returnsBadRequest() throws Exception {
+    void sendFriendRequest_toSelf_returnsBadRequest() throws Exception {
         given(friendService.sendFriendRequest("sender-token", 1L))
             .willThrow(new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
@@ -131,7 +131,7 @@ public class FriendControllerTest {
     // ============ Accept Friend Request Tests ============
 
     @Test
-    public void acceptFriendRequest_validInput_returnsAcceptedRequest() throws Exception {
+    void acceptFriendRequest_validInput_returnsAcceptedRequest() throws Exception {
         User sender = new User();
         sender.setId(1L);
         sender.setUsername("sender");
@@ -161,7 +161,7 @@ public class FriendControllerTest {
     }
 
     @Test
-    public void acceptFriendRequest_notReceiver_returnsForbidden() throws Exception {
+    void acceptFriendRequest_notReceiver_returnsForbidden() throws Exception {
         given(friendService.acceptFriendRequest("sender-token", 100L))
             .willThrow(new ResponseStatusException(
                 HttpStatus.FORBIDDEN,
@@ -176,7 +176,7 @@ public class FriendControllerTest {
     }
 
     @Test
-    public void acceptFriendRequest_notFound_returnsNotFound() throws Exception {
+    void acceptFriendRequest_notFound_returnsNotFound() throws Exception {
         given(friendService.acceptFriendRequest("receiver-token", 999L))
             .willThrow(new ResponseStatusException(
                 HttpStatus.NOT_FOUND,
@@ -198,7 +198,7 @@ public class FriendControllerTest {
     // ============ Decline Friend Request Tests ============
 
     @Test
-    public void declineFriendRequest_validInput_returnsDeclinedRequest() throws Exception {
+    void declineFriendRequest_validInput_returnsDeclinedRequest() throws Exception {
         User sender = new User();
         sender.setId(1L);
         sender.setUsername("sender");
@@ -228,7 +228,7 @@ public class FriendControllerTest {
     }
 
     @Test
-    public void declineFriendRequest_notReceiver_returnsForbidden() throws Exception {
+    void declineFriendRequest_notReceiver_returnsForbidden() throws Exception {
         given(friendService.declineFriendRequest("sender-token", 100L))
             .willThrow(new ResponseStatusException(
                 HttpStatus.FORBIDDEN,
@@ -243,7 +243,7 @@ public class FriendControllerTest {
     }
 
     @Test
-    public void declineFriendRequest_notFound_returnsNotFound() throws Exception {
+    void declineFriendRequest_notFound_returnsNotFound() throws Exception {
         given(friendService.declineFriendRequest("receiver-token", 999L))
             .willThrow(new ResponseStatusException(
                 HttpStatus.NOT_FOUND,
@@ -266,7 +266,7 @@ public class FriendControllerTest {
     // ============ Get Friends Tests ============
 
     @Test
-    public void getFriends_validToken_returnsFriends() throws Exception {
+    void getFriends_validToken_returnsFriends() throws Exception {
         User friend = new User();
         friend.setId(2L);
         friend.setUsername("receiver");
@@ -285,7 +285,7 @@ public class FriendControllerTest {
     }
 
     @Test
-    public void getFriends_noFriends_returnsEmptyList() throws Exception {
+    void getFriends_noFriends_returnsEmptyList() throws Exception {
         given(friendService.getFriends("sender-token")).willReturn(List.of());
 
         MockHttpServletRequestBuilder getRequest = get("/friends")
@@ -297,7 +297,7 @@ public class FriendControllerTest {
     }
 
     @Test
-    public void getFriends_missingToken_returnsUnauthorized() throws Exception {
+    void getFriends_missingToken_returnsUnauthorized() throws Exception {
         given(friendService.getFriends(null))
             .willThrow(new ResponseStatusException(
                 HttpStatus.UNAUTHORIZED,
