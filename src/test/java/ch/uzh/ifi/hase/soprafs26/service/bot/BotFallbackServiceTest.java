@@ -119,6 +119,40 @@ public class BotFallbackServiceTest {
         assertEquals(BotActionType.END_TURN, action.getType());
     }
 
+    @Test
+    public void chooseFallbackAction_sevenRolledBeforeRobberMoved_movesRobber() {
+        Game game = setupGame();
+        Player bot = botPlayer();
+        game.setPlayers(List.of(bot));
+        game.setCurrentTurnIndex(0);
+        game.setGamePhase(GamePhase.ACTIVE);
+        game.setTurnPhase(TurnPhase.ACTION);
+        game.setDiceValue(7);
+        game.setRobberMovedAfterSevenRoll(false);
+
+        BotAction action = botFallbackService.chooseFallbackAction(game);
+
+        assertEquals(BotActionType.MOVE_ROBBER, action.getType());
+        assertEquals(bot.getId(), action.getPlayerId());
+        assertTrue(List.of(2).contains(action.getHexId()));
+    }
+
+    @Test
+    public void chooseFallbackAction_discardPhase_waitsForDiscards() {
+        Game game = setupGame();
+        Player bot = botPlayer();
+        game.setPlayers(List.of(bot));
+        game.setCurrentTurnIndex(0);
+        game.setGamePhase(GamePhase.ACTIVE);
+        game.setTurnPhase(TurnPhase.DISCARD);
+        game.setDiceValue(7);
+        game.setRobberMovedAfterSevenRoll(false);
+
+        BotAction action = botFallbackService.chooseFallbackAction(game);
+
+        assertEquals(BotActionType.NONE, action.getType());
+    }
+
     private Game setupGame() {
         Game game = new Game();
         Board board = new Board();

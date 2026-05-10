@@ -12,6 +12,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -37,6 +39,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.PasswordUpdateDTO;
 public class UserService {
 
 	private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
+	private static final PasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
 
 	private final Logger log = LoggerFactory.getLogger(UserService.class);
 
@@ -154,6 +157,7 @@ public class UserService {
 		}
 
 		checkIfUserExists(newUser);
+		newUser.setPasswordHash(PASSWORD_ENCODER.encode(newUser.getPasswordHash()));
 		newUser.setToken(UUID.randomUUID().toString());
 		newUser.setUserStatus(UserStatus.ONLINE);
 		newUser.setCreationDate(Instant.now());
@@ -198,7 +202,7 @@ public class UserService {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
 		}
 
-		if (!user.getPasswordHash().equals(loginUser.getPasswordHash())) {
+		if (!passwordMatches(loginUser.getPasswordHash(), user.getPasswordHash())) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid password");
 		}
 		
@@ -263,7 +267,7 @@ public class UserService {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password must not be empty");
 		}
 
-		if (!requester.getPasswordHash().equals(dto.getCurrentPassword())) {
+		if (!passwordMatches(dto.getCurrentPassword(), requester.getPasswordHash())) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect");
 		}
 
@@ -279,8 +283,22 @@ public class UserService {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must differ from current password");
 		}
 
-		requester.setPasswordHash(dto.getNewPassword());
+		requester.setPasswordHash(PASSWORD_ENCODER.encode(dto.getNewPassword()));
 		userRepository.save(requester);
+	}
+
+	private boolean passwordMatches(String rawPassword, String storedPasswordHash) {
+		if (rawPassword == null || storedPasswordHash == null) {
+			return false;
+		}
+
+		if (storedPasswordHash.startsWith("$2a$")
+				|| storedPasswordHash.startsWith("$2b$")
+				|| storedPasswordHash.startsWith("$2y$")) {
+			return PASSWORD_ENCODER.matches(rawPassword, storedPasswordHash);
+		}
+
+		return rawPassword.equals(storedPasswordHash);
 	}
 
 	private String extractToken(String authorizationHeader) {

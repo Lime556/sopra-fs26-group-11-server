@@ -96,6 +96,18 @@ public class LobbyController {
         );
     }
 
+    @PostMapping("/lobbies/{lobbyId}/heartbeat")
+    @ResponseStatus(HttpStatus.OK)
+    @ResponseBody
+    public LobbyGetDTO heartbeatLobby(
+        @PathVariable Long lobbyId,
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        return convertLobbyToDto(
+            lobbyService.heartbeatLobby(lobbyId, authorizationHeader)
+        );
+    }
+
     @PostMapping("/lobbies/{lobbyId}/leave")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void leaveLobby(

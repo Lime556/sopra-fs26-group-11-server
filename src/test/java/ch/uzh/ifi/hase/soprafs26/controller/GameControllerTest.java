@@ -185,6 +185,21 @@ class GameControllerTest {
                 .andExpect(jsonPath("$.gameFinished", is(true)));
     }
 
+    @Test
+    public void heartbeatGame_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.heartbeatGame(1L, "valid-token")).willReturn(game);
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/heartbeat")
+                .header("Authorization", "valid-token");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(1)));
+    }
+
         @Test
         void getDiceRoll_validRequest_success() throws Exception {
                 Game game = new Game();

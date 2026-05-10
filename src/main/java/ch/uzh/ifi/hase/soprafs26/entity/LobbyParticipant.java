@@ -1,5 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.entity;
 
+import java.time.Instant;
+
 import jakarta.persistence.*;
 
 @Entity
@@ -19,6 +21,11 @@ public class LobbyParticipant {
 
     @Column(nullable = false)
     private boolean bot;
+
+    @Column(nullable = false)
+    private boolean online = true;
+
+    private Instant lastSeenAt;
 
     public Long getId() {
         return id;
@@ -50,6 +57,22 @@ public class LobbyParticipant {
 
     public void setBot(boolean bot) {
         this.bot = bot;
+    }
+
+    public boolean isOnline() {
+        return online;
+    }
+
+    public void setOnline(boolean online) {
+        this.online = online;
+    }
+
+    public Instant getLastSeenAt() {
+        return lastSeenAt;
+    }
+
+    public void setLastSeenAt(Instant lastSeenAt) {
+        this.lastSeenAt = lastSeenAt;
     }
 
 }
