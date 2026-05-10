@@ -172,6 +172,10 @@ public class GameService {
                 game.setStartedAt(gamePostDTO.getStartedAt());
             }
 
+            if (gamePostDTO.getEventLog() != null) {
+                game.setEventLog(new ArrayList<>(gamePostDTO.getEventLog()));
+            }
+
             if (gamePostDTO.getBankResources() != null) {
                 applyBankResourcesFromMap(game, gamePostDTO.getBankResources());
             }
