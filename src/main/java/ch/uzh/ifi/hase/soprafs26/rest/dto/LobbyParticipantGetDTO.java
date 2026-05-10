@@ -5,6 +5,8 @@ public class LobbyParticipantGetDTO {
     private Long userId;
     private String username;
     private boolean bot;
+    private boolean online;
+    private String lastSeenAt;
 
     public Long getId() {
         return id;
@@ -36,5 +38,21 @@ public class LobbyParticipantGetDTO {
 
     public void setBot(boolean bot) {
         this.bot = bot;
+    }
+
+    public boolean isOnline() {
+        return online;
+    }
+
+    public void setOnline(boolean online) {
+        this.online = online;
+    }
+
+    public String getLastSeenAt() {
+        return lastSeenAt;
+    }
+
+    public void setLastSeenAt(String lastSeenAt) {
+        this.lastSeenAt = lastSeenAt;
     }
 }

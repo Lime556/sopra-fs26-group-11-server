@@ -24,6 +24,9 @@ public class PlayerGetDTO {
     private List<String> developmentCards;
     private Integer knightsPlayed;
     private Integer freeRoadBuildsRemaining;
+    private Boolean online;
+    private String lastSeenAt;
+    private String disconnectedAt;
 
     // New fields for building and road locations
     private List<Map<String, Integer>> settlementsOnCorners;
@@ -180,6 +183,30 @@ public class PlayerGetDTO {
 
     public void setFreeRoadBuildsRemaining(Integer freeRoadBuildsRemaining) {
         this.freeRoadBuildsRemaining = freeRoadBuildsRemaining;
+    }
+
+    public Boolean getOnline() {
+        return online;
+    }
+
+    public void setOnline(Boolean online) {
+        this.online = online;
+    }
+
+    public String getLastSeenAt() {
+        return lastSeenAt;
+    }
+
+    public void setLastSeenAt(String lastSeenAt) {
+        this.lastSeenAt = lastSeenAt;
+    }
+
+    public String getDisconnectedAt() {
+        return disconnectedAt;
+    }
+
+    public void setDisconnectedAt(String disconnectedAt) {
+        this.disconnectedAt = disconnectedAt;
     }
 
     public List<Map<String, Integer>> getSettlementsOnCorners() {
