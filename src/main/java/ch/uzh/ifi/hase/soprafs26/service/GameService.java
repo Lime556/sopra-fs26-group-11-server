@@ -395,7 +395,13 @@ public class GameService {
         String action = gameEventDTO.getType() == null ? "EVENT" : gameEventDTO.getType();
 
         String result;
-        if (gameEventDTO.getMessage() != null && !gameEventDTO.getMessage().isBlank()) {
+        if ("PLAYER_TRADE".equalsIgnoreCase(action)) {
+            try {
+                result = objectMapper.writeValueAsString(gameEventDTO);
+            } catch (JsonProcessingException exception) {
+                throw new IllegalStateException("Could not serialize game event.", exception);
+            }
+        } else if (gameEventDTO.getMessage() != null && !gameEventDTO.getMessage().isBlank()) {
             result = gameEventDTO.getMessage();
         } else {
             try {
@@ -737,8 +743,7 @@ public class GameService {
             }
         }
 
-        appendStructuredEvent(game, describePlayer(source), "PLAYER_TRADE_REQUEST", "requested player trade");
-        saveChangedGame(game);
+        appendGameEvent(gameId, playerToken, tradeEvent);
     }
 
     public void validatePlayerTradeResponse(Long gameId, String playerToken, GameEventDTO tradeEvent) {
@@ -782,14 +787,7 @@ public class GameService {
             }
         }
 
-        appendStructuredEvent(
-            game,
-            describePlayer(target),
-            "PLAYER_TRADE_RESPONSE",
-            (tradeEvent.getTradeAction() == null ? "responded" : tradeEvent.getTradeAction().toUpperCase(Locale.ROOT))
-                + " to trade request from " + describePlayer(source)
-        );
-        saveChangedGame(game);
+        appendGameEvent(gameId, playerToken, tradeEvent);
     }
 
     public Game applyPlayerTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
