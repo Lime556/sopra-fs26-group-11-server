@@ -27,7 +27,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/login").permitAll()   // Login endpoint
                 .requestMatchers(HttpMethod.GET, "/").permitAll()         // Health check
                 .requestMatchers(HttpMethod.GET, "/h2-console/**").permitAll() // H2 Console
-                .anyRequest().authenticated()
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                .anyRequest().permitAll()
             )
             .httpBasic(basic -> basic.disable())  // Disable HTTP Basic auth
             .cors(cors -> cors.configurationSource(corsConfigurationSource()));
