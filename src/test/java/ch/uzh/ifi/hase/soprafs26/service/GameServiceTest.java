@@ -1,12 +1,12 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
+import ch.uzh.ifi.hase.soprafs26.entity.Boat;
 import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
@@ -2515,5 +2516,263 @@ class GameServiceTest {
         gamePostDTO.setTargetVictoryPoints(10);
         
         return gameService.createGame(token, gamePostDTO);
+    }
+
+    // Port Discount Tests
+
+    @Test
+    void boatTypeMatchesPortType_standardBoatMatches3To1Port() throws Exception {
+        var method = GameService.class.getDeclaredMethod("boatTypeMatchesPortType", String.class, String.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(gameService, "STANDARD", "3:1"));
+    }
+
+    @Test
+    void boatTypeMatchesPortType_woodBoatMatchesWoodPort() throws Exception {
+        var method = GameService.class.getDeclaredMethod("boatTypeMatchesPortType", String.class, String.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(gameService, "WOOD", "wood"));
+        assertTrue((Boolean) method.invoke(gameService, "wood", "wood"));
+    }
+
+    @Test
+    void boatTypeMatchesPortType_brickBoatMatchesBrickPort() throws Exception {
+        var method = GameService.class.getDeclaredMethod("boatTypeMatchesPortType", String.class, String.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(gameService, "BRICK", "brick"));
+        assertTrue((Boolean) method.invoke(gameService, "brick", "brick"));
+    }
+
+    @Test
+    void boatTypeMatchesPortType_sheepBoatMatchesWoolPort() throws Exception {
+        var method = GameService.class.getDeclaredMethod("boatTypeMatchesPortType", String.class, String.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(gameService, "SHEEP", "wool"));
+        assertTrue((Boolean) method.invoke(gameService, "sheep", "wool"));
+    }
+
+    @Test
+    void boatTypeMatchesPortType_wheatBoatMatchesWheatPort() throws Exception {
+        var method = GameService.class.getDeclaredMethod("boatTypeMatchesPortType", String.class, String.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(gameService, "WHEAT", "wheat"));
+        assertTrue((Boolean) method.invoke(gameService, "wheat", "wheat"));
+    }
+
+    @Test
+    void boatTypeMatchesPortType_stoneBoatMatchesOrePort() throws Exception {
+        var method = GameService.class.getDeclaredMethod("boatTypeMatchesPortType", String.class, String.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(gameService, "STONE", "ore"));
+        assertTrue((Boolean) method.invoke(gameService, "stone", "ore"));
+    }
+
+    @Test
+    void boatTypeMatchesPortType_mismatchedTypesReturnFalse() throws Exception {
+        var method = GameService.class.getDeclaredMethod("boatTypeMatchesPortType", String.class, String.class);
+        method.setAccessible(true);
+
+        assertEquals(false, method.invoke(gameService, "WOOD", "brick"));
+        assertEquals(false, method.invoke(gameService, "BRICK", "wool"));
+        assertEquals(false, method.invoke(gameService, "SHEEP", "wood"));
+        assertEquals(false, method.invoke(gameService, "STONE", "wheat"));
+    }
+
+    @Test
+    void boatTypeMatchesPortType_nullParametersReturnFalse() throws Exception {
+        var method = GameService.class.getDeclaredMethod("boatTypeMatchesPortType", String.class, String.class);
+        method.setAccessible(true);
+
+        assertEquals(false, method.invoke(gameService, null, "3:1"));
+        assertEquals(false, method.invoke(gameService, "STANDARD", null));
+        assertEquals(false, method.invoke(gameService, null, null));
+    }
+
+    @Test
+    void isIntersectionAPortOfType_withNoBoatsReturnsFalse() throws Exception {
+        Game game = new Game();
+        Board board = new Board();
+        board.generateBoard();
+        board.setBoats(new ArrayList<>()); // Empty boats list
+        game.setBoard(board);
+
+        var method = GameService.class.getDeclaredMethod("isIntersectionAPortOfType", Game.class, Integer.class, String.class);
+        method.setAccessible(true);
+
+        assertEquals(false, method.invoke(gameService, game, 0, "3:1"));
+    }
+
+    @Test
+    void isIntersectionAPortOfType_withNullBoardReturnsFalse() throws Exception {
+        Game game = new Game();
+        game.setBoard(null);
+
+        var method = GameService.class.getDeclaredMethod("isIntersectionAPortOfType", Game.class, Integer.class, String.class);
+        method.setAccessible(true);
+
+        assertEquals(false, method.invoke(gameService, game, 0, "3:1"));
+    }
+
+    @Test
+    void isIntersectionAPortOfType_matchesIntersectionOnStandardPort() throws Exception {
+        Game game = new Game();
+        Board board = new Board();
+        board.generateBoard();
+
+        // Create a standard (3:1) port on hex 1, corners 0 and 1
+        Boat boat = new Boat();
+        boat.setId(1);
+        boat.setBoatType("STANDARD");
+        boat.setHexId(1);
+        boat.setFirstCorner(0);
+        boat.setSecondCorner(1);
+
+        board.setBoats(List.of(boat));
+        game.setBoard(board);
+
+        var method = GameService.class.getDeclaredMethod("isIntersectionAPortOfType", Game.class, Integer.class, String.class);
+        method.setAccessible(true);
+
+        // Get the actual intersection IDs for hex 1, corners 0 and 1
+        List<Integer> hexIntersections = board.getIntersectionIdsForHex(1);
+        assertNotNull(hexIntersections);
+        assertTrue(hexIntersections.size() > 1);
+
+        Integer firstIntersectionId = hexIntersections.get(0);
+        Integer secondIntersectionId = hexIntersections.get(1);
+
+        // Test that both intersections of the port match
+        assertTrue((Boolean) method.invoke(gameService, game, firstIntersectionId, "3:1"));
+        assertTrue((Boolean) method.invoke(gameService, game, secondIntersectionId, "3:1"));
+    }
+
+    @Test
+    void isIntersectionAPortOfType_matchesIntersectionOnResourcePort() throws Exception {
+        Game game = new Game();
+        Board board = new Board();
+        board.generateBoard();
+
+        // Create a wood port on hex 2, corners 2 and 3
+        Boat boat = new Boat();
+        boat.setId(2);
+        boat.setBoatType("WOOD");
+        boat.setHexId(2);
+        boat.setFirstCorner(2);
+        boat.setSecondCorner(3);
+
+        board.setBoats(List.of(boat));
+        game.setBoard(board);
+
+        var method = GameService.class.getDeclaredMethod("isIntersectionAPortOfType", Game.class, Integer.class, String.class);
+        method.setAccessible(true);
+
+        List<Integer> hexIntersections = board.getIntersectionIdsForHex(2);
+        assertNotNull(hexIntersections);
+        assertTrue(hexIntersections.size() > 3);
+
+        Integer firstIntersectionId = hexIntersections.get(2);
+
+        assertTrue((Boolean) method.invoke(gameService, game, firstIntersectionId, "wood"));
+    }
+
+    @Test
+    void isIntersectionAPortOfType_returnsfalseForNonMatchingIntersection() throws Exception {
+        Game game = new Game();
+        Board board = new Board();
+        board.generateBoard();
+
+        // Create a port on hex 1, corners 0 and 1
+        Boat boat = new Boat();
+        boat.setId(1);
+        boat.setBoatType("STANDARD");
+        boat.setHexId(1);
+        boat.setFirstCorner(0);
+        boat.setSecondCorner(1);
+
+        board.setBoats(List.of(boat));
+        game.setBoard(board);
+
+        var method = GameService.class.getDeclaredMethod("isIntersectionAPortOfType", Game.class, Integer.class, String.class);
+        method.setAccessible(true);
+
+        // Use an intersection from hex 19 (opposite corner) which won't share with hex 1
+        List<Integer> hex19Intersections = board.getIntersectionIdsForHex(19);
+        Integer farAwayIntersectionId = hex19Intersections.get(2);
+
+        assertEquals(false, method.invoke(gameService, game, farAwayIntersectionId, "3:1"));
+    }
+
+    @Test
+    void isIntersectionAPortOfType_returnsFalseForWrongPortType() throws Exception {
+        Game game = new Game();
+        Board board = new Board();
+        board.generateBoard();
+
+        // Create a wood port on hex 2, corners 0 and 1
+        Boat boat = new Boat();
+        boat.setId(2);
+        boat.setBoatType("WOOD");
+        boat.setHexId(2);
+        boat.setFirstCorner(0);
+        boat.setSecondCorner(1);
+
+        board.setBoats(List.of(boat));
+        game.setBoard(board);
+
+        var method = GameService.class.getDeclaredMethod("isIntersectionAPortOfType", Game.class, Integer.class, String.class);
+        method.setAccessible(true);
+
+        List<Integer> hexIntersections = board.getIntersectionIdsForHex(2);
+        Integer intersectionId = hexIntersections.get(0);
+
+        // Ask for brick, but the port is wood
+        assertEquals(false, method.invoke(gameService, game, intersectionId, "brick"));
+    }
+
+    @Test
+    void isIntersectionAPortOfType_withMultiplePortsFindsCorrectOne() throws Exception {
+        Game game = new Game();
+        Board board = new Board();
+        board.generateBoard();
+
+        // Create multiple ports on non-adjacent hexes
+        Boat port1 = new Boat();
+        port1.setId(1);
+        port1.setBoatType("WOOD");
+        port1.setHexId(1);
+        port1.setFirstCorner(0);
+        port1.setSecondCorner(1);
+
+        Boat port2 = new Boat();
+        port2.setId(2);
+        port2.setBoatType("BRICK");
+        port2.setHexId(19);  // Far corner, won't share intersections with hex 1
+        port2.setFirstCorner(2);
+        port2.setSecondCorner(3);
+
+        board.setBoats(List.of(port1, port2));
+        game.setBoard(board);
+
+        var method = GameService.class.getDeclaredMethod("isIntersectionAPortOfType", Game.class, Integer.class, String.class);
+        method.setAccessible(true);
+
+        List<Integer> hex1Intersections = board.getIntersectionIdsForHex(1);
+        List<Integer> hex19Intersections = board.getIntersectionIdsForHex(19);
+
+        Integer port1Intersection = hex1Intersections.get(0);
+        Integer port2Intersection = hex19Intersections.get(2);
+
+        // Verify each port matches only its type
+        assertTrue((Boolean) method.invoke(gameService, game, port1Intersection, "wood"));
+        assertEquals(false, method.invoke(gameService, game, port1Intersection, "brick"));
+
+        assertTrue((Boolean) method.invoke(gameService, game, port2Intersection, "brick"));
+        assertEquals(false, method.invoke(gameService, game, port2Intersection, "wood"));
     }
 }

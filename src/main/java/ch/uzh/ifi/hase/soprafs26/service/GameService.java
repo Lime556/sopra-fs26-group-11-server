@@ -682,8 +682,62 @@ public class GameService {
     }
 
     private boolean isIntersectionAPortOfType(Game game, Integer intersectionId, String type) {
-        // Implementation depends on how Board.java stores port-to-intersection mapping
-        return false; // Placeholder: replace with actual board lookup
+        Board board = game.getBoard();
+        if (board == null || board.getBoats() == null || board.getBoats().isEmpty()) {
+            return false;
+        }
+        
+        for (Boat boat : board.getBoats()) {
+            if (boat == null || boat.getHexId() == null || boat.getFirstCorner() == null || boat.getSecondCorner() == null) {
+                continue;
+            }
+            
+            // Get the intersection IDs for this boat's hex
+            List<Integer> hexIntersections = board.getIntersectionIdsForHex(boat.getHexId());
+            if (hexIntersections == null || hexIntersections.size() <= Math.max(boat.getFirstCorner(), boat.getSecondCorner())) {
+                continue;
+            }
+            
+            Integer firstIntersectionId = hexIntersections.get(boat.getFirstCorner());
+            Integer secondIntersectionId = hexIntersections.get(boat.getSecondCorner());
+            
+            if (!intersectionId.equals(firstIntersectionId) && !intersectionId.equals(secondIntersectionId)) {
+                continue;
+            }
+            
+            // Check if the boat type matches the requested port type
+            if (boatTypeMatchesPortType(boat.getBoatType(), type)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    private boolean boatTypeMatchesPortType(String boatType, String portType) {
+        if (boatType == null || portType == null) {
+            return false;
+        }
+        
+        if ("3:1".equals(portType)) {
+            return "STANDARD".equalsIgnoreCase(boatType);
+        }
+        
+        String normalizedBoatType = boatType.toLowerCase();
+        
+        if ("wood".equals(portType)) {
+            return "wood".equals(normalizedBoatType);
+        } else if ("brick".equals(portType)) {
+            return "brick".equals(normalizedBoatType);
+        } else if ("wool".equals(portType)) {
+            return "sheep".equals(normalizedBoatType);
+        } else if ("wheat".equals(portType)) {
+            return "wheat".equals(normalizedBoatType);
+        } else if ("ore".equals(portType)) {
+            return "stone".equals(normalizedBoatType);
+        }
+        
+        return false;
     }
 
     public void validatePlayerTradeRequest(Long gameId, String playerToken, GameEventDTO tradeEvent) {
