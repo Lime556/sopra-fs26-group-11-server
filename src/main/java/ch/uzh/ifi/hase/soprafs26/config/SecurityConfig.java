@@ -4,6 +4,7 @@ import java.util.Arrays;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -22,10 +23,10 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(authz -> authz
-                .requestMatchers("POST", "/users").permitAll()  // Registration endpoint
-                .requestMatchers("POST", "/login").permitAll()   // Login endpoint
-                .requestMatchers("GET", "/").permitAll()         // Health check
-                .requestMatchers("GET", "/h2-console/**").permitAll() // H2 Console
+                .requestMatchers(HttpMethod.POST, "/users").permitAll()  // Registration endpoint
+                .requestMatchers(HttpMethod.POST, "/login").permitAll()   // Login endpoint
+                .requestMatchers(HttpMethod.GET, "/").permitAll()         // Health check
+                .requestMatchers(HttpMethod.GET, "/h2-console/**").permitAll() // H2 Console
                 .anyRequest().authenticated()
             )
             .httpBasic(basic -> basic.disable())  // Disable HTTP Basic auth
