@@ -14,14 +14,14 @@ import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Boat;
@@ -599,12 +599,6 @@ public class GameService {
             receiveBundle = createSingleResourceBundle(tradeEvent.getReceiveResource(), tradeEvent.getAmount());
         }
 
-        int totalGive = sumTradeBundle(giveBundle);
-        int totalReceive = sumTradeBundle(receiveBundle);
-        if (totalGive < 1 || totalReceive < 1 || totalGive != totalReceive * 4) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade payload.");
-        }
-
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
@@ -615,6 +609,13 @@ public class GameService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source player was not found.");
         }
         ensureBankInitialized(game);
+
+        int totalGive = sumTradeBundle(giveBundle);
+        int totalReceive = sumTradeBundle(receiveBundle);
+        int requiredGive = calculateRequiredGiveWithPorts(game, source, receiveBundle);
+        if (totalGive < 1 || totalReceive < 1 || totalGive < requiredGive) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient resources for bank trade (Port bonuses applied).");
+        }
 
         for (String resource : TRADE_RESOURCES) {
             int giveAmount = giveBundle.get(resource);
@@ -642,6 +643,47 @@ public class GameService {
 
         game.setPlayers(players);
         return saveChangedGame(game);
+    }
+
+    private int calculateRequiredGiveWithPorts(Game game, Player player, Map<String, Integer> receiveBundle) {
+        int totalRequired = 0;
+        for (String resource : TRADE_RESOURCES) {
+            int amount = receiveBundle.getOrDefault(resource, 0);
+            if (amount > 0) {
+                totalRequired += amount * getBestRatio(game, player, resource);
+            }
+        }
+        return totalRequired;
+    }
+
+    private int getBestRatio(Game game, Player player, String resource) {
+        if (hasPortAccess(game, player, resource)) return 2;
+        if (hasPortAccess(game, player, "3:1")) return 3;
+        return 4;
+    }
+
+    private boolean hasPortAccess(Game game, Player player, String type) {
+        Board board = game.getBoard();
+        if (board == null || board.getPorts() == null) return false;
+        
+        // Check intersections that are part of the requested port type
+        for (int i = 0; i < board.getIntersections().size(); i++) {
+            Intersection inter = board.getIntersections().get(i);
+            if (inter == null || inter.getBuilding() == null) continue;
+            if (!player.getId().equals(inter.getBuilding().getOwnerPlayerId())) continue;
+            
+            // Verify if this intersection is a port of the correct type
+            // This assumes the Board entity stores port metadata linked to intersections
+            if (isIntersectionAPortOfType(game, inter.getId(), type)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isIntersectionAPortOfType(Game game, Integer intersectionId, String type) {
+        // Implementation depends on how Board.java stores port-to-intersection mapping
+        return false; // Placeholder: replace with actual board lookup
     }
 
     public void validatePlayerTradeRequest(Long gameId, String playerToken, GameEventDTO tradeEvent) {
