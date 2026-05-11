@@ -671,8 +671,15 @@ public class GameService {
 
         ensureBankInitialized(game);
 
-        Map<String, Integer> requiredGiveBundle = calculateRequiredGiveWithPorts(game, source, receiveBundle);
-        if (!bundlesEqual(giveBundle, requiredGiveBundle)) {
+        String giveResource = findSingleTradeResource(giveBundle);
+        if (giveResource == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade payload.");
+        }
+
+        int requiredRatio = getBestRatio(game, source, giveResource);
+        int totalGive = sumTradeBundle(giveBundle);
+        int totalReceiveUnits = sumTradeBundle(receiveBundle);
+        if (totalGive != totalReceiveUnits * requiredRatio) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade ratio for available ports.");
         }
 
@@ -710,22 +717,21 @@ public class GameService {
         return saveChangedGame(game);
     }
 
-    private boolean bundlesEqual(Map<String, Integer> first, Map<String, Integer> second) {
+    private String findSingleTradeResource(Map<String, Integer> bundle) {
+        String selectedResource = null;
         for (String resource : TRADE_RESOURCES) {
-            if (!Objects.equals(safeInt(first.get(resource), 0), safeInt(second.get(resource), 0))) {
-                return false;
+            if (safeInt(bundle.get(resource), 0) <= 0) {
+                continue;
             }
-        }
-        return true;
-    }
 
-    private Map<String, Integer> calculateRequiredGiveWithPorts(Game game, Player player, Map<String, Integer> receiveBundle) {
-        Map<String, Integer> requiredGive = normalizeTradeBundle(null);
-        for (String resource : TRADE_RESOURCES) {
-            int receiveAmount = safeInt(receiveBundle.get(resource), 0);
-            requiredGive.put(resource, receiveAmount * getBestRatio(game, player, resource));
+            if (selectedResource != null) {
+                return null;
+            }
+
+            selectedResource = resource;
         }
-        return requiredGive;
+
+        return selectedResource;
     }
 
     private int getBestRatio(Game game, Player player, String resource) {

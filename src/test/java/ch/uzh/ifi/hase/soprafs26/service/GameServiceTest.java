@@ -1259,6 +1259,19 @@ class GameServiceTest {
             ));
     }
 
+    private Integer findIntersectionTouchingBoat(Board board, Boat boat) {
+        return board.getIntersections().stream()
+            .filter(Objects::nonNull)
+            .map(Intersection::getId)
+            .filter(Objects::nonNull)
+            .filter(intersectionId -> board.getHexCoordinatesForIntersection(intersectionId).stream()
+                .anyMatch(coordinate -> boat.getHexId().equals(coordinate.get("hexId"))
+                    && (boat.getFirstCorner().equals(coordinate.get("corner"))
+                        || boat.getSecondCorner().equals(coordinate.get("corner")))))
+            .findFirst()
+            .orElse(null);
+    }
+
     // ============ Knight Card Board-Adjacency Tests ============
 
     @Test
@@ -2571,6 +2584,62 @@ class GameServiceTest {
 
         assertTrue((Boolean) method.invoke(gameService, "STONE", "ore"));
         assertTrue((Boolean) method.invoke(gameService, "stone", "ore"));
+    }
+
+    @Test
+    void applyBankTrade_woolPortAllowsTwoForOneTrade() {
+        Game game = new Game();
+        game.setId(400L);
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setWool(2);
+        player.setBrick(0);
+        player.setWood(0);
+        player.setWheat(0);
+        player.setOre(0);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        Boat woolBoat = board.getBoats().stream()
+            .filter(Objects::nonNull)
+            .filter(boat -> "SHEEP".equalsIgnoreCase(boat.getBoatType()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected a wool port on the generated board."));
+
+        Integer portIntersectionId = findIntersectionTouchingBoat(board, woolBoat);
+        assertNotNull(portIntersectionId);
+
+        Intersection intersection = findIntersection(board, portIntersectionId);
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(10L);
+        settlement.setIntersectionId(portIntersectionId);
+        intersection.setBuilding(settlement);
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+        game.setBankWood(19);
+        game.setBankBrick(19);
+        game.setBankWool(19);
+        game.setBankWheat(19);
+        game.setBankOre(19);
+
+        Mockito.when(gameRepository.findById(400L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        GameEventDTO trade = new GameEventDTO();
+        trade.setType("BANK_TRADE");
+        trade.setSourcePlayerId(10L);
+        trade.setGiveResources(Map.of("wool", 2));
+        trade.setReceiveResources(Map.of("brick", 1));
+
+        Game result = gameService.applyBankTrade(400L, "valid-token", trade);
+
+        Player updatedPlayer = result.getPlayers().get(0);
+        assertEquals(0, updatedPlayer.getWool());
+        assertEquals(1, updatedPlayer.getBrick());
     }
 
     @Test
