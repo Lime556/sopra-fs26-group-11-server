@@ -655,9 +655,7 @@ public class GameService {
             receiveBundle = createSingleResourceBundle(tradeEvent.getReceiveResource(), tradeEvent.getAmount());
         }
 
-        int totalGive = sumTradeBundle(giveBundle);
-        int totalReceive = sumTradeBundle(receiveBundle);
-        if (totalGive < 1 || totalReceive < 1) {
+        if (sumTradeBundle(giveBundle) < 1 || sumTradeBundle(receiveBundle) < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade payload.");
         }
 
@@ -671,17 +669,11 @@ public class GameService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source player was not found.");
         }
 
-        if (!isValidPortAwareBankTrade(game, source, giveBundle, receiveBundle)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade ratio for available ports.");
-        }
-
         ensureBankInitialized(game);
 
-        int totalGive = sumTradeBundle(giveBundle);
-        int totalReceive = sumTradeBundle(receiveBundle);
-        int requiredGive = calculateRequiredGiveWithPorts(game, source, receiveBundle);
-        if (totalGive < 1 || totalReceive < 1 || totalGive < requiredGive) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient resources for bank trade (Port bonuses applied).");
+        Map<String, Integer> requiredGiveBundle = calculateRequiredGiveWithPorts(game, source, receiveBundle);
+        if (!bundlesEqual(giveBundle, requiredGiveBundle)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade ratio for available ports.");
         }
 
         for (String resource : TRADE_RESOURCES) {
@@ -718,29 +710,32 @@ public class GameService {
         return saveChangedGame(game);
     }
 
-    private boolean isValidPortAwareBankTrade(Game game, Player player, Map<String, Integer> giveBundle, Map<String, Integer> receiveBundle) {
-        int totalReceive = sumTradeBundle(receiveBundle);
-        int totalTradeUnits = 0;
-
+    private boolean bundlesEqual(Map<String, Integer> first, Map<String, Integer> second) {
         for (String resource : TRADE_RESOURCES) {
-            int giveAmount = safeInt(giveBundle.get(resource), 0);
-            int ratio = getBestTradeRatio(game, player, resource);
-            if (ratio <= 0 || giveAmount % ratio != 0) {
+            if (!Objects.equals(safeInt(first.get(resource), 0), safeInt(second.get(resource), 0))) {
                 return false;
             }
-
-            totalTradeUnits += giveAmount / ratio;
         }
-
-        return totalTradeUnits == totalReceive;
+        return true;
     }
 
-    private int getBestTradeRatio(Game game, Player player, String resource) {
-        int bestRatio = hasPortAccess(game, player, "3:1") ? 3 : 4;
-        if (hasPortAccess(game, player, resource)) {
-            bestRatio = Math.min(bestRatio, 2);
+    private Map<String, Integer> calculateRequiredGiveWithPorts(Game game, Player player, Map<String, Integer> receiveBundle) {
+        Map<String, Integer> requiredGive = normalizeTradeBundle(null);
+        for (String resource : TRADE_RESOURCES) {
+            int receiveAmount = safeInt(receiveBundle.get(resource), 0);
+            requiredGive.put(resource, receiveAmount * getBestRatio(game, player, resource));
         }
-        return bestRatio;
+        return requiredGive;
+    }
+
+    private int getBestRatio(Game game, Player player, String resource) {
+        if (hasPortAccess(game, player, resource)) {
+            return 2;
+        }
+        if (hasPortAccess(game, player, "3:1")) {
+            return 3;
+        }
+        return 4;
     }
 
     private boolean hasPortAccess(Game game, Player player, String portType) {
@@ -749,24 +744,20 @@ public class GameService {
         }
 
         Board board = game.getBoard();
-        if (board == null || board.getBoats() == null || board.getBoats().isEmpty()) {
+        if (board == null || board.getBoats() == null || board.getBoats().isEmpty() || board.getIntersections() == null) {
             return false;
         }
 
-        List<Integer> ownedIntersections = new ArrayList<>();
-        for (Intersection intersection : Optional.ofNullable(board.getIntersections()).orElse(Collections.emptyList())) {
+        for (Intersection intersection : board.getIntersections()) {
             if (intersection == null || intersection.getBuilding() == null) {
                 continue;
             }
 
-            Building building = intersection.getBuilding();
-            if (Objects.equals(building.getOwnerPlayerId(), player.getId()) && building.getIntersectionId() != null) {
-                ownedIntersections.add(building.getIntersectionId());
+            if (!Objects.equals(intersection.getBuilding().getOwnerPlayerId(), player.getId())) {
+                continue;
             }
-        }
 
-        for (Integer intersectionId : ownedIntersections) {
-            if (isIntersectionAPortOfType(board, intersectionId, portType)) {
+            if (isIntersectionAPortOfType(board, intersection.getId(), portType)) {
                 return true;
             }
         }
@@ -784,16 +775,14 @@ public class GameService {
                 continue;
             }
 
-            List<Integer> intersectionIdsForHex = board.getIntersectionIdsForHex(boat.getHexId());
-            if (intersectionIdsForHex == null || intersectionIdsForHex.size() < 6) {
+            List<Integer> hexIntersections = board.getIntersectionIdsForHex(boat.getHexId());
+            if (hexIntersections == null || hexIntersections.size() <= Math.max(boat.getFirstCorner(), boat.getSecondCorner())) {
                 continue;
             }
 
-            Integer firstCornerIntersection = intersectionIdsForHex.get(boat.getFirstCorner());
-            Integer secondCornerIntersection = intersectionIdsForHex.get(boat.getSecondCorner());
-            boolean touchesBoat = Objects.equals(firstCornerIntersection, intersectionId)
-                || Objects.equals(secondCornerIntersection, intersectionId);
-            if (!touchesBoat) {
+            Integer firstIntersectionId = hexIntersections.get(boat.getFirstCorner());
+            Integer secondIntersectionId = hexIntersections.get(boat.getSecondCorner());
+            if (!Objects.equals(intersectionId, firstIntersectionId) && !Objects.equals(intersectionId, secondIntersectionId)) {
                 continue;
             }
 
@@ -802,72 +791,6 @@ public class GameService {
             }
         }
 
-    private int calculateRequiredGiveWithPorts(Game game, Player player, Map<String, Integer> receiveBundle) {
-        int totalRequired = 0;
-        for (String resource : TRADE_RESOURCES) {
-            int amount = receiveBundle.getOrDefault(resource, 0);
-            if (amount > 0) {
-                totalRequired += amount * getBestRatio(game, player, resource);
-            }
-        }
-        return totalRequired;
-    }
-
-    private int getBestRatio(Game game, Player player, String resource) {
-        if (hasPortAccess(game, player, resource)) return 2;
-        if (hasPortAccess(game, player, "3:1")) return 3;
-        return 4;
-    }
-
-    private boolean hasPortAccess(Game game, Player player, String type) {
-        Board board = game.getBoard();
-        if (board == null || board.getPorts() == null) return false;
-        
-        // Check intersections that are part of the requested port type
-        for (int i = 0; i < board.getIntersections().size(); i++) {
-            Intersection inter = board.getIntersections().get(i);
-            if (inter == null || inter.getBuilding() == null) continue;
-            if (!player.getId().equals(inter.getBuilding().getOwnerPlayerId())) continue;
-            
-            // Verify if this intersection is a port of the correct type
-            // This assumes the Board entity stores port metadata linked to intersections
-            if (isIntersectionAPortOfType(game, inter.getId(), type)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isIntersectionAPortOfType(Game game, Integer intersectionId, String type) {
-        Board board = game.getBoard();
-        if (board == null || board.getBoats() == null || board.getBoats().isEmpty()) {
-            return false;
-        }
-        
-        for (Boat boat : board.getBoats()) {
-            if (boat == null || boat.getHexId() == null || boat.getFirstCorner() == null || boat.getSecondCorner() == null) {
-                continue;
-            }
-            
-            // Get the intersection IDs for this boat's hex
-            List<Integer> hexIntersections = board.getIntersectionIdsForHex(boat.getHexId());
-            if (hexIntersections == null || hexIntersections.size() <= Math.max(boat.getFirstCorner(), boat.getSecondCorner())) {
-                continue;
-            }
-            
-            Integer firstIntersectionId = hexIntersections.get(boat.getFirstCorner());
-            Integer secondIntersectionId = hexIntersections.get(boat.getSecondCorner());
-            
-            if (!intersectionId.equals(firstIntersectionId) && !intersectionId.equals(secondIntersectionId)) {
-                continue;
-            }
-            
-            // Check if the boat type matches the requested port type
-            if (boatTypeMatchesPortType(boat.getBoatType(), type)) {
-                return true;
-            }
-        }
-        
         return false;
     }
 
