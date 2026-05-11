@@ -677,6 +677,13 @@ public class GameService {
 
         ensureBankInitialized(game);
 
+        int totalGive = sumTradeBundle(giveBundle);
+        int totalReceive = sumTradeBundle(receiveBundle);
+        int requiredGive = calculateRequiredGiveWithPorts(game, source, receiveBundle);
+        if (totalGive < 1 || totalReceive < 1 || totalGive < requiredGive) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient resources for bank trade (Port bonuses applied).");
+        }
+
         for (String resource : TRADE_RESOURCES) {
             int giveAmount = giveBundle.get(resource);
             int receiveAmount = receiveBundle.get(resource);
@@ -795,6 +802,72 @@ public class GameService {
             }
         }
 
+    private int calculateRequiredGiveWithPorts(Game game, Player player, Map<String, Integer> receiveBundle) {
+        int totalRequired = 0;
+        for (String resource : TRADE_RESOURCES) {
+            int amount = receiveBundle.getOrDefault(resource, 0);
+            if (amount > 0) {
+                totalRequired += amount * getBestRatio(game, player, resource);
+            }
+        }
+        return totalRequired;
+    }
+
+    private int getBestRatio(Game game, Player player, String resource) {
+        if (hasPortAccess(game, player, resource)) return 2;
+        if (hasPortAccess(game, player, "3:1")) return 3;
+        return 4;
+    }
+
+    private boolean hasPortAccess(Game game, Player player, String type) {
+        Board board = game.getBoard();
+        if (board == null || board.getPorts() == null) return false;
+        
+        // Check intersections that are part of the requested port type
+        for (int i = 0; i < board.getIntersections().size(); i++) {
+            Intersection inter = board.getIntersections().get(i);
+            if (inter == null || inter.getBuilding() == null) continue;
+            if (!player.getId().equals(inter.getBuilding().getOwnerPlayerId())) continue;
+            
+            // Verify if this intersection is a port of the correct type
+            // This assumes the Board entity stores port metadata linked to intersections
+            if (isIntersectionAPortOfType(game, inter.getId(), type)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isIntersectionAPortOfType(Game game, Integer intersectionId, String type) {
+        Board board = game.getBoard();
+        if (board == null || board.getBoats() == null || board.getBoats().isEmpty()) {
+            return false;
+        }
+        
+        for (Boat boat : board.getBoats()) {
+            if (boat == null || boat.getHexId() == null || boat.getFirstCorner() == null || boat.getSecondCorner() == null) {
+                continue;
+            }
+            
+            // Get the intersection IDs for this boat's hex
+            List<Integer> hexIntersections = board.getIntersectionIdsForHex(boat.getHexId());
+            if (hexIntersections == null || hexIntersections.size() <= Math.max(boat.getFirstCorner(), boat.getSecondCorner())) {
+                continue;
+            }
+            
+            Integer firstIntersectionId = hexIntersections.get(boat.getFirstCorner());
+            Integer secondIntersectionId = hexIntersections.get(boat.getSecondCorner());
+            
+            if (!intersectionId.equals(firstIntersectionId) && !intersectionId.equals(secondIntersectionId)) {
+                continue;
+            }
+            
+            // Check if the boat type matches the requested port type
+            if (boatTypeMatchesPortType(boat.getBoatType(), type)) {
+                return true;
+            }
+        }
+        
         return false;
     }
 
