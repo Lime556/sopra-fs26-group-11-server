@@ -14,14 +14,14 @@ import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Boat;
@@ -657,7 +657,7 @@ public class GameService {
 
         int totalGive = sumTradeBundle(giveBundle);
         int totalReceive = sumTradeBundle(receiveBundle);
-        if (totalGive < 1 || totalReceive < 1 || totalGive != totalReceive * 4) {
+        if (totalGive < 1 || totalReceive < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade payload.");
         }
 
@@ -670,6 +670,11 @@ public class GameService {
         if (source == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source player was not found.");
         }
+
+        if (!isValidPortAwareBankTrade(game, source, giveBundle, receiveBundle)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid bank trade ratio for available ports.");
+        }
+
         ensureBankInitialized(game);
 
         for (String resource : TRADE_RESOURCES) {
@@ -704,6 +709,112 @@ public class GameService {
             "traded " + formatResourceBundle(giveBundle) + " for " + formatResourceBundle(receiveBundle) + " with bank"
         );
         return saveChangedGame(game);
+    }
+
+    private boolean isValidPortAwareBankTrade(Game game, Player player, Map<String, Integer> giveBundle, Map<String, Integer> receiveBundle) {
+        int totalReceive = sumTradeBundle(receiveBundle);
+        int totalTradeUnits = 0;
+
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = safeInt(giveBundle.get(resource), 0);
+            int ratio = getBestTradeRatio(game, player, resource);
+            if (ratio <= 0 || giveAmount % ratio != 0) {
+                return false;
+            }
+
+            totalTradeUnits += giveAmount / ratio;
+        }
+
+        return totalTradeUnits == totalReceive;
+    }
+
+    private int getBestTradeRatio(Game game, Player player, String resource) {
+        int bestRatio = hasPortAccess(game, player, "3:1") ? 3 : 4;
+        if (hasPortAccess(game, player, resource)) {
+            bestRatio = Math.min(bestRatio, 2);
+        }
+        return bestRatio;
+    }
+
+    private boolean hasPortAccess(Game game, Player player, String portType) {
+        if (game == null || player == null || portType == null) {
+            return false;
+        }
+
+        Board board = game.getBoard();
+        if (board == null || board.getBoats() == null || board.getBoats().isEmpty()) {
+            return false;
+        }
+
+        List<Integer> ownedIntersections = new ArrayList<>();
+        for (Intersection intersection : Optional.ofNullable(board.getIntersections()).orElse(Collections.emptyList())) {
+            if (intersection == null || intersection.getBuilding() == null) {
+                continue;
+            }
+
+            Building building = intersection.getBuilding();
+            if (Objects.equals(building.getOwnerPlayerId(), player.getId()) && building.getIntersectionId() != null) {
+                ownedIntersections.add(building.getIntersectionId());
+            }
+        }
+
+        for (Integer intersectionId : ownedIntersections) {
+            if (isIntersectionAPortOfType(board, intersectionId, portType)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isIntersectionAPortOfType(Board board, Integer intersectionId, String portType) {
+        if (board == null || intersectionId == null || portType == null) {
+            return false;
+        }
+
+        for (Boat boat : Optional.ofNullable(board.getBoats()).orElse(Collections.emptyList())) {
+            if (boat == null || boat.getHexId() == null || boat.getFirstCorner() == null || boat.getSecondCorner() == null) {
+                continue;
+            }
+
+            List<Integer> intersectionIdsForHex = board.getIntersectionIdsForHex(boat.getHexId());
+            if (intersectionIdsForHex == null || intersectionIdsForHex.size() < 6) {
+                continue;
+            }
+
+            Integer firstCornerIntersection = intersectionIdsForHex.get(boat.getFirstCorner());
+            Integer secondCornerIntersection = intersectionIdsForHex.get(boat.getSecondCorner());
+            boolean touchesBoat = Objects.equals(firstCornerIntersection, intersectionId)
+                || Objects.equals(secondCornerIntersection, intersectionId);
+            if (!touchesBoat) {
+                continue;
+            }
+
+            if (boatTypeMatchesPortType(boat.getBoatType(), portType)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean boatTypeMatchesPortType(String boatType, String portType) {
+        if (boatType == null || portType == null) {
+            return false;
+        }
+
+        String normalizedBoatType = boatType.trim().toUpperCase(Locale.ROOT);
+        String normalizedPortType = portType.trim().toLowerCase(Locale.ROOT);
+
+        return switch (normalizedBoatType) {
+            case "STANDARD" -> "3:1".equals(normalizedPortType);
+            case "WOOD" -> "wood".equals(normalizedPortType);
+            case "BRICK" -> "brick".equals(normalizedPortType);
+            case "SHEEP" -> "wool".equals(normalizedPortType);
+            case "WHEAT" -> "wheat".equals(normalizedPortType);
+            case "STONE" -> "ore".equals(normalizedPortType);
+            default -> false;
+        };
     }
 
     public void validatePlayerTradeRequest(Long gameId, String playerToken, GameEventDTO tradeEvent) {
