@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,6 +43,22 @@ import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
 
 @RestController
 public class GameController {
+
+    private static final Set<String> GAMEPLAY_EVENT_TYPES = Set.of(
+        "ROAD_BUILT",
+        "SETTLEMENT_BUILT",
+        "CITY_BUILT",
+        "BANK_TRADE",
+        "PLAYER_TRADE",
+        "PLAYER_TRADE_FINALIZE",
+        "DEVELOPMENT_CARD_BOUGHT",
+        "DEVELOPMENT_CARD_PLAYED_KNIGHT",
+        "DEVELOPMENT_CARD_PLAYED_ROAD_BUILDING",
+        "DEVELOPMENT_CARD_PLAYED_YEAR_OF_PLENTY",
+        "DEVELOPMENT_CARD_PLAYED_MONOPOLY",
+        "ROBBER_MOVE",
+        "TURN_END"
+    );
 
     private final GameService gameService;
     private final BotActionExecutorService botActionExecutorService;
@@ -91,131 +108,11 @@ public class GameController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         String token = extractToken(authorizationHeader);
         gameService.getGameById(gameId, token);
-        boolean eventHandled = false;
-        if ("ROAD_BUILT".equalsIgnoreCase(gameEventDTO.getType())
-            && gameEventDTO.getSourcePlayerId() != null
-            && gameEventDTO.getEdge() != null) {
-            gameService.addRoadToPlayer(
-                gameId,
-                token,
-                gameEventDTO.getSourcePlayerId(),
-                gameEventDTO.getEdge()
+        if (isGameplayEventType(gameEventDTO == null ? null : gameEventDTO.getType())) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Gameplay events must use the dedicated action endpoints."
             );
-            eventHandled = true;
-        } else if ("SETTLEMENT_BUILT".equalsIgnoreCase(gameEventDTO.getType())
-            && gameEventDTO.getSourcePlayerId() != null
-            && gameEventDTO.getIntersectionId() != null) {
-            gameService.addSettlementToPlayer(
-                gameId,
-                token,
-                gameEventDTO.getSourcePlayerId(),
-                gameEventDTO.getIntersectionId()
-            );
-            eventHandled = true;
-        } else if ("CITY_BUILT".equalsIgnoreCase(gameEventDTO.getType())
-            && gameEventDTO.getSourcePlayerId() != null
-            && gameEventDTO.getIntersectionId() != null) {
-            gameService.upgradeSettlementToCity(
-                gameId,
-                token,
-                gameEventDTO.getSourcePlayerId(),
-                gameEventDTO.getIntersectionId()
-            );
-            eventHandled = true;
-        } else if ("BANK_TRADE".equalsIgnoreCase(gameEventDTO.getType())
-                && gameEventDTO.getSourcePlayerId() != null
-                && ((gameEventDTO.getGiveResources() != null && gameEventDTO.getReceiveResources() != null)
-                        || (gameEventDTO.getGiveResource() != null
-                            && gameEventDTO.getReceiveResource() != null
-                            && gameEventDTO.getAmount() != null))) {
-            gameService.applyBankTrade(
-                gameId,
-                token,
-                gameEventDTO
-            );
-            eventHandled = true;
-        } else if ("PLAYER_TRADE".equalsIgnoreCase(gameEventDTO.getType())
-                && gameEventDTO.getSourcePlayerId() != null
-                && ((gameEventDTO.getGiveResources() != null && gameEventDTO.getReceiveResources() != null)
-                        || (gameEventDTO.getGiveResource() != null
-                            && gameEventDTO.getReceiveResource() != null
-                            && (gameEventDTO.getGiveAmount() != null || gameEventDTO.getReceiveAmount() != null || gameEventDTO.getAmount() != null)))) {
-            if ("REQUEST".equalsIgnoreCase(gameEventDTO.getTradeAction())) {
-                gameService.validatePlayerTradeRequest(gameId, token, gameEventDTO);
-                eventHandled = true;
-            } else if ("ACCEPT".equalsIgnoreCase(gameEventDTO.getTradeAction()) || "DENY".equalsIgnoreCase(gameEventDTO.getTradeAction())) {
-                gameService.validatePlayerTradeResponse(gameId, token, gameEventDTO);
-                eventHandled = true;
-            } else {
-                if (gameEventDTO.getTargetPlayerId() == null) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
-                }
-                gameEventDTO.setType("PLAYER_TRADE_FINALIZE"); // Set explicit type for finalization
-                gameService.applyPlayerTrade(
-                    gameId,
-                    token,
-                    gameEventDTO
-                );
-                eventHandled = true;
-            }
-        } else if ("DEVELOPMENT_CARD_BOUGHT".equalsIgnoreCase(gameEventDTO.getType())
-                && gameEventDTO.getSourcePlayerId() != null) {
-            gameService.buyDevelopmentCard(
-                gameId,
-                token,
-                gameEventDTO.getSourcePlayerId()
-            );
-            eventHandled = true;
-        } else if ("DEVELOPMENT_CARD_PLAYED_KNIGHT".equalsIgnoreCase(gameEventDTO.getType())
-                && gameEventDTO.getSourcePlayerId() != null) {
-                    gameService.playKnightCard(
-                        gameId,
-                        token,
-                        gameEventDTO.getSourcePlayerId(),
-                        gameEventDTO.getHexId(),
-                        gameEventDTO.getTargetPlayerId()
-                    );
-                    eventHandled = true;
-        } else if ("DEVELOPMENT_CARD_PLAYED_ROAD_BUILDING".equalsIgnoreCase(gameEventDTO.getType())
-                && gameEventDTO.getSourcePlayerId() != null) {
-                    gameService.playRoadBuildingCard(
-                        gameId,
-                        token,
-                        gameEventDTO.getSourcePlayerId()
-            );
-            eventHandled = true;
-        } else if ("DEVELOPMENT_CARD_PLAYED_YEAR_OF_PLENTY".equalsIgnoreCase(gameEventDTO.getType())
-                && gameEventDTO.getSourcePlayerId() != null
-                && gameEventDTO.getGiveResource() != null
-                && gameEventDTO.getSecondResource() != null) {
-                    gameService.playYearOfPlentyCard(
-                        gameId,
-                        token,
-                        gameEventDTO.getSourcePlayerId(),
-                        gameEventDTO.getGiveResource(),
-                        gameEventDTO.getSecondResource()
-                    );
-                    eventHandled = true;
-        } else if ("DEVELOPMENT_CARD_PLAYED_MONOPOLY".equalsIgnoreCase(gameEventDTO.getType())
-                && gameEventDTO.getSourcePlayerId() != null
-                && gameEventDTO.getGiveResource() != null) {
-                    gameService.playMonopolyCard(
-                        gameId,
-                        token,
-                        gameEventDTO.getSourcePlayerId(),
-                        gameEventDTO.getGiveResource()
-                    );
-                    eventHandled = true;
-        } else if ("ROBBER_MOVE".equalsIgnoreCase(gameEventDTO.getType())
-                && gameEventDTO.getSourcePlayerId() != null) {
-                    gameService.moveRobber(
-                        gameId,
-                        token,
-                        gameEventDTO.getSourcePlayerId(),
-                        gameEventDTO.getHexId(),
-                        gameEventDTO.getTargetPlayerId()
-                    );
-                    eventHandled = true;
         }
         return gameEventDTO;
     }
@@ -695,6 +592,10 @@ public class GameController {
         return authorizationHeader.trim();
     }
 
+    private static boolean isGameplayEventType(String type) {
+        return type != null && GAMEPLAY_EVENT_TYPES.contains(type.trim().toUpperCase());
+    }
+
     @GetMapping("/games/{gameId}/dice")
     @ResponseStatus(HttpStatus.OK)
     public DiceRollDTO getDiceRoll(
@@ -765,6 +666,7 @@ public class GameController {
         dto.setDiceRolledAt(game.getDiceRolledAt() == null ? null : game.getDiceRolledAt().toString());
         dto.setTradeRequestedAt(game.getTradeRequestedAt() == null ? null : game.getTradeRequestedAt().toString());
         dto.setLatestTradeRequest(game.getLatestTradeRequest());
+        dto.setChatMessageCount(game.getChatMessages() == null ? 0 : game.getChatMessages().size());
         dto.setCurrentPlayerId(currentPlayer != null ? currentPlayer.getId() : null);
         dto.setCurrentPlayerName(currentPlayer != null ? currentPlayer.getName() : null);
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);

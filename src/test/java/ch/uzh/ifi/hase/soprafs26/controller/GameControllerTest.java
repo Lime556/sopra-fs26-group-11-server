@@ -274,12 +274,8 @@ class GameControllerTest {
     }
 
     @Test
-    void publishGameEvent_roadBuilt_callsServiceAndReturnsAccepted() throws Exception {
-        Game updatedGame = new Game();
-        updatedGame.setId(1L);
-    
+    void publishGameEvent_roadBuilt_returnsBadRequest() throws Exception {
         given(gameService.getGameById(1L, "token-123")).willReturn(new Game());
-        given(gameService.addRoadToPlayer(1L, "token-123", 10L, 7)).willReturn(updatedGame);
     
         String body = """
             {
@@ -295,19 +291,12 @@ class GameControllerTest {
                 .content(body);
     
         mockMvc.perform(postRequest)
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.type", is("ROAD_BUILT")))
-                .andExpect(jsonPath("$.sourcePlayerId", is(10)))
-                .andExpect(jsonPath("$.edge", is(7)));
+                .andExpect(status().isBadRequest());
     }
     
     @Test
-    void publishGameEvent_settlementBuilt_callsServiceAndReturnsAccepted() throws Exception {
-        Game updatedGame = new Game();
-        updatedGame.setId(1L);
-    
+    void publishGameEvent_settlementBuilt_returnsBadRequest() throws Exception {
         given(gameService.getGameById(1L, "token-123")).willReturn(new Game());
-        given(gameService.addSettlementToPlayer(1L, "token-123", 10L, 3)).willReturn(updatedGame);
     
         String body = """
             {
@@ -323,19 +312,12 @@ class GameControllerTest {
                 .content(body);
     
         mockMvc.perform(postRequest)
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.type", is("SETTLEMENT_BUILT")))
-                .andExpect(jsonPath("$.sourcePlayerId", is(10)))
-                .andExpect(jsonPath("$.intersectionId", is(3)));
+                .andExpect(status().isBadRequest());
     }
     
     @Test
-    void publishGameEvent_cityBuilt_callsServiceAndReturnsAccepted() throws Exception {
-        Game updatedGame = new Game();
-        updatedGame.setId(1L);
-    
+    void publishGameEvent_cityBuilt_returnsBadRequest() throws Exception {
         given(gameService.getGameById(1L, "token-123")).willReturn(new Game());
-        given(gameService.upgradeSettlementToCity(1L, "token-123", 10L, 3)).willReturn(updatedGame);
     
         String body = """
             {
@@ -351,10 +333,7 @@ class GameControllerTest {
                 .content(body);
     
         mockMvc.perform(postRequest)
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.type", is("CITY_BUILT")))
-                .andExpect(jsonPath("$.sourcePlayerId", is(10)))
-                .andExpect(jsonPath("$.intersectionId", is(3)));
+                .andExpect(status().isBadRequest());
     }
 
     @Test

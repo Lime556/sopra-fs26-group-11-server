@@ -10,6 +10,7 @@ public class GameSyncDTO {
     private String diceRolledAt;
     private String tradeRequestedAt;
     private String latestTradeRequest;
+    private Integer chatMessageCount;
     private Long currentPlayerId;
     private String currentPlayerName;
     private Boolean gameFinished;
@@ -86,6 +87,14 @@ public class GameSyncDTO {
 
     public void setLatestTradeRequest(String latestTradeRequest) {
         this.latestTradeRequest = latestTradeRequest;
+    }
+
+    public Integer getChatMessageCount() {
+        return chatMessageCount;
+    }
+
+    public void setChatMessageCount(Integer chatMessageCount) {
+        this.chatMessageCount = chatMessageCount;
     }
 
     public Long getCurrentPlayerId() {

@@ -365,7 +365,7 @@ public class GameService {
         );
         chatMessages.add(message);
         game.setChatMessages(chatMessages);
-        saveChangedGame(game);
+        gameRepository.saveAndFlush(game);
     }
 
     private void appendEventLogEntry(Game game, String message) {
@@ -3000,13 +3000,7 @@ public class GameService {
         player.setDisconnectedAt(null);
         game.setPlayers(game.getPlayers());
 
-        if (statusChanged) {
-            game.incrementGameVersion();
-            gameRepository.save(game);
-        }
-        else {
-            gameRepository.save(game);
-        }
+        gameRepository.save(game);
     }
 
     private void markDisconnectedPlayersAndReplaceTimedOut(Game game) {
@@ -3017,7 +3011,7 @@ public class GameService {
         Instant now = Instant.now();
         Instant disconnectCutoff = now.minusSeconds(GAME_DISCONNECT_GRACE_SECONDS);
         boolean presenceOnlyChanged = false;
-        boolean gameStateChanged = false;
+        boolean botReplacementChanged = false;
 
         for (Player player : game.getPlayers()) {
             if (player == null) {
@@ -3046,7 +3040,7 @@ public class GameService {
             if (player.isOnline() || player.getDisconnectedAt() == null) {
                 player.setOnline(false);
                 player.setDisconnectedAt(now);
-                gameStateChanged = true;
+                presenceOnlyChanged = true;
                 continue;
             }
 
@@ -3059,11 +3053,11 @@ public class GameService {
                 player.setBot(true);
                 player.setOnline(true);
                 player.setDisconnectedAt(null);
-                gameStateChanged = true;
+                botReplacementChanged = true;
             }
         }
 
-        if (gameStateChanged) {
+        if (botReplacementChanged) {
             game.setPlayers(game.getPlayers());
             game.incrementGameVersion();
             gameRepository.save(game);
