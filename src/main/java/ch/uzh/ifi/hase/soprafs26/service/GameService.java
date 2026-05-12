@@ -188,11 +188,16 @@ public class GameService {
     }
 
     public Game moveRobber(Long gameId, String playerToken, Long playerId, Integer targetHexId, Long targetPlayerId) {
+        return moveRobber(gameId, playerToken, playerId, targetHexId, targetPlayerId, null);
+    }
+
+    public Game moveRobber(Long gameId, String playerToken, Long playerId, Integer targetHexId, Long targetPlayerId, Long expectedGameVersion) {
         User authenticatedUser = authenticate(playerToken);
     
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
     
         if (TurnPhase.DISCARD.toString().equals(game.getTurnPhase()) || hasHumanPlayersWhoMustDiscard(game)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -235,11 +240,16 @@ public class GameService {
     }
 
     public Game moveRobber(Long gameId, String playerToken, Integer targetHexId) {
+        return moveRobber(gameId, playerToken, targetHexId, null);
+    }
+
+    public Game moveRobber(Long gameId, String playerToken, Integer targetHexId, Long expectedGameVersion) {
         authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
 
         robberHelper(game, null, targetHexId, null);
 
@@ -327,6 +337,16 @@ public class GameService {
         return game;
     }
 
+    public boolean isSetupPhase(Long gameId, String playerToken) {
+        authenticate(playerToken);
+
+        Game game = gameRepository.findById(gameId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Game with id " + gameId + " was not found."));
+
+        return game.isSetupPhase();
+    }
+
     public Board getBoardById(Long gameId, String playerToken) {
         Game game = getGameById(gameId, playerToken);
         ensureBoardInitialized(game);
@@ -379,15 +399,20 @@ public class GameService {
     }
 
     public void appendGameEvent(Long gameId, String playerToken, GameEventDTO gameEventDTO) {
+        appendGameEventAndReturnGame(gameId, playerToken, gameEventDTO);
+    }
+
+    public Game appendGameEventAndReturnGame(Long gameId, String playerToken, GameEventDTO gameEventDTO) {
         authenticate(playerToken);
 
         if (gameEventDTO == null) {
-            return;
+            return getGameById(gameId, playerToken);
         }
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, gameEventDTO.getExpectedGameVersion());
 
         String sourcePlayer = gameEventDTO.getSourcePlayerId() == null
             ? "System"
@@ -417,10 +442,14 @@ public class GameService {
         }
 
         appendStructuredEvent(game, sourcePlayer, action, result);
-        saveChangedGame(game);
+        return saveChangedGame(game);
     }
 
     public Game addRoadToPlayer(Long gameId, String playerToken, Long playerId, Integer edgeId) {
+        return addRoadToPlayer(gameId, playerToken, playerId, edgeId, null);
+    }
+
+    public Game addRoadToPlayer(Long gameId, String playerToken, Long playerId, Integer edgeId, Long expectedGameVersion) {
         authenticate(playerToken);
 
         if (playerId == null || edgeId == null) {
@@ -430,6 +459,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
 
         List<Player> players = game.getPlayers();
         if (players == null || players.isEmpty()) {
@@ -494,6 +524,10 @@ public class GameService {
     }
 
     public Game addSettlementToPlayer(Long gameId, String playerToken, Long playerId, Integer intersectionId) {
+        return addSettlementToPlayer(gameId, playerToken, playerId, intersectionId, null);
+    }
+
+    public Game addSettlementToPlayer(Long gameId, String playerToken, Long playerId, Integer intersectionId, Long expectedGameVersion) {
         authenticate(playerToken);
     
         if (playerId == null || intersectionId == null) {
@@ -504,6 +538,7 @@ public class GameService {
             .orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
     
         List<Player> players = game.getPlayers();
         if (players == null || players.isEmpty()) {
@@ -572,6 +607,10 @@ public class GameService {
     }
 
     public Game upgradeSettlementToCity(Long gameId, String playerToken, Long playerId, Integer intersectionId) {
+        return upgradeSettlementToCity(gameId, playerToken, playerId, intersectionId, null);
+    }
+
+    public Game upgradeSettlementToCity(Long gameId, String playerToken, Long playerId, Integer intersectionId, Long expectedGameVersion) {
         authenticate(playerToken);
     
         if (playerId == null || intersectionId == null) {
@@ -582,6 +621,7 @@ public class GameService {
             .orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
     
         List<Player> players = game.getPlayers();
         if (players == null || players.isEmpty()) {
@@ -667,6 +707,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, tradeEvent.getExpectedGameVersion());
 
         List<Player> players = game.getPlayers();
         Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
@@ -824,13 +865,14 @@ public class GameService {
         };
     }
 
-    public void validatePlayerTradeRequest(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+    public Game validatePlayerTradeRequest(Long gameId, String playerToken, GameEventDTO tradeEvent) {
         User authenticatedUser = authenticate(playerToken);
         validatePlayerTradePayload(gameId, tradeEvent, false);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, tradeEvent.getExpectedGameVersion());
 
         List<Player> players = game.getPlayers();
         Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
@@ -861,16 +903,17 @@ public class GameService {
             }
         }
 
-        appendGameEvent(gameId, playerToken, tradeEvent);
+        return appendGameEventAndReturnGame(gameId, playerToken, tradeEvent);
     }
 
-    public void validatePlayerTradeResponse(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+    public Game validatePlayerTradeResponse(Long gameId, String playerToken, GameEventDTO tradeEvent) {
         User authenticatedUser = authenticate(playerToken);
         validatePlayerTradePayload(gameId, tradeEvent, false);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, tradeEvent.getExpectedGameVersion());
 
         List<Player> players = game.getPlayers();
         Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
@@ -905,7 +948,7 @@ public class GameService {
             }
         }
 
-        appendGameEvent(gameId, playerToken, tradeEvent);
+        return appendGameEventAndReturnGame(gameId, playerToken, tradeEvent);
     }
 
     public Game applyPlayerTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
@@ -944,6 +987,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, tradeEvent.getExpectedGameVersion());
 
         List<Player> players = game.getPlayers();
         Player source = findPlayerById(players, tradeEvent.getSourcePlayerId());
@@ -1090,6 +1134,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, request == null ? null : request.getExpectedGameVersion());
         ensureBankInitialized(game);
 
         Player currentPlayer = getCurrentPlayer(game);
@@ -1278,6 +1323,10 @@ public class GameService {
     }
 
     public Game buyDevelopmentCard(Long gameId, String playerToken, Long playerId) {
+        return buyDevelopmentCard(gameId, playerToken, playerId, null);
+    }
+
+    public Game buyDevelopmentCard(Long gameId, String playerToken, Long playerId, Long expectedGameVersion) {
         authenticate(playerToken);
 
         if (playerId == null) {
@@ -1287,6 +1336,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
 
         List<Player> players = game.getPlayers();
         if (players == null || players.isEmpty()) {
@@ -1331,11 +1381,16 @@ public class GameService {
     }
 
     public Game playKnightCard(Long gameId, String playerToken, Long playerId, Integer targetHexId, Long targetPlayerId) {
+        return playKnightCard(gameId, playerToken, playerId, targetHexId, targetPlayerId, null);
+    }
+
+    public Game playKnightCard(Long gameId, String playerToken, Long playerId, Integer targetHexId, Long targetPlayerId, Long expectedGameVersion) {
         authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
 
         Player player = requirePlayer(game, playerId);
         removeDevelopmentCardFromHand(player, CARD_KNIGHT);
@@ -1358,11 +1413,16 @@ public class GameService {
     }
 
     public Game playRoadBuildingCard(Long gameId, String playerToken, Long playerId) {
+        return playRoadBuildingCard(gameId, playerToken, playerId, null);
+    }
+
+    public Game playRoadBuildingCard(Long gameId, String playerToken, Long playerId, Long expectedGameVersion) {
         authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
 
         Player player = requirePlayer(game, playerId);
         removeDevelopmentCardFromHand(player, CARD_ROAD_BUILDING);
@@ -1374,6 +1434,10 @@ public class GameService {
     }
 
     public Game playYearOfPlentyCard(Long gameId, String playerToken, Long playerId, String resourceA, String resourceB) {
+        return playYearOfPlentyCard(gameId, playerToken, playerId, resourceA, resourceB, null);
+    }
+
+    public Game playYearOfPlentyCard(Long gameId, String playerToken, Long playerId, String resourceA, String resourceB, Long expectedGameVersion) {
         authenticate(playerToken);
 
         if (resourceA == null || resourceB == null) {
@@ -1384,6 +1448,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
         ensureBankInitialized(game);
 
         Player player = requirePlayer(game, playerId);
@@ -1405,6 +1470,10 @@ public class GameService {
     }
 
     public Game playMonopolyCard(Long gameId, String playerToken, Long playerId, String resource) {
+        return playMonopolyCard(gameId, playerToken, playerId, resource, null);
+    }
+
+    public Game playMonopolyCard(Long gameId, String playerToken, Long playerId, String resource, Long expectedGameVersion) {
         authenticate(playerToken);
 
         if (resource == null) {
@@ -1415,6 +1484,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
 
         List<Player> players = game.getPlayers();
         Player source = requirePlayer(game, playerId);
@@ -1443,11 +1513,16 @@ public class GameService {
     }
 
     public Game endTurn(Long gameId, String playerToken) {
+        return endTurn(gameId, playerToken, null);
+    }
+
+    public Game endTurn(Long gameId, String playerToken, Long expectedGameVersion) {
         authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
 
         Player currentPlayer = getCurrentPlayer(game);
         if (currentPlayer == null) {
@@ -1494,11 +1569,16 @@ public class GameService {
     }
 
     public Game placeInitialSettlement(Long gameId, String token, Long playerId, Integer intersectionId) {
+        return placeInitialSettlement(gameId, token, playerId, intersectionId, null);
+    }
+
+    public Game placeInitialSettlement(Long gameId, String token, Long playerId, Integer intersectionId, Long expectedGameVersion) {
         authenticate(token);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
         
         if (!game.isSetupPhase()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not in setup phase.");
@@ -1548,11 +1628,16 @@ public class GameService {
     }
 
     public Game placeInitialRoad(Long gameId, String token, Long playerId, Integer edgeId) {
+        return placeInitialRoad(gameId, token, playerId, edgeId, null);
+    }
+
+    public Game placeInitialRoad(Long gameId, String token, Long playerId, Integer edgeId, Long expectedGameVersion) {
         authenticate(token);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
 
         if (!game.isSetupPhase()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not in setup phase.");
@@ -2871,7 +2956,23 @@ public class GameService {
 
     private Game saveChangedGame(Game game) {
         game.incrementGameVersion();
-        return gameRepository.save(game);
+        Game savedGame = gameRepository.saveAndFlush(game);
+        return savedGame == null ? game : savedGame;
+    }
+
+    private void ensureExpectedGameVersion(Game game, Long expectedGameVersion) {
+        if (expectedGameVersion == null) {
+            return;
+        }
+
+        Long currentGameVersion = game == null ? null : game.getGameVersion();
+        long current = currentGameVersion == null ? 0L : currentGameVersion;
+        if (expectedGameVersion.longValue() != current) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Game state changed. Please refresh and retry the action."
+            );
+        }
     }
 
     private void markAuthenticatedPlayerOnline(Game game, User authenticatedUser) {
@@ -2900,7 +3001,8 @@ public class GameService {
         game.setPlayers(game.getPlayers());
 
         if (statusChanged) {
-            saveChangedGame(game);
+            game.incrementGameVersion();
+            gameRepository.save(game);
         }
         else {
             gameRepository.save(game);
@@ -2963,7 +3065,8 @@ public class GameService {
 
         if (gameStateChanged) {
             game.setPlayers(game.getPlayers());
-            saveChangedGame(game);
+            game.incrementGameVersion();
+            gameRepository.save(game);
         }
         else if (presenceOnlyChanged) {
             game.setPlayers(game.getPlayers());
@@ -2972,11 +3075,16 @@ public class GameService {
     }
 
     public Game discardResources(Long gameId, String playerToken, Map<String, Integer> discardChoices) {
+        return discardResources(gameId, playerToken, discardChoices, null);
+    }
+
+    public Game discardResources(Long gameId, String playerToken, Map<String, Integer> discardChoices, Long expectedGameVersion) {
         User authenticatedUser = authenticate(playerToken);
     
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureExpectedGameVersion(game, expectedGameVersion);
     
         ensureBankInitialized(game);
     

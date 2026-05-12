@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.transaction.TransactionSystemException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -31,6 +32,12 @@ public class GlobalExceptionAdvice extends ResponseEntityExceptionHandler {
 	public ResponseStatusException handleTransactionSystemException(Exception ex, HttpServletRequest request) {
 		log.error("Request: {} raised {}", request.getRequestURL(), ex);
 		return new ResponseStatusException(HttpStatus.CONFLICT, ex.getMessage(), ex);
+	}
+
+	@ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+	public ResponseStatusException handleOptimisticLockingFailure(Exception ex, HttpServletRequest request) {
+		log.warn("Request: {} conflicted with a newer game state", request.getRequestURL());
+		return new ResponseStatusException(HttpStatus.CONFLICT, "Game state changed. Please retry.", ex);
 	}
 
 	// Keep this one disable for all testing purposes -> it shows more detail with

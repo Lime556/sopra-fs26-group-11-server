@@ -7,6 +7,7 @@ import java.util.Map;
 public class GameGetDTO {
 
 	private Long id;
+    private Long gameVersion;
     private List<PlayerGetDTO> players;
     private BoardGetDTO board;
     private Integer currentTurnIndex;
@@ -39,6 +40,14 @@ public class GameGetDTO {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getGameVersion() {
+        return gameVersion;
+    }
+
+    public void setGameVersion(Long gameVersion) {
+        this.gameVersion = gameVersion;
     }
 
     public List<PlayerGetDTO> getPlayers() {
