@@ -53,6 +53,12 @@ public class Game{
     private Instant diceRolledAt;
 
     @Column
+    private Instant tradeRequestedAt;
+
+    @Column(columnDefinition = "CLOB")
+    private String latestTradeRequest;
+
+    @Column
     private Long gameVersion = 0L;
 
     public Instant getDiceRolledAt() {
@@ -61,6 +67,22 @@ public class Game{
 
     public void setDiceRolledAt(Instant diceRolledAt) {
         this.diceRolledAt = diceRolledAt;
+    }
+
+    public Instant getTradeRequestedAt() {
+        return tradeRequestedAt;
+    }
+
+    public void setTradeRequestedAt(Instant tradeRequestedAt) {
+        this.tradeRequestedAt = tradeRequestedAt;
+    }
+
+    public String getLatestTradeRequest() {
+        return latestTradeRequest;
+    }
+
+    public void setLatestTradeRequest(String latestTradeRequest) {
+        this.latestTradeRequest = latestTradeRequest;
     }
 
     @Column

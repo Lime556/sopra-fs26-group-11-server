@@ -395,9 +395,14 @@ public class GameService {
         String action = gameEventDTO.getType() == null ? "EVENT" : gameEventDTO.getType();
 
         String result;
-        if ("PLAYER_TRADE".equalsIgnoreCase(action)) {
+        if ("PLAYER_TRADE".equalsIgnoreCase(action) || "PLAYER_TRADE_FINALIZE".equalsIgnoreCase(action)) {
             try {
                 result = objectMapper.writeValueAsString(gameEventDTO);
+                // Update specific trade fields to allow lightweight polling detection for all trade-related actions
+                // This ensures that all clients are notified of trade-related events immediately
+                // and can update their UI (e.g., trade response status or popup visibility)
+                game.setTradeRequestedAt(java.time.Instant.now());
+                game.setLatestTradeRequest(result);
             } catch (JsonProcessingException exception) {
                 throw new IllegalStateException("Could not serialize game event.", exception);
             }

@@ -8,6 +8,8 @@ public class GameSyncDTO {
     private String gamePhase;
     private Integer diceValue;
     private String diceRolledAt;
+    private String tradeRequestedAt;
+    private String latestTradeRequest;
     private Long currentPlayerId;
     private String currentPlayerName;
     private Boolean gameFinished;
@@ -68,6 +70,22 @@ public class GameSyncDTO {
 
     public void setDiceRolledAt(String diceRolledAt) {
         this.diceRolledAt = diceRolledAt;
+    }
+
+    public String getTradeRequestedAt() {
+        return tradeRequestedAt;
+    }
+
+    public void setTradeRequestedAt(String tradeRequestedAt) {
+        this.tradeRequestedAt = tradeRequestedAt;
+    }
+
+    public String getLatestTradeRequest() {
+        return latestTradeRequest;
+    }
+
+    public void setLatestTradeRequest(String latestTradeRequest) {
+        this.latestTradeRequest = latestTradeRequest;
     }
 
     public Long getCurrentPlayerId() {
