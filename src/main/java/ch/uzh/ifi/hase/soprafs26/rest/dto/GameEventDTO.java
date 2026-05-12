@@ -22,6 +22,7 @@ public class GameEventDTO {
     private String developmentCard;
     private String secondResource;
     private String message;
+    private Long expectedGameVersion;
 
     public String getType() {
         return type;
@@ -165,5 +166,13 @@ public class GameEventDTO {
 
     public void setMessage(String message) {
         this.message = message;
+    }
+
+    public Long getExpectedGameVersion() {
+        return expectedGameVersion;
+    }
+
+    public void setExpectedGameVersion(Long expectedGameVersion) {
+        this.expectedGameVersion = expectedGameVersion;
     }
 }

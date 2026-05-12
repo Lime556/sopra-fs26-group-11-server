@@ -11,6 +11,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
+import jakarta.persistence.Version;
 
 @Entity
 @Table(name = "Game")
@@ -60,6 +61,10 @@ public class Game{
 
     @Column
     private Long gameVersion = 0L;
+
+    @Version
+    @Column
+    private Long rowVersion;
 
     public Instant getDiceRolledAt() {
         return diceRolledAt;
