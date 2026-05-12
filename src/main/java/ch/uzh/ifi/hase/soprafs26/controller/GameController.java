@@ -114,6 +114,7 @@ public class GameController {
                 "Gameplay events must use the dedicated action endpoints."
             );
         }
+        gameService.appendGameEvent(gameId, token, gameEventDTO);
         return gameEventDTO;
     }
 
