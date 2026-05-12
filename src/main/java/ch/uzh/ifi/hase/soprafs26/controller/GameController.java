@@ -690,6 +690,13 @@ public class GameController {
             : new java.util.HashMap<>(discardResources);
         sanitizedDiscardResources.remove("expectedGameVersion");
 
+        if (sanitizedDiscardResources.isEmpty()) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Discard request must include at least one resource to discard."
+            );
+        }
+
         Game game = gameService.discardResources(
             gameId,
             extractToken(authorizationHeader),
