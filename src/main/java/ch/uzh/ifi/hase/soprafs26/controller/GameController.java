@@ -150,6 +150,7 @@ public class GameController {
                 if (gameEventDTO.getTargetPlayerId() == null) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
                 }
+                gameEventDTO.setType("PLAYER_TRADE_FINALIZE"); // Set explicit type for finalization
                 gameService.applyPlayerTrade(
                     gameId,
                     token,
@@ -614,6 +615,8 @@ public class GameController {
         dto.setGamePhase(game.getGamePhase());
         dto.setDiceValue(game.getDiceValue());
         dto.setDiceRolledAt(game.getDiceRolledAt() == null ? null : game.getDiceRolledAt().toString());
+        dto.setTradeRequestedAt(game.getTradeRequestedAt() == null ? null : game.getTradeRequestedAt().toString());
+        dto.setLatestTradeRequest(game.getLatestTradeRequest());
         dto.setCurrentPlayerId(currentPlayer != null ? currentPlayer.getId() : null);
         dto.setCurrentPlayerName(currentPlayer != null ? currentPlayer.getName() : null);
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
