@@ -3,6 +3,7 @@ package ch.uzh.ifi.hase.soprafs26.controller;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -594,7 +595,7 @@ public class GameController {
     }
 
     private static boolean isGameplayEventType(String type) {
-        return type != null && GAMEPLAY_EVENT_TYPES.contains(type.trim().toUpperCase());
+        return type != null && GAMEPLAY_EVENT_TYPES.contains(type.trim().toUpperCase(Locale.ROOT));
     }
 
     @GetMapping("/games/{gameId}/dice")
