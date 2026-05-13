@@ -108,6 +108,7 @@ class TurnSystemTest {
         testGame.setBankOre(19);
 
         Mockito.when(gameRepository.save(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
         Mockito.when(gameRepository.findById(100L)).thenReturn(Optional.of(testGame));
         Mockito.when(userService.authenticate("valid-token")).thenReturn(testUser);
     }

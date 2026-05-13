@@ -41,6 +41,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 
@@ -56,9 +57,9 @@ public class GameService {
     private static final String CARD_YEAR_OF_PLENTY = "year_of_plenty";
     private static final String CARD_MONOPOLY = "monopoly";
     private static final List<String> TRADE_RESOURCES = List.of("wood", "brick", "wool", "wheat", "ore");
-    private static final long GAME_DISCONNECT_GRACE_SECONDS = 5;
+    private static final long GAME_DISCONNECT_GRACE_SECONDS = 30;
     private static final long GAME_BOT_REPLACEMENT_TIMEOUT_SECONDS = 300;
-    private static final long PRESENCE_REFRESH_SAVE_INTERVAL_SECONDS = 2;
+    private static final long PRESENCE_REFRESH_SAVE_INTERVAL_SECONDS = 20;
 
     private final GameRepository gameRepository;
     private final UserService userService;
@@ -119,13 +120,13 @@ public class GameService {
             }
         }
 
-        game = gameRepository.save(game);
+        game = gameRepository.saveAndFlush(game);
         final Long savedGameId = game.getId();
         game.getPlayers().forEach(p -> p.setGameId(savedGameId));
 
         recalculateVictoryState(game);
 
-        return gameRepository.save(game);
+        return gameRepository.saveAndFlush(game);
     }
 
     public Game updateGameState(Long gameId, String playerToken, GamePostDTO gamePostDTO) {
@@ -274,70 +275,121 @@ public class GameService {
             game.setRobberTileIndex(targetHexId);
         }
 
-        if (targetPlayerId != null && !targetPlayerId.equals(player.getId())) {
+        if (targetPlayerId != null) {
+            if (player == null || player.getId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A source player is required to steal a resource.");
+            }
+        
+            if (targetPlayerId.equals(player.getId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "You cannot steal from yourself.");
+            }
+        
             Player target = requirePlayer(game, targetPlayerId);
             Integer effectiveRobberHexId = targetHexId != null ? targetHexId : game.getRobberTileIndex();
-
+        
             if (effectiveRobberHexId == null) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Robber position is required to steal from a target player.");
             }
-
+        
             if (!canStealFromPlayer(game, effectiveRobberHexId, targetPlayerId)) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Target player has no settlements or cities adjacent to robber position on hex " + effectiveRobberHexId + ".");
             }
-
+        
             stealRandomResource(target, player);
         }
     }
 
     public Game moveRobberAndStealFromFirstAdjacentPlayer(Long gameId, String token, Long sourcePlayerId, Integer hexId) {
-        Game game = moveRobber(gameId, token, sourcePlayerId, hexId, null);
-
-        Player source = findPlayerById(game.getPlayers(), sourcePlayerId);
-        Player target = findFirstRobberStealTarget(game, sourcePlayerId, hexId);
-        if (source != null && target != null) {
-            stealRandomResource(target, source);
-            game.setPlayers(game.getPlayers());
-            recalculateVictoryState(game);
-            return saveChangedGame(game);
+        User authenticatedUser = authenticate(token);
+    
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+    
+        if (TurnPhase.DISCARD.toString().equals(game.getTurnPhase()) || hasHumanPlayersWhoMustDiscard(game)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "All required discards must be completed before moving the robber.");
         }
-
-        return game;
+    
+        Player source = requirePlayer(game, sourcePlayerId);
+        if (!source.isBot()) {
+            ensurePlayerMatchesAuthenticatedUser(source, authenticatedUser, "move the robber");
+        }
+    
+        robberHelper(game, source, hexId, null);
+    
+        Player target = findFirstRobberStealTarget(game, sourcePlayerId, hexId);
+        if (target != null) {
+            stealRandomResource(target, source);
+        }
+    
+        if (Integer.valueOf(7).equals(game.getDiceValue())) {
+            game.setRobberMovedAfterSevenRoll(true);
+            game.setTurnPhase(TurnPhase.ACTION.toString());
+        }
+    
+        game.setPlayers(game.getPlayers());
+        recalculateVictoryState(game);
+        appendStructuredEvent(
+            game,
+            describePlayer(source),
+            "ROBBER_MOVE",
+            target == null
+                ? "moved robber to hex " + hexId
+                : "moved robber to hex " + hexId + " and stole from " + describePlayer(target)
+        );
+    
+        return saveChangedGame(game);
     }
 
+    @Transactional(readOnly = true)
     public Game getGameById(Long gameId, String playerToken) {
-        User authenticatedUser = authenticate(playerToken);
-
-        Game game = gameRepository.findById(gameId)
+        authenticate(playerToken);
+    
+        return gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
+    }
 
-        ensureBoardInitialized(game);
-        ensureBankInitialized(game);
-        markAuthenticatedPlayerOnline(game, authenticatedUser);
-        markDisconnectedPlayersAndReplaceTimedOut(game);
-        return game;
+    @Transactional(readOnly = true)
+    public GameVersionDTO getGameVersion(Long gameId, String playerToken) {
+        Game game = getGameById(gameId, playerToken);
+
+        GameVersionDTO dto = new GameVersionDTO();
+        dto.setGameId(game.getId());
+        dto.setGameVersion(game.getGameVersion());
+        dto.setChatMessageCount(game.getChatMessages() == null ? 0 : game.getChatMessages().size());
+        return dto;
     }
 
     public Game heartbeatGame(Long gameId, String playerToken) {
         User authenticatedUser = authenticate(playerToken);
-
+    
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
-
+    
         Player player = findAuthenticatedPlayer(game, authenticatedUser);
         if (player == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this game.");
         }
-
-        markPlayerOnline(game, player, true);
-        markDisconnectedPlayersAndReplaceTimedOut(game);
+    
+        boolean changed = markPlayerOnline(game, player, false);
+        changed = markDisconnectedPlayersAndReplaceTimedOut(game) || changed;
+    
+        if (changed) {
+            game.setPlayers(game.getPlayers());
+            return gameRepository.saveAndFlush(game);
+        }
+    
         return game;
     }
 
+    @Transactional(readOnly = true)
     public boolean isSetupPhase(Long gameId, String playerToken) {
         authenticate(playerToken);
 
@@ -348,9 +400,9 @@ public class GameService {
         return game.isSetupPhase();
     }
 
+    @Transactional(readOnly = true)
     public Board getBoardById(Long gameId, String playerToken) {
         Game game = getGameById(gameId, playerToken);
-        ensureBoardInitialized(game);
         return game.getBoard();
     }
 
@@ -1821,6 +1873,7 @@ public class GameService {
         return index >= 0 && index < game.getBoard().getHexTiles().size();
     }
 
+    @Transactional(readOnly = true)
     public Player getCurrentPlayer(Game game) {
         if (game == null || game.getPlayers() == null || game.getPlayers().isEmpty()) {
             return null;
@@ -2799,161 +2852,6 @@ public class GameService {
         return false;
     }
 
-    private List<Integer> getIntersectionsForHex(Integer hexId) {
-        List<Integer> intersectionIds = new ArrayList<>();
-        if (hexId == null || hexId < 1 || hexId > 19) {
-            return intersectionIds;
-        }
-
-        // Board constants from entity.Board
-        final double HEX_SIZE = 58.0;
-        final double SQRT_3 = Math.sqrt(3.0);
-        final double ORIGIN_X = 150.0;
-        final double ORIGIN_Y = 130.0;
-        final double HEX_SPACING_X = HEX_SIZE * SQRT_3;
-        final double HEX_SPACING_Y = HEX_SIZE * 1.5;
-
-        // Get hex center coordinates
-        double[] boardCoordinates = getBoardCoordinatesForHex(hexId);
-        if (boardCoordinates == null) {
-            return intersectionIds;
-        }
-
-        double centerX = ORIGIN_X + boardCoordinates[0] * HEX_SPACING_X;
-        double centerY = ORIGIN_Y + boardCoordinates[1] * HEX_SPACING_Y;
-
-        // Get the 6 corner points for this hex
-        for (int cornerIndex = 0; cornerIndex < 6; cornerIndex++) {
-            double angle = (Math.PI / 3.0) * cornerIndex + Math.PI / 6.0;
-            double cornerX = centerX + HEX_SIZE * Math.cos(angle);
-            double cornerY = centerY + HEX_SIZE * Math.sin(angle);
-
-            // Format point key same as Board does
-            String cornerKey = Math.round(cornerX) + ":" + Math.round(cornerY);
-
-            // Map corner key to intersection ID
-            // This is derived from the Board's createDefaultIntersectionsAndEdges logic
-            // We'll iterate through all hexes and find the intersection ID for this corner
-            Integer intersectionId = getIntersectionIdForCornerKey(cornerKey);
-            if (intersectionId != null) {
-                intersectionIds.add(intersectionId);
-            }
-        }
-
-        return intersectionIds;
-    }
-
-    private double[] getBoardCoordinatesForHex(Integer hexId) {
-        return switch (hexId) {
-            case 1 -> new double[] {1, 0};
-            case 2 -> new double[] {2, 0};
-            case 3 -> new double[] {3, 0};
-            case 4 -> new double[] {0.5, 1};
-            case 5 -> new double[] {1.5, 1};
-            case 6 -> new double[] {2.5, 1};
-            case 7 -> new double[] {3.5, 1};
-            case 8 -> new double[] {0, 2};
-            case 9 -> new double[] {1, 2};
-            case 10 -> new double[] {2, 2};
-            case 11 -> new double[] {3, 2};
-            case 12 -> new double[] {4, 2};
-            case 13 -> new double[] {0.5, 3};
-            case 14 -> new double[] {1.5, 3};
-            case 15 -> new double[] {2.5, 3};
-            case 16 -> new double[] {3.5, 3};
-            case 17 -> new double[] {1, 4};
-            case 18 -> new double[] {2, 4};
-            case 19 -> new double[] {3, 4};
-            default -> null;
-        };
-    }
-
-    private Integer getIntersectionIdForCornerKey(String cornerKey) {
-        // This approach ensures consistency with Board.createDefaultIntersectionsAndEdges()
-
-        Map<String, Integer> cornerKeyToIntersectionId = new HashMap<>();
-
-        // Board generates intersections by iterating through hexes 1-19
-        // For each hex, it gets 6 corners and creates/reuses intersections
-        // The corner key is formatPoint(x, y) = roundX + ":" + roundY
-
-        // These values are computed from the board geometry equations:
-        // boardCoordinatesForHex(hexId), getCornerPoint(centerX, centerY, cornerIndex)
-        // HEX_SIZE = 58.0, SQRT_3 ≈ 1.732, ORIGIN_X = 150, ORIGIN_Y = 130
-        // HEX_SPACING_X = 100.33, HEX_SPACING_Y = 87
-
-        // Row 0 (Top): hexes 1-3
-        // Hex 1 (1,0): center ~(250, 130)
-        // Hex 2 (2,0): center ~(350, 130) 
-        // Hex 3 (3,0): center ~(450, 130)
-        
-        // Top intersections
-        cornerKeyToIntersectionId.put("281:104", 0);     // Hex 1 top-right = Hex 2 top-left
-        cornerKeyToIntersectionId.put("339:104", 1);     // Hex 2 top-right = Hex 3 top-left
-        cornerKeyToIntersectionId.put("397:104", 2);     // Hex 3 top-right
-        cornerKeyToIntersectionId.put("455:104", 3);
-
-        cornerKeyToIntersectionId.put("252:145", 4);     // Left side of row 0
-        cornerKeyToIntersectionId.put("310:145", 5);
-        cornerKeyToIntersectionId.put("368:145", 6);
-        cornerKeyToIntersectionId.put("426:145", 7);
-        cornerKeyToIntersectionId.put("484:145", 8);
-
-        cornerKeyToIntersectionId.put("223:186", 9);     // Row 1 left
-        cornerKeyToIntersectionId.put("281:186", 10);
-        cornerKeyToIntersectionId.put("339:186", 11);
-        cornerKeyToIntersectionId.put("397:186", 12);
-        cornerKeyToIntersectionId.put("455:186", 13);
-        cornerKeyToIntersectionId.put("513:186", 14);
-
-        cornerKeyToIntersectionId.put("194:227", 15);    // Between rows 1 and 2
-        cornerKeyToIntersectionId.put("252:227", 16);
-        cornerKeyToIntersectionId.put("310:227", 17);
-        cornerKeyToIntersectionId.put("368:227", 18);
-        cornerKeyToIntersectionId.put("426:227", 19);
-        cornerKeyToIntersectionId.put("484:227", 20);
-        cornerKeyToIntersectionId.put("542:227", 21);
-
-        cornerKeyToIntersectionId.put("165:268", 22);    // Row 2 (middle)
-        cornerKeyToIntersectionId.put("223:268", 23);
-        cornerKeyToIntersectionId.put("281:268", 24);
-        cornerKeyToIntersectionId.put("339:268", 25);
-        cornerKeyToIntersectionId.put("397:268", 26);
-        cornerKeyToIntersectionId.put("455:268", 27);
-        cornerKeyToIntersectionId.put("513:268", 28);
-        cornerKeyToIntersectionId.put("571:268", 29);
-
-        cornerKeyToIntersectionId.put("194:309", 30);    // Between rows 2 and 3
-        cornerKeyToIntersectionId.put("252:309", 31);
-        cornerKeyToIntersectionId.put("310:309", 32);
-        cornerKeyToIntersectionId.put("368:309", 33);
-        cornerKeyToIntersectionId.put("426:309", 34);
-        cornerKeyToIntersectionId.put("484:309", 35);
-        cornerKeyToIntersectionId.put("542:309", 36);
-
-        cornerKeyToIntersectionId.put("223:350", 37);    // Row 3
-        cornerKeyToIntersectionId.put("281:350", 38);
-        cornerKeyToIntersectionId.put("339:350", 39);
-        cornerKeyToIntersectionId.put("397:350", 40);
-        cornerKeyToIntersectionId.put("455:350", 41);
-        cornerKeyToIntersectionId.put("513:350", 42);
-
-        cornerKeyToIntersectionId.put("252:391", 43);    // Between rows 3 and 4
-        cornerKeyToIntersectionId.put("310:391", 44);
-        cornerKeyToIntersectionId.put("368:391", 45);
-        cornerKeyToIntersectionId.put("426:391", 46);
-        cornerKeyToIntersectionId.put("484:391", 47);
-
-        cornerKeyToIntersectionId.put("281:432", 48);    // Row 4 (bottom)
-        cornerKeyToIntersectionId.put("339:432", 49);
-        cornerKeyToIntersectionId.put("397:432", 50);
-        cornerKeyToIntersectionId.put("455:432", 51);
-
-        cornerKeyToIntersectionId.put("310:473", 52);    // Bottom
-        cornerKeyToIntersectionId.put("368:473", 53);
-
-        return cornerKeyToIntersectionId.get(cornerKey);
-    }
 
     private Game saveChangedGame(Game game) {
         game.incrementGameVersion();
@@ -2976,49 +2874,46 @@ public class GameService {
         }
     }
 
-    private void markAuthenticatedPlayerOnline(Game game, User authenticatedUser) {
-        Player player = findAuthenticatedPlayer(game, authenticatedUser);
-        markPlayerOnline(game, player, false);
-    }
 
-    private void markPlayerOnline(Game game, Player player, boolean forcePresenceSave) {
+    private boolean markPlayerOnline(Game game, Player player, boolean forcePresenceSave) {
         if (game == null || player == null || player.isBot()) {
-            return;
+            return false;
         }
-
+    
         Instant now = Instant.now();
+    
         boolean statusChanged = !player.isOnline() || player.getDisconnectedAt() != null;
-        boolean shouldRefreshTimestamp = forcePresenceSave
+        boolean shouldRefreshTimestamp =
+                forcePresenceSave
                 || player.getLastSeenAt() == null
                 || player.getLastSeenAt().isBefore(now.minusSeconds(PRESENCE_REFRESH_SAVE_INTERVAL_SECONDS));
-
+    
         if (!statusChanged && !shouldRefreshTimestamp) {
-            return;
+            return false;
         }
-
+    
         player.setOnline(true);
         player.setLastSeenAt(now);
         player.setDisconnectedAt(null);
-        game.setPlayers(game.getPlayers());
-
-        gameRepository.save(game);
+    
+        return true;
     }
 
-    private void markDisconnectedPlayersAndReplaceTimedOut(Game game) {
+    private boolean markDisconnectedPlayersAndReplaceTimedOut(Game game) {
         if (game == null || game.getPlayers() == null || game.getPlayers().isEmpty()) {
-            return;
+            return false;
         }
-
+    
         Instant now = Instant.now();
         Instant disconnectCutoff = now.minusSeconds(GAME_DISCONNECT_GRACE_SECONDS);
         boolean presenceOnlyChanged = false;
         boolean botReplacementChanged = false;
-
+    
         for (Player player : game.getPlayers()) {
             if (player == null) {
                 continue;
             }
-
+    
             if (player.isBot()) {
                 if (!player.isOnline()) {
                     player.setOnline(true);
@@ -3026,47 +2921,45 @@ public class GameService {
                 }
                 continue;
             }
-
+    
             if (player.getLastSeenAt() == null) {
                 player.setOnline(true);
                 player.setLastSeenAt(now);
                 presenceOnlyChanged = true;
                 continue;
             }
-
+    
             if (!player.getLastSeenAt().isBefore(disconnectCutoff)) {
                 continue;
             }
-
+    
             if (player.isOnline() || player.getDisconnectedAt() == null) {
                 player.setOnline(false);
                 player.setDisconnectedAt(now);
                 presenceOnlyChanged = true;
                 continue;
             }
-
+    
             if (!player.getDisconnectedAt().plusSeconds(GAME_BOT_REPLACEMENT_TIMEOUT_SECONDS).isAfter(now)) {
                 String previousName = player.getName() == null || player.getName().isBlank()
                         ? "Player"
                         : player.getName();
+    
                 player.setName(previousName + " replacement Bot");
                 player.setUser(null);
                 player.setBot(true);
                 player.setOnline(true);
                 player.setDisconnectedAt(null);
+    
                 botReplacementChanged = true;
             }
         }
-
+    
         if (botReplacementChanged) {
-            game.setPlayers(game.getPlayers());
             game.incrementGameVersion();
-            gameRepository.save(game);
         }
-        else if (presenceOnlyChanged) {
-            game.setPlayers(game.getPlayers());
-            gameRepository.save(game);
-        }
+    
+        return botReplacementChanged || presenceOnlyChanged;
     }
 
     public Game discardResources(Long gameId, String playerToken, Map<String, Integer> discardChoices) {
@@ -3111,6 +3004,7 @@ public class GameService {
         return saveChangedGame(game);
     }
 
+    @Transactional(readOnly = true)
     public Player getAuthenticatedPlayer(Game game, String playerToken) {
         User authenticatedUser = authenticate(playerToken);
         return findAuthenticatedPlayer(game, authenticatedUser);
