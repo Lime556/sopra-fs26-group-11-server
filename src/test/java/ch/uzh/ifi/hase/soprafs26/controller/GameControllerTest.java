@@ -5,6 +5,7 @@ import java.util.List;
 import static org.hamcrest.Matchers.is;
 import org.junit.jupiter.api.Test;
 import static org.mockito.BDDMockito.given;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpStatus;
@@ -186,7 +187,7 @@ class GameControllerTest {
     }
 
     @Test
-    public void heartbeatGame_validRequest_success() throws Exception {
+    void heartbeatGame_validRequest_success() throws Exception {
         Game game = new Game();
         game.setId(1L);
 
@@ -654,5 +655,536 @@ class GameControllerTest {
 
         mockMvc.perform(postRequest)
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void createGame_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setGameVersion(1L);
+
+        given(gameService.createGame("token-123", null)).willReturn(game);
+
+        MockHttpServletRequestBuilder postRequest = post("/games")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id", is(1)))
+                .andExpect(jsonPath("$.gameVersion", is(1)));
+    }
+
+    @Test
+    void getGameById_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setCurrentTurnIndex(0);
+
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+
+        MockHttpServletRequestBuilder getRequest = get("/games/1")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(1)))
+                .andExpect(jsonPath("$.currentTurnIndex", is(0)));
+    }
+
+    @Test
+    void getGameVersion_validRequest_success() throws Exception {
+        ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO versionDTO = new ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO();
+        versionDTO.setGameVersion(5L);
+
+        given(gameService.getGameVersion(1L, "token-123")).willReturn(versionDTO);
+
+        MockHttpServletRequestBuilder getRequest = get("/games/1/version")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gameVersion", is(5)));
+    }
+
+    @Test
+    void updateGame_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.updateGameState(1L, "token-123", null)).willReturn(game);
+
+        MockHttpServletRequestBuilder putRequest = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/games/1")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(putRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void publishGameChatMessage_validMessage_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+
+        String body = """
+            {
+              "playerId": 10,
+              "playerName": "Player1",
+              "text": "Hello everyone!"
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/chat")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isAccepted());
+    }
+
+    @Test
+    void publishGameChatMessage_emptyMessage_isIgnored() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+
+        String body = """
+            {
+              "playerId": 10,
+              "playerName": "Player1",
+              "text": ""
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/chat")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isAccepted());
+    }
+
+    @Test
+    void getBoardById_validRequest_success() throws Exception {
+        ch.uzh.ifi.hase.soprafs26.entity.Board board = new ch.uzh.ifi.hase.soprafs26.entity.Board();
+        Game game = new Game();
+        game.setId(1L);
+        game.setBoard(board);
+
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+        given(gameService.getBoardById(1L, "token-123")).willReturn(board);
+
+        MockHttpServletRequestBuilder getRequest = get("/games/1/board")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void buildCity_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.upgradeSettlementToCity(1L, "token-123", 10L, 5, null))
+                .willReturn(game);
+
+        String body = """
+            {
+              "playerId": 10,
+              "intersectionId": 5
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/build-city")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void bankTrade_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.applyBankTrade(org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq("token-123"), org.mockito.ArgumentMatchers.any()))
+                .willReturn(game);
+
+        String body = """
+            {
+              "type": "BANK_TRADE",
+              "sourcePlayerId": 10,
+              "giveResource": "WOOD",
+              "receiveResource": "BRICK"
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/bank-trade")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void requestPlayerTrade_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.validatePlayerTradeRequest(org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq("token-123"), org.mockito.ArgumentMatchers.any()))
+                .willReturn(game);
+
+        String body = """
+            {
+              "sourcePlayerId": 10,
+              "targetPlayerId": 11,
+              "giveResource": "WOOD",
+              "receiveResource": "BRICK"
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/player-trade/request")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void respondPlayerTrade_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.validatePlayerTradeResponse(org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq("token-123"), org.mockito.ArgumentMatchers.any()))
+                .willReturn(game);
+
+        String body = """
+            {
+              "sourcePlayerId": 10,
+              "targetPlayerId": 11,
+              "accepted": true
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/player-trade/respond")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void finalizePlayerTrade_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.applyPlayerTrade(org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq("token-123"), org.mockito.ArgumentMatchers.any()))
+                .willReturn(game);
+
+        String body = """
+            {
+              "sourcePlayerId": 10,
+              "targetPlayerId": 11
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/player-trade/finalize")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void buyDevelopmentCard_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.buyDevelopmentCard(1L, "token-123", 10L, null))
+                .willReturn(game);
+
+        String body = """
+            {
+              "sourcePlayerId": 10
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/development-card/buy")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void playKnightCard_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.playKnightCard(1L, "token-123", 10L, 12, 11L, null))
+                .willReturn(game);
+
+        String body = """
+            {
+              "sourcePlayerId": 10,
+              "hexId": 12,
+              "targetPlayerId": 11
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/development-card/play-knight")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void playRoadBuildingCard_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.playRoadBuildingCard(1L, "token-123", 10L, null))
+                .willReturn(game);
+
+        String body = """
+            {
+              "sourcePlayerId": 10
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/development-card/play-road-building")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void playYearOfPlentyCard_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.playYearOfPlentyCard(1L, "token-123", 10L, "WOOD", "BRICK", null))
+                .willReturn(game);
+
+        String body = """
+            {
+              "sourcePlayerId": 10,
+              "giveResource": "WOOD",
+              "secondResource": "BRICK"
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/development-card/play-year-of-plenty")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void playMonopolyCard_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.playMonopolyCard(1L, "token-123", 10L, "WOOD", null))
+                .willReturn(game);
+
+        String body = """
+            {
+              "sourcePlayerId": 10,
+              "giveResource": "WOOD"
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/development-card/play-monopoly")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getGameSync_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setGameVersion(2L);
+        game.setCurrentTurnIndex(1);
+        game.setTurnPhase(TurnPhase.ACTION.toString());
+        game.setGamePhase("MAIN");
+        game.setDiceValue(7);
+
+        Player currentPlayer = new Player();
+        currentPlayer.setId(10L);
+        currentPlayer.setName("Player1");
+
+        game.setPlayers(List.of(currentPlayer));
+
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+        given(gameService.getCurrentPlayer(game)).willReturn(currentPlayer);
+        given(gameService.getAuthenticatedPlayer(game, "token-123")).willReturn(currentPlayer);
+
+        MockHttpServletRequestBuilder getRequest = get("/games/1/sync")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gameId", is(1)))
+                .andExpect(jsonPath("$.gameVersion", is(2)))
+                .andExpect(jsonPath("$.currentTurnIndex", is(1)))
+                .andExpect(jsonPath("$.turnPhase", is("ACTION")));
+    }
+
+    @Test
+    void discardResources_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.discardResources(org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq("token-123"), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .willReturn(game);
+
+        String body = """
+            {
+              "wood": 1,
+              "brick": 2
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/discard-resources")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void discardResources_emptyResources_returnsBadRequest() throws Exception {
+        String body = """
+            {
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/discard-resources")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void executeBotFallbackAction_validRequest_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(botActionExecutorService.executeFallbackAction(1L, "token-123")).willReturn(game);
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/bot/fallback")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void extractToken_withBearerPrefix_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.getGameById(1L, "my-token-value")).willReturn(game);
+
+        MockHttpServletRequestBuilder getRequest = get("/games/1")
+                .header("Authorization", "Bearer my-token-value");
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void extractToken_withoutBearerPrefix_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.getGameById(1L, "plain-token")).willReturn(game);
+
+        MockHttpServletRequestBuilder getRequest = get("/games/1")
+                .header("Authorization", "plain-token");
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void publishGameEvent_validNonGameplayEvent_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+
+        String body = """
+            {
+              "type": "CUSTOM_EVENT",
+              "sourcePlayerId": 10
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/events")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isAccepted());
+    }
+
+    @Test
+    void publishGameEvent_nullType_success() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+
+        String body = """
+            {
+              "sourcePlayerId": 10
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/events")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isAccepted());
     }
 }
