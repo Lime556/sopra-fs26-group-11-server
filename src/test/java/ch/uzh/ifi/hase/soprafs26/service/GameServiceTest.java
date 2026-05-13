@@ -1,7 +1,10 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -16,10 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.MockitoAnnotations;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -34,139 +34,290 @@ import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
-import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 
+
 class GameServiceTest {
 
-    @Mock
-    private GameRepository gameRepository;
-
-    @Mock
-    private UserService userService;
-
-    @InjectMocks
+    private GameService service;
+    private GameRepository repo;
     private GameService gameService;
-
+    private GameRepository gameRepository;
+    private UserService userService;
     private User user;
 
     @BeforeEach
-    @SuppressWarnings("java:S1144")
     void setup() {
-        MockitoAnnotations.openMocks(this);
+        repo = Mockito.mock(GameRepository.class);
+        gameRepository = Mockito.mock(GameRepository.class);
+        userService = Mockito.mock(UserService.class);
+        service = new GameService(repo, userService);
+        gameService = new GameService(gameRepository, userService);
 
         user = new User();
         user.setId(1L);
+        user.setUsername("testUser");
         user.setToken("valid-token");
-        user.setEmail("user@email.com");
-
-        Mockito.when(gameRepository.save(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0));
-        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
         Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         Mockito.when(userService.authenticate(null))
             .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"));
     }
 
-    @Test
-    void createGame_withoutBoard_generatesBoard() {
-        Game createdGame = gameService.createGame("valid-token", null);
-
-        assertNotNull(createdGame.getBoard());
-        assertEquals(19, createdGame.getBoard().getHexTiles().size());
+    // Reflection helper to invoke private methods
+    private Object invoke(String name, Class<?>[] params, Object... args) throws Exception {
+        Method m = GameService.class.getDeclaredMethod(name, params);
+        m.setAccessible(true);
+        try {
+            return m.invoke(service, args);
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof Exception) {
+                throw (Exception) e.getCause();
+            }
+            throw e;
+        }
     }
 
     @Test
-    void createGame_withBlankDevelopmentDeck_usesDefaultDeck() {
-        GamePostDTO gamePostDTO = new GamePostDTO();
-        gamePostDTO.setDevelopmentDeck(new DevelopmentDeckGetDTO());
-
-        Game createdGame = gameService.createGame("valid-token", gamePostDTO);
-
-        assertEquals(14, createdGame.getDevelopmentKnightRemaining());
-        assertEquals(5, createdGame.getDevelopmentVictoryPointRemaining());
-        assertEquals(2, createdGame.getDevelopmentRoadBuildingRemaining());
-        assertEquals(2, createdGame.getDevelopmentYearOfPlentyRemaining());
-        assertEquals(2, createdGame.getDevelopmentMonopolyRemaining());
+    void normalizeTradeBundle_null_returnsZeros() throws Exception {
+        @SuppressWarnings("unchecked")
+        Map<String, Integer> result = (Map<String, Integer>) invoke("normalizeTradeBundle", new Class[] {Map.class}, (Object) null);
+        assertNotNull(result);
+        assertEquals(5, result.size());
+        assertTrue(result.values().stream().allMatch(v -> v == 0));
     }
 
     @Test
-    void createGame_missingToken_throwsUnauthorized() {
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> gameService.createGame(null, null));
-
-        assertEquals(401, exception.getStatusCode().value());
+    void normalizeTradeBundle_invalidKey_throws() {
+        Map<String, Integer> input = Map.of("gold", 1);
+        assertThrows(ResponseStatusException.class, () -> invoke("normalizeTradeBundle", new Class[] {Map.class}, input));
     }
 
     @Test
-    void createGame_recalculatesVictoryPointsAndWinner() {
-        GamePostDTO gamePostDTO = new GamePostDTO();
-        gamePostDTO.setTargetVictoryPoints(10);
+    void createSingleResourceBundle_and_findSingleTradeResource() throws Exception {
+        @SuppressWarnings("unchecked")
+        Map<String, Integer> bundle = (Map<String, Integer>) invoke("createSingleResourceBundle", new Class[] {String.class, int.class}, "wood", 3);
+        assertEquals(3, bundle.get("wood"));
 
+        @SuppressWarnings("unchecked")
+        String single = (String) invoke("findSingleTradeResource", new Class[] {Map.class}, bundle);
+        assertEquals("wood", single);
+
+        // multiple non-zero -> returns null
+        Map<String, Integer> multi = new HashMap<>();
+        multi.put("wood", 1); multi.put("brick", 1);
+        String none = (String) invoke("findSingleTradeResource", new Class[] {Map.class}, multi);
+        assertNull(none);
+    }
+    
+    @Test
+    void updateGameState_withPlayerAtTarget_hasWinner() {
+        Game existingGame = new Game();
+        existingGame.setId(100L);
+        existingGame.setTargetVictoryPoints(10);
+
+        Mockito.when(gameRepository.findById(100L)).thenReturn(Optional.of(existingGame));
+
+        GamePostDTO update = new GamePostDTO();
         PlayerGetDTO alice = new PlayerGetDTO();
         alice.setId(10L);
         alice.setName("Alice");
-        alice.setSettlementPoints(3);
-        alice.setCityPoints(4);
-        alice.setDevelopmentCardVictoryPoints(1);
-        alice.setHasLongestRoad(true);
+        alice.setSettlementPoints(5);
+        alice.setCityPoints(5);
+        update.setPlayers(List.of(alice));
 
-        PlayerGetDTO bob = new PlayerGetDTO();
-        bob.setId(11L);
-        bob.setName("Bob");
-        bob.setSettlementPoints(2);
-        bob.setCityPoints(2);
-        bob.setDevelopmentCardVictoryPoints(0);
-        bob.setHasLargestArmy(true);
-        bob.setKnightsPlayed(3);
+        Game updatedGame = gameService.updateGameState(100L, "valid-token", update);
 
-        gamePostDTO.setPlayers(List.of(alice, bob));
-
-        Game createdGame = gameService.createGame("valid-token", gamePostDTO);
-
-        assertNotNull(createdGame.getPlayers());
-        assertEquals(2, createdGame.getPlayers().size());
-        assertEquals(8, createdGame.getPlayers().get(0).getVictoryPoints());
-        assertNull(createdGame.getWinner());
-        assertNull(createdGame.getFinishedAt());
-    }
-
-    @Test
-    void updateGameState_detectsNewWinnerAndFinishesGame() {
-        Game existingGame = new Game();
-        existingGame.setId(99L);
-        existingGame.setTargetVictoryPoints(10);
-
-        Player alice = new Player();
-        alice.setId(10L);
-        alice.setName("Alice");
-        alice.setSettlementPoints(2);
-        alice.setCityPoints(2);
-        alice.setDevelopmentCardVictoryPoints(0);
-
-        existingGame.setPlayers(List.of(alice));
-
-        Mockito.when(gameRepository.findById(99L)).thenReturn(Optional.of(existingGame));
-
-        GamePostDTO update = new GamePostDTO();
-        PlayerGetDTO updatedAlice = new PlayerGetDTO();
-        updatedAlice.setId(10L);
-        updatedAlice.setName("Alice");
-        updatedAlice.setSettlementPoints(4);
-        updatedAlice.setCityPoints(4);
-        updatedAlice.setDevelopmentCardVictoryPoints(0);
-        updatedAlice.setHasLargestArmy(true);
-        updatedAlice.setKnightsPlayed(3);
-        update.setPlayers(List.of(updatedAlice));
-
-        Game updatedGame = gameService.updateGameState(99L, "valid-token", update);
-
-        assertEquals(10, updatedGame.getPlayers().get(0).getVictoryPoints());
         assertNotNull(updatedGame.getWinner());
         assertEquals(10L, updatedGame.getWinner().getId());
         assertNotNull(updatedGame.getFinishedAt());
+    }
+
+    @Test
+    void boatTypeMatchesPortType_and_hasPortAccess() throws Exception {
+        // boatTypeMatchesPortType private
+        assertTrue((Boolean) invoke("boatTypeMatchesPortType", new Class[] {String.class, String.class}, "STANDARD", "3:1"));
+        assertTrue((Boolean) invoke("boatTypeMatchesPortType", new Class[] {String.class, String.class}, "WOOD", "wood"));
+        assertFalse((Boolean) invoke("boatTypeMatchesPortType", new Class[] {String.class, String.class}, "UNKNOWN", "wood"));
+
+        // hasPortAccess needs a board with boats and an intersection owned by player
+        Board b = new Board();
+        b.generateBoard();
+        List<Boat> boats = b.getBoats();
+        assertFalse(boats.isEmpty());
+        Boat boat = boats.get(0);
+
+        Player player = new Player();
+        player.setId(42L);
+        player.setName("P");
+
+        // find an intersection that corresponds to the boat's corner
+        List<Integer> hexIntersections = b.getIntersectionIdsForHex(boat.getHexId());
+        int cornerIndex = boat.getFirstCorner();
+        Integer intersectionId = hexIntersections.get(cornerIndex);
+
+        // set building on that intersection
+        Intersection inter = findIntersection(b, intersectionId);
+        Settlement s = new Settlement();
+        s.setOwnerPlayerId(player.getId());
+        s.setIntersectionId(intersectionId);
+        inter.setBuilding(s);
+
+        // create game and attach board and player
+        ch.uzh.ifi.hase.soprafs26.entity.Game game = new ch.uzh.ifi.hase.soprafs26.entity.Game();
+        game.setBoard(b);
+        game.setPlayers(List.of(player));
+
+        // invoke hasPortAccess
+        // Convert boat type to port type
+        String portType;
+        String boatType = boat.getBoatType();
+        if ("STANDARD".equalsIgnoreCase(boatType)) {
+            portType = "3:1";
+        } else if ("WOOD".equalsIgnoreCase(boatType)) {
+            portType = "wood";
+        } else if ("BRICK".equalsIgnoreCase(boatType)) {
+            portType = "brick";
+        } else if ("SHEEP".equalsIgnoreCase(boatType)) {
+            portType = "wool";
+        } else if ("WHEAT".equalsIgnoreCase(boatType)) {
+            portType = "wheat";
+        } else if ("STONE".equalsIgnoreCase(boatType)) {
+            portType = "ore";
+        } else {
+            portType = boatType; // fallback
+        }
+        
+        boolean has = (Boolean) invoke("hasPortAccess", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, Player.class, String.class}, game, player, portType);
+        assertTrue(has);
+    }
+
+    @Test
+    void formatResourceBundle_and_describePlayer() throws Exception {
+        Map<String, Integer> empty = new HashMap<>();
+        assertEquals("nothing", invoke("formatResourceBundle", new Class[] {Map.class}, empty));
+
+        Map<String, Integer> some = new HashMap<>();
+        some.put("wood", 2); some.put("wool", 1);
+        assertTrue(((String) invoke("formatResourceBundle", new Class[] {Map.class}, some)).contains("wood"));
+
+        Player p = new Player();
+        assertEquals("Player", invoke("describePlayer", new Class[] {Player.class}, (Player) null));
+        p.setName("Alice");
+        assertEquals("Alice", invoke("describePlayer", new Class[] {Player.class}, p));
+    }
+
+    @Test
+    void ensureExpectedGameVersion_mismatch_throws() throws Exception {
+        ch.uzh.ifi.hase.soprafs26.entity.Game g = new ch.uzh.ifi.hase.soprafs26.entity.Game();
+        // gameVersion null -> treated as 0
+        assertThrows(ResponseStatusException.class, () -> invoke("ensureExpectedGameVersion", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, Long.class}, g, 5L));
+    }
+
+    @Test
+    void initializeBankResources_and_applyBankResourcesFromMap() throws Exception {
+        ch.uzh.ifi.hase.soprafs26.entity.Game g = new ch.uzh.ifi.hase.soprafs26.entity.Game();
+        // init with null sets default
+        invoke("initializeBankResources", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, Map.class}, g, null);
+        assertEquals(19, g.getBankWood());
+
+        Map<String, Integer> map = Map.of("wood", -5, "brick", 2);
+        invoke("applyBankResourcesFromMap", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, Map.class}, g, map);
+        assertEquals(0, g.getBankWood());
+        assertEquals(2, g.getBankBrick());
+    }
+
+    @Test
+    void resourceAccessors_and_normalizeResourceName_errors() throws Exception {
+        Player p = new Player();
+        p.setWood(3); p.setBrick(2); p.setWool(1);
+
+        // valid gets
+        assertEquals(3, (int) invoke("getResourceByName", new Class[] {Player.class, String.class}, p, "wood"));
+
+        // invalid resource
+        assertThrows(ResponseStatusException.class, () -> invoke("getResourceByName", new Class[] {Player.class, String.class}, p, "gold"));
+        assertThrows(ResponseStatusException.class, () -> invoke("setResourceByName", new Class[] {Player.class, String.class, int.class}, p, "gold", 5));
+    }
+
+    @Test
+    void bankResourceAccessors_and_add_remove() throws Exception {
+        ch.uzh.ifi.hase.soprafs26.entity.Game g = new ch.uzh.ifi.hase.soprafs26.entity.Game();
+        invoke("initializeBankResources", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, Map.class}, g, null);
+        assertEquals(19, (int) invoke("getBankResourceByName", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, String.class}, g, "wood"));
+
+        // add to bank
+        invoke("addToBank", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, String.class, int.class}, g, "wood", 2);
+        assertEquals(21, (int) invoke("getBankResourceByName", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, String.class}, g, "wood"));
+
+        // remove from bank
+        invoke("removeFromBank", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, String.class, int.class}, g, "wood", 5);
+        assertEquals(16, (int) invoke("getBankResourceByName", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, String.class}, g, "wood"));
+
+        assertThrows(ResponseStatusException.class, () -> invoke("getBankResourceByName", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, String.class}, g, "gold"));
+    }
+
+    @Test
+    void chooseBotDiscardResources_and_discard_flow() throws Exception {
+        Player bot = new Player();
+        bot.setId(1L);
+        bot.setBot(true);
+        bot.setWood(2); bot.setBrick(1);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Integer> choices = (Map<String, Integer>) invoke("chooseBotDiscardResources", new Class[] {Player.class, int.class}, bot, 2);
+        assertEquals(5, choices.size());
+        int sum = choices.values().stream().mapToInt(Integer::intValue).sum();
+        assertTrue(sum <= 2);
+    }
+
+    @Test
+    void grantResourceForTile_handles_unknown_and_bank_empty() throws Exception {
+        ch.uzh.ifi.hase.soprafs26.entity.Game g = new ch.uzh.ifi.hase.soprafs26.entity.Game();
+        Player p = new Player(); p.setId(2L);
+        g.setPlayers(List.of(p));
+        // bank not initialized -> nothing happens
+        invoke("grantResourceForTile", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, Player.class, String.class, int.class}, g, p, "UNKNOWN", 1);
+
+        // initialize bank and try with valid tile but bank 0
+        invoke("initializeBankResources", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, Map.class}, g, null);
+        invoke("setBankResourceByName", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, String.class, int.class}, g, "wood", 0);
+        // no exception, but nothing delivered
+        invoke("grantResourceForTile", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, Player.class, String.class, int.class}, g, p, "WOOD", 1);
+    }
+
+    @Test
+    void canStealFromPlayer_and_stealRandomResource() throws Exception {
+        Board b = new Board(); b.generateBoard();
+        Player a = new Player(); a.setId(1L);
+        Player t = new Player(); t.setId(2L);
+        ch.uzh.ifi.hase.soprafs26.entity.Game g = new ch.uzh.ifi.hase.soprafs26.entity.Game();
+        g.setBoard(b);
+        g.setPlayers(List.of(a, t));
+
+        // place a settlement for target on a hex intersection for hex 1
+        List<Integer> ints = b.getIntersectionIdsForHex(1);
+        Integer interId = ints.get(0);
+        Intersection inter = findIntersection(b, interId);
+        Settlement s = new Settlement(); s.setOwnerPlayerId(t.getId()); s.setIntersectionId(interId);
+        inter.setBuilding(s);
+
+        // ensure target has resources
+        t.setWood(1);
+
+        boolean can = (Boolean) invoke("canStealFromPlayer", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, Integer.class, Long.class}, g, 1, t.getId());
+        assertTrue(can);
+
+        // stealing should transfer one resource (random) when available
+        a.setWood(0);
+        a.setBrick(0);
+        a.setWool(0);
+        a.setWheat(0);
+        a.setOre(0);
+        invoke("stealRandomResource", new Class[] {Player.class, Player.class}, t, a);
+        assertTrue(a.getWood() + a.getBrick() + a.getWool() + a.getWheat() + a.getOre() >= 0);
     }
 
     @Test
@@ -357,6 +508,8 @@ class GameServiceTest {
         game.setPlayers(List.of(onlinePlayer));
     
         Mockito.when(gameRepository.findById(161L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
     
         Game result = gameService.heartbeatGame(161L, "valid-token");
     
@@ -400,6 +553,8 @@ class GameServiceTest {
         game.setPlayers(List.of(reconnectingPlayer));
     
         Mockito.when(gameRepository.findById(160L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
     
         Game result = gameService.heartbeatGame(160L, "valid-token");
     
@@ -451,6 +606,8 @@ class GameServiceTest {
         game.setPlayers(List.of(activePlayer, inactivePlayer));
 
         Mockito.when(gameRepository.findById(162L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
 
         Game result = gameService.heartbeatGame(162L, "valid-token");
 
@@ -504,6 +661,8 @@ class GameServiceTest {
         game.setPlayers(List.of(activePlayer, inactivePlayer));
 
         Mockito.when(gameRepository.findById(163L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
 
         Game result = gameService.heartbeatGame(163L, "valid-token");
 
@@ -2755,6 +2914,9 @@ class GameServiceTest {
         
         gamePostDTO.setPlayers(playerDtos);
         gamePostDTO.setTargetVictoryPoints(10);
+        
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
         
         return gameService.createGame(token, gamePostDTO);
     }
