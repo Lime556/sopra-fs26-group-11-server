@@ -63,6 +63,7 @@ class GameServiceTest {
         user.setEmail("user@email.com");
 
         Mockito.when(gameRepository.save(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
         Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         Mockito.when(userService.authenticate(null))
             .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"));
@@ -253,42 +254,41 @@ class GameServiceTest {
     }
 
     @Test
-    void getGameById_reconnectsOfflinePlayerAndClearsDisconnectState() {
+    void getGameById_returnsGameWithoutChangingPresence() {
         Game game = new Game();
         game.setId(160L);
-        game.setGamePhase("ACTIVE");
-        game.setCurrentTurnIndex(0);
+    
         Board board = new Board();
         board.generateBoard();
         game.setBoard(board);
+    
         game.setBankWood(19);
         game.setBankBrick(19);
         game.setBankWool(19);
         game.setBankWheat(19);
         game.setBankOre(19);
-
-        Player reconnectingPlayer = new Player();
-        reconnectingPlayer.setId(user.getId());
-        reconnectingPlayer.setName("ReconnectPlayer");
-        reconnectingPlayer.setUser(user);
-        reconnectingPlayer.setOnline(false);
-        reconnectingPlayer.setLastSeenAt(Instant.now().minusSeconds(10));
-        reconnectingPlayer.setDisconnectedAt(Instant.now().minusSeconds(10));
-
-        game.setPlayers(List.of(reconnectingPlayer));
-
+    
+        Player offlinePlayer = new Player();
+        offlinePlayer.setId(user.getId());
+        offlinePlayer.setName("ReconnectPlayer");
+        offlinePlayer.setUser(user);
+        offlinePlayer.setOnline(false);
+        offlinePlayer.setLastSeenAt(Instant.now().minusSeconds(10));
+        offlinePlayer.setDisconnectedAt(Instant.now().minusSeconds(10));
+    
+        game.setPlayers(List.of(offlinePlayer));
+    
         Mockito.when(gameRepository.findById(160L)).thenReturn(Optional.of(game));
-        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
-            .thenAnswer(invocation -> invocation.getArgument(0));
-
+    
         Game result = gameService.getGameById(160L, "valid-token");
-
-        Player updatedPlayer = result.getPlayers().get(0);
-
-        assertTrue(updatedPlayer.isOnline());
-        assertNotNull(updatedPlayer.getLastSeenAt());
-        assertNull(updatedPlayer.getDisconnectedAt());
-        Mockito.verify(gameRepository, Mockito.times(1)).save(Mockito.any(Game.class));
+    
+        Player resultPlayer = result.getPlayers().get(0);
+    
+        assertFalse(resultPlayer.isOnline());
+        assertNotNull(resultPlayer.getDisconnectedAt());
+    
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
     }
 
     @Test
@@ -303,7 +303,7 @@ class GameServiceTest {
         game.setBankWool(19);
         game.setBankWheat(19);
         game.setBankOre(19);
-
+    
         Player onlinePlayer = new Player();
         onlinePlayer.setId(user.getId());
         onlinePlayer.setName("ReconnectPlayer");
@@ -311,21 +311,62 @@ class GameServiceTest {
         onlinePlayer.setOnline(true);
         onlinePlayer.setLastSeenAt(null);
         onlinePlayer.setDisconnectedAt(null);
-
+    
         game.setPlayers(List.of(onlinePlayer));
-
+    
         Mockito.when(gameRepository.findById(161L)).thenReturn(Optional.of(game));
-        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
-            .thenAnswer(invocation -> invocation.getArgument(0));
-
+    
         Game result = gameService.heartbeatGame(161L, "valid-token");
-
+    
         Player updatedPlayer = result.getPlayers().get(0);
-
+    
         assertTrue(updatedPlayer.isOnline());
         assertNotNull(updatedPlayer.getLastSeenAt());
         assertNull(updatedPlayer.getDisconnectedAt());
-        Mockito.verify(gameRepository, Mockito.times(1)).save(Mockito.any(Game.class));
+    
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void heartbeatGame_reconnectsOfflinePlayerAndClearsDisconnectState() {
+        Game game = new Game();
+        game.setId(160L);
+        game.setGamePhase("ACTIVE");
+        game.setCurrentTurnIndex(0);
+    
+        Board board = new Board();
+        board.generateBoard();
+        game.setBoard(board);
+    
+        game.setBankWood(19);
+        game.setBankBrick(19);
+        game.setBankWool(19);
+        game.setBankWheat(19);
+        game.setBankOre(19);
+    
+        Player reconnectingPlayer = new Player();
+        reconnectingPlayer.setId(user.getId());
+        reconnectingPlayer.setName("ReconnectPlayer");
+        reconnectingPlayer.setUser(user);
+        reconnectingPlayer.setOnline(false);
+        reconnectingPlayer.setLastSeenAt(Instant.now().minusSeconds(10));
+        reconnectingPlayer.setDisconnectedAt(Instant.now().minusSeconds(10));
+    
+        game.setPlayers(List.of(reconnectingPlayer));
+    
+        Mockito.when(gameRepository.findById(160L)).thenReturn(Optional.of(game));
+    
+        Game result = gameService.heartbeatGame(160L, "valid-token");
+    
+        Player updatedPlayer = result.getPlayers().get(0);
+    
+        assertTrue(updatedPlayer.isOnline());
+        assertNotNull(updatedPlayer.getLastSeenAt());
+        assertNull(updatedPlayer.getDisconnectedAt());
+    
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(Mockito.any(Game.class));
     }
 
     @Test
@@ -358,14 +399,12 @@ class GameServiceTest {
         inactivePlayer.setName("Inactive");
         inactivePlayer.setUser(inactiveUser);
         inactivePlayer.setOnline(true);
-        inactivePlayer.setLastSeenAt(Instant.now().minusSeconds(10));
+        inactivePlayer.setLastSeenAt(Instant.now().minusSeconds(31));
         inactivePlayer.setDisconnectedAt(null);
 
         game.setPlayers(List.of(activePlayer, inactivePlayer));
 
         Mockito.when(gameRepository.findById(162L)).thenReturn(Optional.of(game));
-        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
-            .thenAnswer(invocation -> invocation.getArgument(0));
 
         Game result = gameService.heartbeatGame(162L, "valid-token");
 
@@ -376,7 +415,8 @@ class GameServiceTest {
         assertFalse(updatedInactivePlayer.isOnline());
         assertNotNull(updatedInactivePlayer.getDisconnectedAt());
         assertFalse(updatedInactivePlayer.isBot());
-        Mockito.verify(gameRepository, Mockito.atLeastOnce()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(Mockito.any(Game.class));
     }
 
     @Test
@@ -417,8 +457,6 @@ class GameServiceTest {
         game.setPlayers(List.of(activePlayer, inactivePlayer));
 
         Mockito.when(gameRepository.findById(163L)).thenReturn(Optional.of(game));
-        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
-            .thenAnswer(invocation -> invocation.getArgument(0));
 
         Game result = gameService.heartbeatGame(163L, "valid-token");
 
@@ -430,7 +468,8 @@ class GameServiceTest {
         assertNull(replacement.getDisconnectedAt());
         assertEquals("Inactive replacement Bot", replacement.getName());
         assertEquals(8L, result.getGameVersion());
-        Mockito.verify(gameRepository, Mockito.atLeastOnce()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(Mockito.any(Game.class));
     }
 
     @Test
@@ -1499,14 +1538,14 @@ class GameServiceTest {
         game.setRobberTileIndex(1);
         
         Mockito.when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
-        Mockito.when(gameRepository.save(Mockito.any(Game.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        
+
         // Try to steal from self (should be ignored)
-        Game result = gameService.playKnightCard(gameId, "valid-token", attacker.getId(), 5, attacker.getId());
+        Game result = gameService.playKnightCard(gameId, "valid-token", attacker.getId(), 5, null);
         
         assertNotNull(result);
         assertEquals(5, result.getRobberTileIndex());
         assertEquals(1, result.getPlayers().get(0).getKnightsPlayed());
+        assertEquals(List.of(), result.getPlayers().get(0).getDevelopmentCards());
     }
 
     @Test
