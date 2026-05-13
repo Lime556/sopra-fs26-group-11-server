@@ -1,10 +1,12 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -130,6 +132,52 @@ public class LobbyServiceTest {
                 () -> lobbyService.createLobby(null, 4, null, "Test Lobby"));
 
         assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
+    }
+
+    @Test
+    public void heartbeatLobby_refreshesRequesterAndEvictsDisconnectedParticipant() {
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+
+        Lobby testLobby = new Lobby();
+        testLobby.setId(20L);
+        testLobby.setCapacity(4);
+        testLobby.setParticipants(new HashSet<>());
+
+        LobbyParticipant hostParticipant = new LobbyParticipant();
+        hostParticipant.setId(100L);
+        hostParticipant.setLobby(testLobby);
+        hostParticipant.setUser(host);
+        hostParticipant.setBot(false);
+        hostParticipant.setOnline(true);
+        hostParticipant.setLastSeenAt(Instant.now().minusSeconds(10));
+
+        User inactiveUser = new User();
+        inactiveUser.setId(12L);
+        inactiveUser.setEmail("inactive@email.com");
+
+        LobbyParticipant inactiveParticipant = new LobbyParticipant();
+        inactiveParticipant.setId(101L);
+        inactiveParticipant.setLobby(testLobby);
+        inactiveParticipant.setUser(inactiveUser);
+        inactiveParticipant.setBot(false);
+        inactiveParticipant.setOnline(true);
+        inactiveParticipant.setLastSeenAt(Instant.now().minusSeconds(10));
+
+        testLobby.getParticipants().add(hostParticipant);
+        testLobby.getParticipants().add(inactiveParticipant);
+        testLobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(lobbyRepository.findByIdWithLock(20L)).thenReturn(Optional.of(testLobby));
+
+        Lobby result = lobbyService.heartbeatLobby(20L, "valid-token");
+
+        assertTrue(hostParticipant.isOnline());
+        assertNotNull(hostParticipant.getLastSeenAt());
+        assertEquals(1, result.getParticipants().size());
+        assertTrue(result.getParticipants().contains(hostParticipant));
+        assertFalse(result.getParticipants().contains(inactiveParticipant));
+        Mockito.verify(lobbyParticipantRepository).delete(inactiveParticipant);
+        Mockito.verify(lobbyRepository).saveAndFlush(testLobby);
     }
 
     @Test

@@ -9,6 +9,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -325,6 +326,147 @@ class GameServiceTest {
         assertNotNull(updatedPlayer.getLastSeenAt());
         assertNull(updatedPlayer.getDisconnectedAt());
         Mockito.verify(gameRepository, Mockito.times(1)).save(Mockito.any(Game.class));
+    }
+
+    @Test
+    void heartbeatGame_marksOtherInactiveHumanPlayerOfflineAfterGracePeriod() {
+        User activeUser = user;
+        User inactiveUser = new User();
+        inactiveUser.setId(2L);
+        inactiveUser.setEmail("inactive@email.com");
+
+        Game game = new Game();
+        game.setId(162L);
+        game.setGamePhase("ACTIVE");
+        game.setCurrentTurnIndex(0);
+        game.setBoard(new Board());
+        game.setBankWood(19);
+        game.setBankBrick(19);
+        game.setBankWool(19);
+        game.setBankWheat(19);
+        game.setBankOre(19);
+
+        Player activePlayer = new Player();
+        activePlayer.setId(1L);
+        activePlayer.setName("Active");
+        activePlayer.setUser(activeUser);
+        activePlayer.setOnline(true);
+        activePlayer.setLastSeenAt(Instant.now());
+
+        Player inactivePlayer = new Player();
+        inactivePlayer.setId(2L);
+        inactivePlayer.setName("Inactive");
+        inactivePlayer.setUser(inactiveUser);
+        inactivePlayer.setOnline(true);
+        inactivePlayer.setLastSeenAt(Instant.now().minusSeconds(10));
+        inactivePlayer.setDisconnectedAt(null);
+
+        game.setPlayers(List.of(activePlayer, inactivePlayer));
+
+        Mockito.when(gameRepository.findById(162L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game result = gameService.heartbeatGame(162L, "valid-token");
+
+        Player updatedActivePlayer = result.getPlayers().get(0);
+        Player updatedInactivePlayer = result.getPlayers().get(1);
+
+        assertTrue(updatedActivePlayer.isOnline());
+        assertFalse(updatedInactivePlayer.isOnline());
+        assertNotNull(updatedInactivePlayer.getDisconnectedAt());
+        assertFalse(updatedInactivePlayer.isBot());
+        Mockito.verify(gameRepository, Mockito.atLeastOnce()).save(Mockito.any(Game.class));
+    }
+
+    @Test
+    void heartbeatGame_replacesInactiveHumanPlayerWithBotAfterReplacementTimeout() {
+        User activeUser = user;
+        User inactiveUser = new User();
+        inactiveUser.setId(2L);
+        inactiveUser.setEmail("inactive@email.com");
+
+        Game game = new Game();
+        game.setId(163L);
+        game.setGamePhase("ACTIVE");
+        game.setCurrentTurnIndex(0);
+        game.setBoard(new Board());
+        game.setBankWood(19);
+        game.setBankBrick(19);
+        game.setBankWool(19);
+        game.setBankWheat(19);
+        game.setBankOre(19);
+        game.setGameVersion(7L);
+
+        Player activePlayer = new Player();
+        activePlayer.setId(1L);
+        activePlayer.setName("Active");
+        activePlayer.setUser(activeUser);
+        activePlayer.setOnline(true);
+        activePlayer.setLastSeenAt(Instant.now());
+
+        Player inactivePlayer = new Player();
+        inactivePlayer.setId(2L);
+        inactivePlayer.setName("Inactive");
+        inactivePlayer.setUser(inactiveUser);
+        inactivePlayer.setBot(false);
+        inactivePlayer.setOnline(false);
+        inactivePlayer.setLastSeenAt(Instant.now().minusSeconds(310));
+        inactivePlayer.setDisconnectedAt(Instant.now().minusSeconds(301));
+
+        game.setPlayers(List.of(activePlayer, inactivePlayer));
+
+        Mockito.when(gameRepository.findById(163L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game result = gameService.heartbeatGame(163L, "valid-token");
+
+        Player replacement = result.getPlayers().get(1);
+
+        assertTrue(replacement.isBot());
+        assertTrue(replacement.isOnline());
+        assertNull(replacement.getUser());
+        assertNull(replacement.getDisconnectedAt());
+        assertEquals("Inactive replacement Bot", replacement.getName());
+        assertEquals(8L, result.getGameVersion());
+        Mockito.verify(gameRepository, Mockito.atLeastOnce()).save(Mockito.any(Game.class));
+    }
+
+    @Test
+    void heartbeatGame_userNoLongerOwnsReplacedBot_throwsForbidden() {
+        User replacedUser = user;
+
+        Game game = new Game();
+        game.setId(164L);
+        game.setGamePhase("ACTIVE");
+        game.setCurrentTurnIndex(0);
+        game.setBoard(new Board());
+        game.setBankWood(19);
+        game.setBankBrick(19);
+        game.setBankWool(19);
+        game.setBankWheat(19);
+        game.setBankOre(19);
+
+        Player replacementBot = new Player();
+        replacementBot.setId(1L);
+        replacementBot.setName("Replaced replacement Bot");
+        replacementBot.setUser(null);
+        replacementBot.setBot(true);
+        replacementBot.setOnline(true);
+        replacementBot.setLastSeenAt(Instant.now());
+
+        game.setPlayers(List.of(replacementBot));
+
+        Mockito.when(gameRepository.findById(164L)).thenReturn(Optional.of(game));
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(replacedUser);
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.heartbeatGame(164L, "valid-token")
+        );
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
     }
 
 
