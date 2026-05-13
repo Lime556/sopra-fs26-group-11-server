@@ -334,6 +334,7 @@ public class GameService {
         }
 
         markPlayerOnline(game, player, true);
+        markDisconnectedPlayersAndReplaceTimedOut(game);
         return game;
     }
 
