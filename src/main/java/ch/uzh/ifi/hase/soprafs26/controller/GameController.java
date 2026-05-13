@@ -37,6 +37,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameSyncDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
@@ -83,6 +84,13 @@ public class GameController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game game = gameService.getGameById(gameId, extractToken(authorizationHeader));
         return convertGameToDto(game);
+    }
+
+    @GetMapping("/games/{gameId}/version")
+    @ResponseStatus(HttpStatus.OK)
+    public GameVersionDTO getGameVersion(@PathVariable Long gameId,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        return gameService.getGameVersion(gameId, extractToken(authorizationHeader));
     }
 
     @PostMapping("/games/{gameId}/heartbeat")

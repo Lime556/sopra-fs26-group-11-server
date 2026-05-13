@@ -37,6 +37,7 @@ import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 
 class GameServiceTest {
@@ -292,9 +293,50 @@ class GameServiceTest {
     }
 
     @Test
+    void getGameVersion_returnsCurrentVersionWithoutSaving() {
+        Game game = new Game();
+        game.setId(165L);
+        game.setGameVersion(8L);
+        game.setChatMessages(List.of("Alice: hello", "Bob: hi"));
+
+        Mockito.when(gameRepository.findById(165L)).thenReturn(Optional.of(game));
+
+        GameVersionDTO result = gameService.getGameVersion(165L, "valid-token");
+
+        assertEquals(165L, result.getGameId());
+        assertEquals(8L, result.getGameVersion());
+        assertEquals(2, result.getChatMessageCount());
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void getGameVersion_missingGame_throwsNotFound() {
+        Mockito.when(gameRepository.findById(999L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> gameService.getGameVersion(999L, "valid-token"));
+
+        assertEquals(404, exception.getStatusCode().value());
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void getGameVersion_missingToken_throwsUnauthorized() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> gameService.getGameVersion(165L, null));
+
+        assertEquals(401, exception.getStatusCode().value());
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
     void heartbeatGame_refreshesPresenceForOnlinePlayer() {
         Game game = new Game();
         game.setId(161L);
+        game.setGameVersion(7L);
         game.setGamePhase("ACTIVE");
         game.setCurrentTurnIndex(0);
         game.setBoard(new Board());
@@ -323,6 +365,7 @@ class GameServiceTest {
         assertTrue(updatedPlayer.isOnline());
         assertNotNull(updatedPlayer.getLastSeenAt());
         assertNull(updatedPlayer.getDisconnectedAt());
+        assertEquals(7L, result.getGameVersion());
     
         Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
         Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(Mockito.any(Game.class));
@@ -332,6 +375,7 @@ class GameServiceTest {
     void heartbeatGame_reconnectsOfflinePlayerAndClearsDisconnectState() {
         Game game = new Game();
         game.setId(160L);
+        game.setGameVersion(7L);
         game.setGamePhase("ACTIVE");
         game.setCurrentTurnIndex(0);
     
@@ -364,6 +408,7 @@ class GameServiceTest {
         assertTrue(updatedPlayer.isOnline());
         assertNotNull(updatedPlayer.getLastSeenAt());
         assertNull(updatedPlayer.getDisconnectedAt());
+        assertEquals(7L, result.getGameVersion());
     
         Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
         Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(Mockito.any(Game.class));
@@ -378,6 +423,7 @@ class GameServiceTest {
 
         Game game = new Game();
         game.setId(162L);
+        game.setGameVersion(7L);
         game.setGamePhase("ACTIVE");
         game.setCurrentTurnIndex(0);
         game.setBoard(new Board());
@@ -415,6 +461,7 @@ class GameServiceTest {
         assertFalse(updatedInactivePlayer.isOnline());
         assertNotNull(updatedInactivePlayer.getDisconnectedAt());
         assertFalse(updatedInactivePlayer.isBot());
+        assertEquals(7L, result.getGameVersion());
         Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
         Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(Mockito.any(Game.class));
     }

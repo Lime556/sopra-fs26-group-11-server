@@ -41,6 +41,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 
@@ -352,6 +353,17 @@ public class GameService {
         return gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
+    }
+
+    @Transactional(readOnly = true)
+    public GameVersionDTO getGameVersion(Long gameId, String playerToken) {
+        Game game = getGameById(gameId, playerToken);
+
+        GameVersionDTO dto = new GameVersionDTO();
+        dto.setGameId(game.getId());
+        dto.setGameVersion(game.getGameVersion());
+        dto.setChatMessageCount(game.getChatMessages() == null ? 0 : game.getChatMessages().size());
+        return dto;
     }
 
     public Game heartbeatGame(Long gameId, String playerToken) {
