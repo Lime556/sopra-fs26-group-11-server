@@ -123,7 +123,50 @@ class FriendControllerTest {
             .andExpect(status().isBadRequest());
     }
 
+    // ============ Get Pending Friend Requests Tests ============
 
+    @Test
+    void getPendingFriendRequests_validToken_returnsPendingRequests() throws Exception {
+        User sender = new User();
+        sender.setId(1L);
+        sender.setUsername("sender");
+
+        User receiver = new User();
+        receiver.setId(2L);
+        receiver.setUsername("receiver");
+
+        FriendRequest request = new FriendRequest();
+        request.setId(100L);
+        request.setSender(sender);
+        request.setReceiver(receiver);
+        request.setStatus(FriendRequestStatus.PENDING);
+        request.setCreatedAt(Instant.parse("2026-05-02T12:00:00Z"));
+
+        given(friendService.getPendingFriendRequests("receiver-token"))
+            .willReturn(List.of(request));
+
+        MockHttpServletRequestBuilder getRequest = get("/friend-requests")
+            .header("Authorization", "receiver-token");
+
+        mockMvc.perform(getRequest)
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$", hasSize(1)))
+            .andExpect(jsonPath("$[0].id", is(100)))
+            .andExpect(jsonPath("$[0].senderId", is(1)))
+            .andExpect(jsonPath("$[0].receiverId", is(2)))
+            .andExpect(jsonPath("$[0].status", is("PENDING")));
+    }
+
+    @Test
+    void getPendingFriendRequests_missingToken_returnsUnauthorized() throws Exception {
+        given(friendService.getPendingFriendRequests(null))
+            .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"));
+
+        MockHttpServletRequestBuilder getRequest = get("/friend-requests");
+
+        mockMvc.perform(getRequest)
+            .andExpect(status().isUnauthorized());
+    }
 
 
 

@@ -146,7 +146,7 @@ public class LobbyService {
                 .thenComparing(participant -> participant.getId() != null ? participant.getId() : Long.MAX_VALUE))
             .toList();
 
-        String[] colors = {"RED", "BLUE", "WHITE", "ORANGE"};
+        String[] colors = {"#d13f34", "#2e7ccf", "#3f9e56", "#e0a120"};
         List<Player> gamePlayers = new ArrayList<>();
         int botCount = 0;
 
