@@ -2256,24 +2256,12 @@ public class GameService {
             if (!canStealFromPlayer(game, robberHexId, player.getId())) {
                 continue;
             }
-            if (totalResources(player) > 0) {
+            if (totalResourceCards(player) > 0) {
                 return player;
             }
         }
 
         return null;
-    }
-
-    private int totalResources(Player player) {
-        if (player == null) {
-            return 0;
-        }
-
-        return resourceValue(player.getWood())
-            + resourceValue(player.getBrick())
-            + resourceValue(player.getWool())
-            + resourceValue(player.getWheat())
-            + resourceValue(player.getOre());
     }
 
     private void addResourceIfAvailable(List<String> available, String resource, Integer amount) {

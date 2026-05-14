@@ -289,6 +289,37 @@ class GameServiceTest {
     }
 
     @Test
+    void ensureBoardInitialized_regeneratesIncompleteBoard() throws Exception {
+        ch.uzh.ifi.hase.soprafs26.entity.Game g = new ch.uzh.ifi.hase.soprafs26.entity.Game();
+        g.setId(500L);
+        // Set incomplete board
+        Board incompleteBoard = new Board();
+        incompleteBoard.setHexTiles(List.of("WOOD")); // less than 19
+        g.setBoard(incompleteBoard);
+
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        invoke("ensureBoardInitialized", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class}, g);
+
+        assertNotNull(g.getBoard());
+        assertNotNull(g.getBoard().getHexTiles());
+        assertEquals(19, g.getBoard().getHexTiles().size());
+        assertNotNull(g.getRobberTileIndex());
+    }
+
+    @Test
+    void resolveRobberTileIndex_withNullDTO_returnsDesertIndex() throws Exception {
+        Board board = new Board();
+        board.generateBoard();
+
+        Integer result = (Integer) invoke("resolveRobberTileIndex", new Class[] {Board.class, GamePostDTO.class}, board, null);
+
+        int desertIndex = board.getHexTiles().indexOf("DESERT");
+        assertEquals(desertIndex >= 0 ? desertIndex + 1 : null, result);
+    }
+
+    @Test
     void canStealFromPlayer_and_stealRandomResource() throws Exception {
         Board b = new Board(); b.generateBoard();
         Player a = new Player(); a.setId(1L);
@@ -341,6 +372,34 @@ class GameServiceTest {
         assertEquals(5, updatedGame.getPlayers().get(0).getVictoryPoints());
         assertNull(updatedGame.getWinner());
         assertNull(updatedGame.getFinishedAt());
+    }
+
+    @Test
+    void updateGameState_updatesGameFields_andBankResources() {
+        Game existingGame = new Game();
+        existingGame.setId(200L);
+        existingGame.setCurrentTurnIndex(0);
+        existingGame.setTurnPhase("ROLL_DICE");
+        existingGame.setDiceValue(4);
+        existingGame.setTargetVictoryPoints(10);
+
+        Mockito.when(gameRepository.findById(200L)).thenReturn(Optional.of(existingGame));
+
+        GamePostDTO update = new GamePostDTO();
+        update.setCurrentTurnIndex(1);
+        update.setTurnPhase("ACTION");
+        update.setDiceValue(8);
+        update.setTargetVictoryPoints(12);
+        update.setBankResources(Map.of("wood", 3, "brick", 2));
+
+        Game updatedGame = gameService.updateGameState(200L, "valid-token", update);
+
+        assertEquals(1, updatedGame.getCurrentTurnIndex());
+        assertEquals("ACTION", updatedGame.getTurnPhase());
+        assertEquals(8, updatedGame.getDiceValue());
+        assertEquals(12, updatedGame.getTargetVictoryPoints());
+        assertEquals(3, updatedGame.getBankWood());
+        assertEquals(2, updatedGame.getBankBrick());
     }
 
     @Test
@@ -403,6 +462,124 @@ class GameServiceTest {
         assertEquals("ROLL_DICE", updatedGame.getTurnPhase());
         assertNull(updatedGame.getDiceValue());
         assertEquals(42L, gameService.getCurrentPlayer(updatedGame).getId());
+    }
+
+    @Test
+    void endTurn_firstSetupRound_advancesToNextPlayer() {
+        Game game = new Game();
+        game.setId(152L);
+        game.setGamePhase("SETUP");
+        game.setCurrentTurnIndex(0);
+
+        Player alice = new Player();
+        alice.setId(30L);
+        alice.setName("Alice");
+
+        Player bob = new Player();
+        bob.setId(31L);
+        bob.setName("Bob");
+
+        Board board = new Board();
+        board.generateBoard();
+
+        Intersection settlementIntersection = findIntersection(board, 0);
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(30L);
+        settlement.setIntersectionId(0);
+        settlementIntersection.setBuilding(settlement);
+
+        Edge roadEdge = findEdge(board, 0, 1);
+        Road road = new Road();
+        road.setOwnerPlayerId(30L);
+        road.setEdgeId(roadEdge.getId());
+        roadEdge.setRoad(road);
+
+        game.setBoard(board);
+        game.setPlayers(List.of(alice, bob));
+
+        Mockito.when(gameRepository.findById(152L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game updatedGame = gameService.endTurn(152L, "valid-token");
+
+        assertEquals("SETUP", updatedGame.getGamePhase());
+        assertEquals(1, updatedGame.getCurrentTurnIndex());
+    }
+
+    @Test
+    void endTurn_firstSetupRound_lastPlayer_transitionsToSecondSetupRound() {
+        Game game = new Game();
+        game.setId(154L);
+        game.setGamePhase("SETUP");
+        game.setCurrentTurnIndex(1); // Last player (assuming 2 players)
+
+        Player alice = new Player();
+        alice.setId(30L);
+        alice.setName("Alice");
+
+        Player bob = new Player();
+        bob.setId(31L);
+        bob.setName("Bob");
+
+        Board board = new Board();
+        board.generateBoard();
+
+        // Add settlement and road for bob
+        Intersection settlementIntersection = findIntersection(board, 2);
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(31L);
+        settlement.setIntersectionId(2);
+        settlementIntersection.setBuilding(settlement);
+
+        Edge roadEdge = findEdge(board, 2, 3);
+        Road road = new Road();
+        road.setOwnerPlayerId(31L);
+        road.setEdgeId(roadEdge.getId());
+        roadEdge.setRoad(road);
+
+        game.setBoard(board);
+        game.setPlayers(List.of(alice, bob));
+
+        Mockito.when(gameRepository.findById(154L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.save(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game updatedGame = gameService.endTurn(154L, "valid-token");
+
+        assertEquals("SETUP_SECOND_ROUND", updatedGame.getGamePhase());
+        assertEquals(1, updatedGame.getCurrentTurnIndex()); // players.size() - 1 = 1
+    }
+
+    @Test
+    void endTurn_missingRequiredRoadAndSettlement_throwsConflict() {
+        Game game = new Game();
+        game.setId(153L);
+        game.setGamePhase("SETUP");
+        game.setCurrentTurnIndex(0);
+
+        Player alice = new Player();
+        alice.setId(30L);
+        alice.setName("Alice");
+
+        Player bob = new Player();
+        bob.setId(31L);
+        bob.setName("Bob");
+
+        Board board = new Board();
+        board.generateBoard();
+
+        game.setBoard(board);
+        game.setPlayers(List.of(alice, bob));
+
+        Mockito.when(gameRepository.findById(153L)).thenReturn(Optional.of(game));
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.endTurn(153L, "valid-token")
+        );
+
+        assertEquals("You must place a settlement and a road before ending your turn.", exception.getReason());
     }
 
     @Test
@@ -3232,5 +3409,241 @@ class GameServiceTest {
 
         assertTrue((Boolean) method.invoke(gameService, board, port2Intersection, "brick"));
         assertEquals(false, method.invoke(gameService, board, port2Intersection, "wood"));
+    }
+
+    @Test
+    void discardResources_validDiscard_transfersResourcesToBank() {
+        Game game = new Game();
+        game.setId(500L);
+        game.setTurnPhase("DISCARD");
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setName("Alice");
+        player.setWood(5);
+        player.setBrick(4);
+        player.setWool(3);
+        player.setWheat(2);
+        player.setOre(1);
+
+        User playerUser = new User();
+        playerUser.setId(1000L);
+        playerUser.setUsername("Alice");
+        player.setUser(playerUser);
+
+        game.setPlayers(List.of(player));
+        game.setBankWood(19);
+        game.setBankBrick(19);
+        game.setBankWool(19);
+        game.setBankWheat(19);
+        game.setBankOre(19);
+
+        Mockito.when(gameRepository.findById(500L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        authenticateAs("valid-token", player);
+
+        Map<String, Integer> discardChoices = Map.of("wood", 4, "brick", 3);
+
+        Game result = gameService.discardResources(500L, "valid-token", discardChoices);
+
+        assertEquals(1, result.getPlayers().get(0).getWood());
+        assertEquals(1, result.getPlayers().get(0).getBrick());
+        assertEquals(23, result.getBankWood());
+        assertEquals(22, result.getBankBrick());
+    }
+
+    @Test
+    void discardResources_notInDiscardPhase_throwsConflict() {
+        Game game = new Game();
+        game.setId(501L);
+        game.setTurnPhase("ACTION");
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setWood(10);
+
+        User playerUser = new User();
+        playerUser.setId(1000L);
+        playerUser.setUsername("Alice");
+        player.setUser(playerUser);
+
+        game.setPlayers(List.of(player));
+
+        Mockito.when(gameRepository.findById(501L)).thenReturn(Optional.of(game));
+        authenticateAs("valid-token", player);
+
+        Map<String, Integer> discardChoices = Map.of("wood", 2);
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.discardResources(501L, "valid-token", discardChoices)
+        );
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("DISCARD phase"));
+    }
+
+    @Test
+    void discardResources_playerDoesNotNeedToDiscard_throwsConflict() {
+        Game game = new Game();
+        game.setId(502L);
+        game.setTurnPhase("DISCARD");
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setWood(3); // Total 3 <= 7
+
+        User playerUser = new User();
+        playerUser.setId(1000L);
+        playerUser.setUsername("Alice");
+        player.setUser(playerUser);
+
+        game.setPlayers(List.of(player));
+
+        Mockito.when(gameRepository.findById(502L)).thenReturn(Optional.of(game));
+        authenticateAs("valid-token", player);
+
+        Map<String, Integer> discardChoices = Map.of("wood", 1);
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.discardResources(502L, "valid-token", discardChoices)
+        );
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("does not need to discard"));
+    }
+
+    @Test
+    void discardResources_invalidDiscardCount_throwsBadRequest() {
+        Game game = new Game();
+        game.setId(503L);
+        game.setTurnPhase("DISCARD");
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setWood(10); // Total 10, need to discard 5
+
+        User playerUser = new User();
+        playerUser.setId(1000L);
+        playerUser.setUsername("Alice");
+        player.setUser(playerUser);
+
+        game.setPlayers(List.of(player));
+
+        Mockito.when(gameRepository.findById(503L)).thenReturn(Optional.of(game));
+        authenticateAs("valid-token", player);
+
+        Map<String, Integer> discardChoices = Map.of("wood", 3); // Only 3, need 5
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.discardResources(503L, "valid-token", discardChoices)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Exactly 5 resources must be discarded"));
+    }
+
+    @Test
+    void discardResources_negativeDiscard_throwsBadRequest() {
+        Game game = new Game();
+        game.setId(504L);
+        game.setTurnPhase("DISCARD");
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setWood(10);
+
+        User playerUser = new User();
+        playerUser.setId(1000L);
+        playerUser.setUsername("Alice");
+        player.setUser(playerUser);
+
+        game.setPlayers(List.of(player));
+
+        Mockito.when(gameRepository.findById(504L)).thenReturn(Optional.of(game));
+        authenticateAs("valid-token", player);
+
+        Map<String, Integer> discardChoices = Map.of("wood", -1);
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.discardResources(504L, "valid-token", discardChoices)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        assertTrue(exception.getReason().contains("Invalid trade resource payload"));
+    }
+
+    @Test
+    void discardResources_insufficientResources_throwsBadRequest() {
+        Game game = new Game();
+        game.setId(505L);
+        game.setTurnPhase("DISCARD");
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setWood(1);
+        player.setBrick(10);
+
+        User playerUser = new User();
+        playerUser.setId(1000L);
+        playerUser.setUsername("Alice");
+        player.setUser(playerUser);
+
+        game.setPlayers(List.of(player));
+
+        Mockito.when(gameRepository.findById(505L)).thenReturn(Optional.of(game));
+        authenticateAs("valid-token", player);
+
+        Map<String, Integer> discardChoices = Map.of("wood", 2, "brick", 3); // Total 5 required, but wood exceeds owned amount
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.discardResources(505L, "valid-token", discardChoices)
+        );
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertEquals("Cannot discard more wood than the player owns.", exception.getReason());
+    }
+
+    @Test
+    void discardResources_lastPlayerDiscarding_setsTurnPhaseToAction() {
+        Game game = new Game();
+        game.setId(506L);
+        game.setTurnPhase("DISCARD");
+
+        Player player1 = new Player();
+        player1.setId(10L);
+        player1.setWood(10);
+
+        User player1User = new User();
+        player1User.setId(1000L);
+        player1User.setUsername("Alice");
+        player1.setUser(player1User);
+
+        Player player2 = new Player();
+        player2.setId(11L);
+        player2.setWood(3); // <=7, doesn't need to discard
+
+        User player2User = new User();
+        player2User.setId(1001L);
+        player2User.setUsername("Bob");
+        player2.setUser(player2User);
+
+        game.setPlayers(List.of(player1, player2));
+
+        Mockito.when(gameRepository.findById(506L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        authenticateAs("valid-token", player1);
+
+        Map<String, Integer> discardChoices = Map.of("wood", 5);
+
+        Game result = gameService.discardResources(506L, "valid-token", discardChoices);
+
+        assertEquals("ACTION", result.getTurnPhase());
     }
 }
