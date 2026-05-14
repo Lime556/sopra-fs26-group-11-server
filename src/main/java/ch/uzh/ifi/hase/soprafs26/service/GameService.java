@@ -61,6 +61,10 @@ public class GameService {
     private static final long GAME_BOT_REPLACEMENT_TIMEOUT_SECONDS = 300;
     private static final long PRESENCE_REFRESH_SAVE_INTERVAL_SECONDS = 20;
 
+    private static final int MAX_ROADS = 15;
+    private static final int MAX_SETTLEMENTS = 5;
+    private static final int MAX_CITIES = 4;
+
     private final GameRepository gameRepository;
     private final UserService userService;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -534,6 +538,10 @@ public class GameService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Player with id " + playerId + " was not found.");
         }
 
+        if (countPlayerRoads(game, playerId) >= MAX_ROADS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Maximum number of roads reached.");
+        }
+
         boolean connectedToOwnBuilding =
             hasOwnBuildingAtIntersection(game, targetEdge.getIntersectionAId(), playerId)
             || hasOwnBuildingAtIntersection(game, targetEdge.getIntersectionBId(), playerId);
@@ -615,6 +623,10 @@ public class GameService {
                 "A settlement cannot be built next to another building.");
         }
     
+        if (countPlayerSettlements(game, playerId) >= MAX_SETTLEMENTS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Maximum number of settlements reached.");
+        }
+
         Player player = findPlayerById(players, playerId);
         if (player == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -699,6 +711,10 @@ public class GameService {
                 "The settlement at this intersection does not belong to this player.");
         }
     
+        if (countPlayerCities(game, playerId) >= MAX_CITIES) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Maximum number of cities reached.");
+        }
+
         Player player = findPlayerById(players, playerId);
         if (player == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -1821,6 +1837,17 @@ public class GameService {
             .filter(i -> i.getBuilding() instanceof Settlement)
             .map(i -> (Settlement) i.getBuilding())
             .filter(s -> playerId.equals(s.getOwnerPlayerId()))
+            .count();
+    }
+
+    private int countPlayerCities(Game game, Long playerId) {
+        if (game == null || game.getBoard() == null || game.getBoard().getIntersections() == null) {
+            return 0;
+        }
+        return (int) game.getBoard().getIntersections().stream()
+            .filter(i -> i.getBuilding() instanceof City)
+            .map(i -> (City) i.getBuilding())
+            .filter(c -> playerId.equals(c.getOwnerPlayerId()))
             .count();
     }
 
