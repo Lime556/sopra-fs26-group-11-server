@@ -1,7 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.service.bot;
 
-import java.util.Collections;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Building;
+import ch.uzh.ifi.hase.soprafs26.entity.City;
 import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
@@ -19,6 +20,10 @@ import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 
 @Service
 public class BotFallbackService {
+
+    private static final int MAX_ROADS = 15;
+    private static final int MAX_SETTLEMENTS = 5;
+    private static final int MAX_CITIES = 4;
 
     public BotAction chooseFallbackAction(Game game) {
         Player bot = getCurrentBotPlayer(game);
@@ -142,6 +147,10 @@ public class BotFallbackService {
             return null;
         }
 
+        if (countPlayerCities(game, bot.getId()) >= MAX_CITIES) {
+            return null;
+        }
+
         List<Integer> candidates = new ArrayList<>();
         for (Intersection intersection : intersections(game)) {
             if (intersection == null || !(intersection.getBuilding() instanceof Settlement settlement)) {
@@ -160,6 +169,10 @@ public class BotFallbackService {
             return null;
         }
 
+        if (countPlayerSettlements(game, bot.getId()) >= MAX_SETTLEMENTS) {
+            return null;
+        }
+
         List<Integer> candidates = new ArrayList<>();
         for (Intersection intersection : intersections(game)) {
             if (intersection == null || intersection.isOccupied() || hasAdjacentBuilding(game, intersection.getId())) {
@@ -175,6 +188,10 @@ public class BotFallbackService {
     private Integer randomValidRoad(Game game, Player bot) {
         if (resourceValue(bot.getFreeRoadBuildsRemaining()) <= 0
             && (resourceValue(bot.getWood()) < 1 || resourceValue(bot.getBrick()) < 1)) {
+            return null;
+        }
+
+        if (countPlayerRoads(game, bot.getId()) >= MAX_ROADS) {
             return null;
         }
 
@@ -236,6 +253,17 @@ public class BotFallbackService {
         for (Intersection intersection : intersections(game)) {
             if (intersection != null && intersection.getBuilding() instanceof Settlement settlement
                 && playerId.equals(settlement.getOwnerPlayerId())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private int countPlayerCities(Game game, Long playerId) {
+        int count = 0;
+        for (Intersection intersection : intersections(game)) {
+            if (intersection != null && intersection.getBuilding() instanceof City city
+                && playerId.equals(city.getOwnerPlayerId())) {
                 count++;
             }
         }
