@@ -34,12 +34,15 @@ import ch.uzh.ifi.hase.soprafs26.entity.Boat;
 import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
+import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.Road;
 import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
+import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO;
@@ -52,6 +55,7 @@ class GameServiceTest {
     private GameRepository repo;
     private GameService gameService;
     private GameRepository gameRepository;
+    private LobbyParticipantRepository lobbyParticipantRepository;
     private UserService userService;
     private User user;
 
@@ -59,9 +63,10 @@ class GameServiceTest {
     void setup() {
         repo = Mockito.mock(GameRepository.class);
         gameRepository = Mockito.mock(GameRepository.class);
+        lobbyParticipantRepository = Mockito.mock(LobbyParticipantRepository.class);
         userService = Mockito.mock(UserService.class);
-        service = new GameService(repo, userService);
-        gameService = new GameService(gameRepository, userService);
+        service = new GameService(repo, userService, lobbyParticipantRepository);
+        gameService = new GameService(gameRepository, userService, lobbyParticipantRepository);
 
         user = new User();
         user.setId(1L);
@@ -70,6 +75,22 @@ class GameServiceTest {
         Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         Mockito.when(userService.authenticate(null))
             .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "not authenticated"));
+        Mockito.when(repo.findAll()).thenReturn(List.of());
+        Mockito.when(gameRepository.findAll()).thenReturn(List.of());
+        Mockito.when(repo.saveAndFlush(Mockito.any(Game.class))).thenAnswer(invocation -> {
+            Game game = invocation.getArgument(0);
+            if (game.getId() == null) {
+                game.setId(1L);
+            }
+            return game;
+        });
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class))).thenAnswer(invocation -> {
+            Game game = invocation.getArgument(0);
+            if (game.getId() == null) {
+                game.setId(1L);
+            }
+            return game;
+        });
     }
 
     // Reflection helper to invoke private methods
@@ -174,6 +195,63 @@ class GameServiceTest {
         assertEquals(1L, result.getId());
         Mockito.verify(repo, Mockito.never()).save(Mockito.any(Game.class));
         Mockito.verify(repo, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void createGame_userAlreadyInActiveLobby_throwsConflict() {
+        Lobby lobby = new Lobby();
+        lobby.setId(1L);
+
+        LobbyParticipant participant = new LobbyParticipant();
+        participant.setUser(user);
+        participant.setLobby(lobby);
+
+        Mockito.when(lobbyParticipantRepository.findByUser_Id(user.getId())).thenReturn(List.of(participant));
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.createGame("valid-token", null)
+        );
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+    }
+
+    @Test
+    void createGame_userAlreadyInUnfinishedGame_throwsConflict() {
+        Game existingGame = new Game();
+        existingGame.setId(99L);
+        existingGame.setFinishedAt(null);
+
+        Player existingPlayer = new Player();
+        existingPlayer.setUser(user);
+        existingGame.setPlayers(List.of(existingPlayer));
+
+        Mockito.when(gameRepository.findAll()).thenReturn(List.of(existingGame));
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.createGame("valid-token", null)
+        );
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+    }
+
+    @Test
+    void createGame_userOnlyInFinishedGame_success() {
+        Game finishedGame = new Game();
+        finishedGame.setId(99L);
+        finishedGame.setFinishedAt(java.time.LocalDateTime.now());
+
+        Player existingPlayer = new Player();
+        existingPlayer.setUser(user);
+        finishedGame.setPlayers(List.of(existingPlayer));
+
+        Mockito.when(gameRepository.findAll()).thenReturn(List.of(finishedGame));
+
+        Game createdGame = gameService.createGame("valid-token", null);
+
+        assertNotNull(createdGame.getId());
+        assertEquals(user.getId(), createdGame.getPlayers().get(0).getUser().getId());
     }
 
     @Test
