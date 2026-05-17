@@ -21,8 +21,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import ch.uzh.ifi.hase.soprafs26.constant.TimeOfDayMood;
+import ch.uzh.ifi.hase.soprafs26.constant.WeatherCategory;
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Boat;
 import ch.uzh.ifi.hase.soprafs26.entity.Edge;
@@ -78,6 +84,96 @@ class GameServiceTest {
             }
             throw e;
         }
+    }
+
+    @Test
+    void ambienceWeatherCodeMapping_mapsExpectedOpenMeteoCodes() {
+        assertEquals(WeatherCategory.SUNNY, AmbienceService.mapWeatherCode(0));
+        assertEquals(WeatherCategory.CLOUDY, AmbienceService.mapWeatherCode(3));
+        assertEquals(WeatherCategory.FOGGY, AmbienceService.mapWeatherCode(45));
+        assertEquals(WeatherCategory.RAINY, AmbienceService.mapWeatherCode(61));
+        assertEquals(WeatherCategory.LIGHTNING, AmbienceService.mapWeatherCode(95));
+        assertEquals(WeatherCategory.SNOWING, AmbienceService.mapWeatherCode(71));
+        assertEquals(WeatherCategory.UNKNOWN, AmbienceService.mapWeatherCode(999));
+    }
+
+    @Test
+    void ambienceTimeOfDayMapping_usesLocalHourThenIsDayFallback() {
+        assertEquals(TimeOfDayMood.SUNRISE, AmbienceService.mapTimeOfDay("2026-05-17T06:00", null));
+        assertEquals(TimeOfDayMood.DAY, AmbienceService.mapTimeOfDay("2026-05-17T13:00", null));
+        assertEquals(TimeOfDayMood.SUNSET, AmbienceService.mapTimeOfDay("2026-05-17T18:00", null));
+        assertEquals(TimeOfDayMood.NIGHT, AmbienceService.mapTimeOfDay("2026-05-17T23:00", null));
+        assertEquals(TimeOfDayMood.DAY, AmbienceService.mapTimeOfDay("not-a-time", 1));
+        assertEquals(TimeOfDayMood.NIGHT, AmbienceService.mapTimeOfDay("not-a-time", 0));
+        assertEquals(TimeOfDayMood.UNKNOWN, AmbienceService.mapTimeOfDay("not-a-time", null));
+    }
+
+    @Test
+    void ambienceExternalFailure_returnsUnknownAmbience() {
+        RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+        Mockito.when(restTemplate.getForObject(Mockito.anyString(), Mockito.eq(AmbienceService.OpenMeteoResponse.class)))
+            .thenThrow(new RestClientException("Open-Meteo unavailable"));
+
+        var ambience = new AmbienceService(restTemplate).getCurrentAmbience();
+
+        assertEquals(WeatherCategory.UNKNOWN, ambience.getWeather());
+        assertEquals(TimeOfDayMood.UNKNOWN, ambience.getTimeOfDay());
+        assertEquals("Weather ambience unavailable", ambience.getDescription());
+    }
+
+    @Test
+    void ambienceOpenMeteoResponse_mapsCloudyDay() {
+        RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+        AmbienceService.OpenMeteoCurrent current = new AmbienceService.OpenMeteoCurrent();
+        current.setWeather_code(3);
+        current.setIs_day(1);
+        current.setTime("2026-05-17T14:45");
+        AmbienceService.OpenMeteoResponse response = new AmbienceService.OpenMeteoResponse();
+        response.setCurrent(current);
+        Mockito.when(restTemplate.getForObject(
+            "https://api.open-meteo.com/v1/forecast?latitude=47.3769&longitude=8.5417&current=weather_code,is_day&timezone=auto",
+            AmbienceService.OpenMeteoResponse.class
+        )).thenReturn(response);
+
+        var ambience = new AmbienceService(restTemplate).getCurrentAmbience();
+
+        assertEquals(WeatherCategory.CLOUDY, ambience.getWeather());
+        assertEquals(TimeOfDayMood.DAY, ambience.getTimeOfDay());
+        assertEquals("Cloudy day", ambience.getDescription());
+    }
+
+    @Test
+    void ambienceOpenMeteoJsonShape_deserializesSnakeCaseCurrentFields() throws Exception {
+        String json = """
+            {
+              "current": {
+                "time": "2026-05-17T14:45",
+                "interval": 900,
+                "weather_code": 3,
+                "is_day": 1
+              }
+            }
+            """;
+
+        AmbienceService.OpenMeteoResponse response = new ObjectMapper()
+            .readValue(json, AmbienceService.OpenMeteoResponse.class);
+
+        assertEquals(3, response.getCurrent().getWeather_code());
+        assertEquals(1, response.getCurrent().getIs_day());
+        assertEquals("2026-05-17T14:45", response.getCurrent().getTime());
+    }
+
+    @Test
+    void readOnlyGameLookup_doesNotSaveGame() {
+        Game game = new Game();
+        game.setId(1L);
+        Mockito.when(repo.findById(1L)).thenReturn(Optional.of(game));
+
+        Game result = service.getGameById(1L, "valid-token");
+
+        assertEquals(1L, result.getId());
+        Mockito.verify(repo, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(repo, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
     }
 
     @Test
