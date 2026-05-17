@@ -879,6 +879,26 @@ class GameServiceTest {
     }
 
     @Test
+    void appendChatMessage_emptyAfterNormalization_isIgnoredWithoutSaving() {
+        Game game = new Game();
+        game.setId(175L);
+
+        Player participant = new Player();
+        participant.setId(user.getId());
+        participant.setName("Participant");
+        participant.setUser(user);
+        game.setPlayers(List.of(participant));
+
+        Mockito.when(gameRepository.findById(175L)).thenReturn(Optional.of(game));
+
+        gameService.appendChatMessage(175L, "valid-token", "  \n\t   ");
+
+        assertTrue(game.getChatMessages() == null || game.getChatMessages().isEmpty());
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
     void appendChatMessage_nonParticipant_throwsForbidden() {
         Game game = new Game();
         game.setId(172L);
@@ -919,6 +939,28 @@ class GameServiceTest {
         String tooLongMessage = "x".repeat(301);
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> gameService.appendChatMessage(174L, "valid-token", tooLongMessage));
+
+        assertEquals(400, exception.getStatusCode().value());
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void appendChatMessage_withControlCharacter_throwsBadRequest() {
+        Game game = new Game();
+        game.setId(176L);
+
+        Player participant = new Player();
+        participant.setId(user.getId());
+        participant.setName("Participant");
+        participant.setUser(user);
+        game.setPlayers(List.of(participant));
+
+        Mockito.when(gameRepository.findById(176L)).thenReturn(Optional.of(game));
+
+        String containsControlCharacter = "Participant: hello" + Character.toString((char) 127);
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> gameService.appendChatMessage(176L, "valid-token", containsControlCharacter));
 
         assertEquals(400, exception.getStatusCode().value());
         Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
