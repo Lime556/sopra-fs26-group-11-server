@@ -18,6 +18,8 @@ public class GameGetDTO {
     private DiceGetDTO dice;
     private Integer diceValue;
     private String diceRolledAt;
+    private String tradeRequestedAt;
+    private String latestTradeRequest;
     private Integer robberTileIndex;
     private DevelopmentDeckGetDTO developmentDeck;
     private PlayerGetDTO longestRoad;
@@ -128,6 +130,22 @@ public class GameGetDTO {
     
     public void setDiceRolledAt(String diceRolledAt) {
         this.diceRolledAt = diceRolledAt;
+    }
+
+    public String getTradeRequestedAt() {
+        return tradeRequestedAt;
+    }
+
+    public void setTradeRequestedAt(String tradeRequestedAt) {
+        this.tradeRequestedAt = tradeRequestedAt;
+    }
+
+    public String getLatestTradeRequest() {
+        return latestTradeRequest;
+    }
+
+    public void setLatestTradeRequest(String latestTradeRequest) {
+        this.latestTradeRequest = latestTradeRequest;
     }
     
     public Integer getRobberTileIndex() {
