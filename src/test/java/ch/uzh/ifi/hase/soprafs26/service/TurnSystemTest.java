@@ -26,6 +26,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
+import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
@@ -45,6 +46,9 @@ class TurnSystemTest {
 
     @Mock
     private UserService userService;
+
+    @Mock
+    private LobbyParticipantRepository lobbyParticipantRepository;
 
     @InjectMocks
     private GameService gameService;

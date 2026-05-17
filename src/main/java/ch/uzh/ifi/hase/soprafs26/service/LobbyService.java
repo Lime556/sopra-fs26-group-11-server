@@ -30,7 +30,7 @@ public class LobbyService {
 
     private static final int DEFAULT_LOBBY_CAPACITY = 4;
     private static final int MIN_PLAYERS_TO_START = 2;
-    private static final long LOBBY_DISCONNECT_GRACE_SECONDS = 5;
+    private static final long LOBBY_DISCONNECT_GRACE_SECONDS = 40;
 
     private final GameRepository gameRepository;
     private final LobbyRepository lobbyRepository;
@@ -58,6 +58,7 @@ public class LobbyService {
 
     public Lobby createLobby(String playerToken, Integer capacity, String lobbyPassword, String lobbyName) {
         User hostUser = userService.authenticate(playerToken);
+        ensureUserNotInAnyLobby(hostUser);
 
         Lobby lobby = new Lobby();
         lobby.setCapacity(resolveCapacity(capacity));
@@ -85,9 +86,15 @@ public class LobbyService {
         Lobby lobby = lobbyRepository.findByIdWithLock(lobbyId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Lobby with id " + lobbyId + " was not found."));
+
+        LobbyParticipant existingParticipant = findExistingParticipantForJoin(lobby, user);
+        if (existingParticipant != null) {
+            markParticipantOnline(existingParticipant);
+            lobbyParticipantRepository.saveAndFlush(existingParticipant);
+            return lobby;
+        }
       
         validateLobbyPassword(lobby, lobbyPassword);
-        ensureUserNotAlreadyInLobby(lobby, user);
         ensureLobbyNotFull(lobby);
 
         LobbyParticipant participant = new LobbyParticipant();
@@ -258,6 +265,10 @@ public class LobbyService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Lobby with id " + lobbyId + " was not found."));
 
+        if (lobby.getGameId() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot leave lobby after the game has started.");
+        }
+
         LobbyParticipant participant = lobby.getParticipants().stream()
                 .filter(p -> p.getUser() != null && p.getUser().getId().equals(user.getId()))
                 .findFirst()
@@ -418,17 +429,83 @@ public class LobbyService {
         }
     }
 
-    private void ensureUserNotAlreadyInLobby(Lobby lobby, User user) {
-        boolean alreadyJoined = lobby.getParticipants().stream()
-                .anyMatch(participant ->
-                        participant.getUser() != null
-                                && participant.getUser().getId().equals(user.getId()));
-    
-        if (alreadyJoined) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "User with id " + user.getId() + " already joined lobby " + lobby.getId() + "."
-            );
+    private void ensureUserNotInAnyLobby(User user) {
+        if (user.getId() == null) {
+            return;
+        }
+
+        for (LobbyParticipant participant : lobbyParticipantRepository.findByUser_Id(user.getId())) {
+            if (blocksNewLobbyMembership(participant)) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "User with id " + user.getId() + " is already part of an active lobby or game."
+                );
+            }
+        }
+
+        ensureUserNotInAnyActiveGame(user, null);
+    }
+
+    private LobbyParticipant findExistingParticipantForJoin(Lobby lobby, User user) {
+        if (user.getId() == null) {
+            return null;
+        }
+
+        List<LobbyParticipant> existingParticipants = lobbyParticipantRepository.findByUser_Id(user.getId());
+        LobbyParticipant sameLobbyParticipant = null;
+
+        for (LobbyParticipant participant : existingParticipants) {
+            Long existingLobbyId = participant.getLobby() != null ? participant.getLobby().getId() : null;
+            if (lobby.getId().equals(existingLobbyId)) {
+                sameLobbyParticipant = participant;
+            }
+            else if (blocksNewLobbyMembership(participant)) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "User with id " + user.getId() + " is already part of an active lobby or game."
+                );
+            }
+        }
+
+        Long allowedGameId = sameLobbyParticipant != null ? lobby.getGameId() : null;
+        ensureUserNotInAnyActiveGame(user, allowedGameId);
+
+        return sameLobbyParticipant;
+    }
+
+    private boolean blocksNewLobbyMembership(LobbyParticipant participant) {
+        if (participant == null || participant.getLobby() == null) {
+            return false;
+        }
+
+        Long gameId = participant.getLobby().getGameId();
+        if (gameId == null) {
+            return true;
+        }
+
+        return gameRepository.findById(gameId)
+                .map(game -> game.getFinishedAt() == null)
+                .orElse(false);
+    }
+
+    private void ensureUserNotInAnyActiveGame(User user, Long allowedGameId) {
+        for (Game game : gameRepository.findAll()) {
+            if (game == null || game.getFinishedAt() != null || game.getPlayers() == null) {
+                continue;
+            }
+            if (allowedGameId != null && allowedGameId.equals(game.getId())) {
+                continue;
+            }
+
+            boolean userIsActivePlayer = game.getPlayers().stream()
+                    .filter(player -> player != null && player.getUser() != null)
+                    .anyMatch(player -> user.getId().equals(player.getUser().getId()));
+            if (userIsActivePlayer) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "User with id " + user.getId() + " is already part of an active lobby or game."
+                );
+            }
         }
     }
 
@@ -457,6 +534,10 @@ public class LobbyService {
     }
 
     private void evictDisconnectedParticipants(Lobby lobby, Long protectedUserId) {
+        if (lobby.getGameId() != null) {
+            return;
+        }
+
         Instant cutoff = Instant.now().minusSeconds(LOBBY_DISCONNECT_GRACE_SECONDS);
         List<LobbyParticipant> disconnected = lobby.getParticipants().stream()
                 .filter(participant -> !participant.isBot())
