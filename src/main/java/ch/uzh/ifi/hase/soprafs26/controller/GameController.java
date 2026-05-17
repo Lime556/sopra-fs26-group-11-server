@@ -132,16 +132,27 @@ public class GameController {
     public GameChatMessageDTO publishGameChatMessage(@PathVariable Long gameId,
             @RequestBody GameChatMessageDTO gameChatMessageDTO,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-        gameService.getGameById(gameId, extractToken(authorizationHeader));
+        String token = extractToken(authorizationHeader);
+        Game game = gameService.getGameById(gameId, token);
+        Player authenticatedPlayer = gameService.getAuthenticatedPlayer(game, token);
+        if (authenticatedPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this game.");
+        }
 
-        String sender = (gameChatMessageDTO.getPlayerName() == null || gameChatMessageDTO.getPlayerName().isBlank())
-                ? "Player"
-                : gameChatMessageDTO.getPlayerName().trim();
+        String sender = (authenticatedPlayer.getName() == null || authenticatedPlayer.getName().isBlank())
+                ? ((gameChatMessageDTO.getPlayerName() == null || gameChatMessageDTO.getPlayerName().isBlank())
+                    ? "Player"
+                    : gameChatMessageDTO.getPlayerName().trim())
+                : authenticatedPlayer.getName().trim();
         String text = gameChatMessageDTO.getText() == null ? "" : gameChatMessageDTO.getText().trim();
         if (!text.isEmpty()) {
             String formattedMessage = String.format("%s: %s", sender, text);
-            gameService.appendChatMessage(gameId, extractToken(authorizationHeader), formattedMessage);
+            gameService.appendChatMessage(gameId, token, formattedMessage);
         }
+
+        gameChatMessageDTO.setPlayerId(authenticatedPlayer.getId());
+        gameChatMessageDTO.setPlayerName(sender);
+        gameChatMessageDTO.setText(text);
 
         return gameChatMessageDTO;
     }
@@ -448,7 +459,7 @@ public class GameController {
         dto.setWinner(convertPlayerToDto(game.getWinner()));
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
         dto.setEventLog(game.getEventLog() == null ? Collections.emptyList() : new ArrayList<>(game.getEventLog()));
-        dto.setChatMessages(game.getChatMessages());
+        dto.setChatMessages(game.getChatMessages() == null ? Collections.emptyList() : new ArrayList<>(game.getChatMessages()));
         dto.setBankResources(readBankResources(game));
         dto.setRobberMovedAfterSevenRoll(game.getRobberMovedAfterSevenRoll());
         return dto;

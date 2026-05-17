@@ -661,6 +661,52 @@ class GameServiceTest {
     }
 
     @Test
+    void appendChatMessage_participant_persistsTrimmedMessage() {
+        Game game = new Game();
+        game.setId(171L);
+
+        Player participant = new Player();
+        participant.setId(user.getId());
+        participant.setName("Participant");
+        participant.setUser(user);
+        game.setPlayers(List.of(participant));
+
+        Mockito.when(gameRepository.findById(171L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        gameService.appendChatMessage(171L, "valid-token", " Participant: hello  ");
+
+        assertEquals(List.of("Participant: hello"), game.getChatMessages());
+        Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void appendChatMessage_nonParticipant_throwsForbidden() {
+        Game game = new Game();
+        game.setId(172L);
+
+        User someoneElse = new User();
+        someoneElse.setId(99L);
+        someoneElse.setUsername("someoneElse");
+
+        Player participant = new Player();
+        participant.setId(99L);
+        participant.setName("SomeoneElse");
+        participant.setUser(someoneElse);
+        game.setPlayers(List.of(participant));
+
+        Mockito.when(gameRepository.findById(172L)).thenReturn(Optional.of(game));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> gameService.appendChatMessage(172L, "valid-token", "Participant: hello"));
+
+        assertEquals(403, exception.getStatusCode().value());
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
     void heartbeatGame_refreshesPresenceForOnlinePlayer() {
         Game game = new Game();
         game.setId(161L);

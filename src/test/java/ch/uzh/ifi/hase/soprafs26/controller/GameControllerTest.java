@@ -724,8 +724,12 @@ class GameControllerTest {
     void publishGameChatMessage_validMessage_success() throws Exception {
         Game game = new Game();
         game.setId(1L);
+        Player player = new Player();
+        player.setId(10L);
+        player.setName("Player1");
 
         given(gameService.getGameById(1L, "token-123")).willReturn(game);
+        given(gameService.getAuthenticatedPlayer(game, "token-123")).willReturn(player);
 
         String body = """
             {
@@ -748,8 +752,12 @@ class GameControllerTest {
     void publishGameChatMessage_emptyMessage_isIgnored() throws Exception {
         Game game = new Game();
         game.setId(1L);
+        Player player = new Player();
+        player.setId(10L);
+        player.setName("Player1");
 
         given(gameService.getGameById(1L, "token-123")).willReturn(game);
+        given(gameService.getAuthenticatedPlayer(game, "token-123")).willReturn(player);
 
         String body = """
             {
@@ -766,6 +774,30 @@ class GameControllerTest {
 
         mockMvc.perform(postRequest)
                 .andExpect(status().isAccepted());
+    }
+
+    @Test
+    void publishGameChatMessage_nonParticipant_returnsForbidden() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+        given(gameService.getAuthenticatedPlayer(game, "token-123")).willReturn(null);
+
+        String body = """
+            {
+              "playerName": "Intruder",
+              "text": "Hello everyone!"
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/chat")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isForbidden());
     }
 
     @Test

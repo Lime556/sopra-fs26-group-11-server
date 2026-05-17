@@ -411,16 +411,26 @@ public class GameService {
     }
 
     public void appendChatMessage(Long gameId, String playerToken, String message) {
-        authenticate(playerToken);
+        User authenticatedUser = authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
 
+        Player authenticatedPlayer = findAuthenticatedPlayer(game, authenticatedUser);
+        if (authenticatedPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this game.");
+        }
+
+        String normalizedMessage = message == null ? "" : message.trim();
+        if (normalizedMessage.isEmpty()) {
+            return;
+        }
+
         List<String> chatMessages = new ArrayList<>(
             Optional.ofNullable(game.getChatMessages()).orElse(Collections.emptyList())
         );
-        chatMessages.add(message);
+        chatMessages.add(normalizedMessage);
         game.setChatMessages(chatMessages);
         gameRepository.saveAndFlush(game);
     }
