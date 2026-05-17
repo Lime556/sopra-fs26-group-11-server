@@ -207,7 +207,7 @@ public class LobbyServiceTest {
         inactiveParticipant.setUser(inactiveUser);
         inactiveParticipant.setBot(false);
         inactiveParticipant.setOnline(true);
-        inactiveParticipant.setLastSeenAt(Instant.now().minusSeconds(10));
+        inactiveParticipant.setLastSeenAt(Instant.now().minusSeconds(60));
 
         testLobby.getParticipants().add(hostParticipant);
         testLobby.getParticipants().add(inactiveParticipant);
