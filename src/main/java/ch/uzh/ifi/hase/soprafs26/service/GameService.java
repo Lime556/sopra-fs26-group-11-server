@@ -15,7 +15,9 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -37,6 +39,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
+import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
@@ -60,6 +63,8 @@ public class GameService {
     private static final long GAME_DISCONNECT_GRACE_SECONDS = 30;
     private static final long GAME_BOT_REPLACEMENT_TIMEOUT_SECONDS = 300;
     private static final long PRESENCE_REFRESH_SAVE_INTERVAL_SECONDS = 20;
+    private static final int HEARTBEAT_MAX_ATTEMPTS = 5;
+    private static final long HEARTBEAT_RETRY_DELAY_MILLIS = 500;
 
     private static final int MAX_ROADS = 15;
     private static final int MAX_SETTLEMENTS = 5;
@@ -67,18 +72,30 @@ public class GameService {
 
     private final GameRepository gameRepository;
     private final UserService userService;
+    private final LobbyParticipantRepository lobbyParticipantRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
     
+    @Autowired
+    public GameService(
+        @Qualifier("gameRepository") GameRepository gameRepository,
+        UserService userService,
+        LobbyParticipantRepository lobbyParticipantRepository
+    ) {
+        this.gameRepository = gameRepository;
+        this.userService = userService;
+        this.lobbyParticipantRepository = lobbyParticipantRepository;
+    }
+
     public GameService(
         @Qualifier("gameRepository") GameRepository gameRepository,
         UserService userService
     ) {
-        this.gameRepository = gameRepository;
-        this.userService = userService;
+        this(gameRepository, userService, null);
     }
 
     public Game createGame(String playerToken, GamePostDTO gamePostDTO) {
         User authenticatedUser = authenticate(playerToken);
+        ensureUserNotInActiveLobbyOrGame(authenticatedUser);
 
         Game game = new Game();
         Board board = resolveBoard(gamePostDTO);
@@ -372,6 +389,21 @@ public class GameService {
     }
 
     public Game heartbeatGame(Long gameId, String playerToken) {
+        for (int attempt = 1; attempt <= HEARTBEAT_MAX_ATTEMPTS; attempt++) {
+            try {
+                return heartbeatGameOnce(gameId, playerToken);
+            } catch (ObjectOptimisticLockingFailureException exception) {
+                if (attempt == HEARTBEAT_MAX_ATTEMPTS) {
+                    throw exception;
+                }
+                waitBeforeHeartbeatRetry();
+            }
+        }
+
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Game state changed. Please retry.");
+    }
+
+    private Game heartbeatGameOnce(Long gameId, String playerToken) {
         User authenticatedUser = authenticate(playerToken);
     
         Game game = gameRepository.findById(gameId)
@@ -392,6 +424,15 @@ public class GameService {
         }
     
         return game;
+    }
+
+    private void waitBeforeHeartbeatRetry() {
+        try {
+            Thread.sleep(HEARTBEAT_RETRY_DELAY_MILLIS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Heartbeat retry was interrupted.", exception);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -433,7 +474,7 @@ public class GameService {
         );
         chatMessages.add(normalizedMessage);
         game.setChatMessages(chatMessages);
-        gameRepository.saveAndFlush(game);
+        saveChangedGame(game);
     }
 
     private void appendEventLogEntry(Game game, String message) {
@@ -2459,6 +2500,46 @@ public class GameService {
 
     private User authenticate(String playerToken) {
         return userService.authenticate(playerToken);
+    }
+
+    private void ensureUserNotInActiveLobbyOrGame(User user) {
+        if (user == null || user.getId() == null) {
+            return;
+        }
+
+        if (lobbyParticipantRepository != null) {
+            for (var participant : lobbyParticipantRepository.findByUser_Id(user.getId())) {
+                if (participant == null || participant.getLobby() == null) {
+                    continue;
+                }
+
+                Long gameId = participant.getLobby().getGameId();
+                if (gameId == null || gameRepository.findById(gameId)
+                        .map(game -> game.getFinishedAt() == null)
+                        .orElse(false)) {
+                    throw new ResponseStatusException(
+                            HttpStatus.CONFLICT,
+                            "User with id " + user.getId() + " is already part of an active lobby or game."
+                    );
+                }
+            }
+        }
+
+        for (Game game : gameRepository.findAll()) {
+            if (game == null || game.getFinishedAt() != null || game.getPlayers() == null) {
+                continue;
+            }
+
+            boolean userIsActivePlayer = game.getPlayers().stream()
+                    .filter(Objects::nonNull)
+                    .anyMatch(player -> isSameUserById(player, user));
+            if (userIsActivePlayer) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "User with id " + user.getId() + " is already part of an active lobby or game."
+                );
+            }
+        }
     }
 
     private void ensureCurrentPlayerCanRollDice(Player currentPlayer, User authenticatedUser) {

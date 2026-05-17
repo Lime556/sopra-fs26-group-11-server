@@ -31,6 +31,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.DiceRollDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameAmbienceDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameChatMessageDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
@@ -40,6 +41,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.GameSyncDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
+import ch.uzh.ifi.hase.soprafs26.service.AmbienceService;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
 import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
 
@@ -63,10 +65,16 @@ public class GameController {
     );
 
     private final GameService gameService;
+    private final AmbienceService ambienceService;
     private final BotActionExecutorService botActionExecutorService;
 
-    public GameController(GameService gameService, BotActionExecutorService botActionExecutorService) {
+    public GameController(
+        GameService gameService,
+        AmbienceService ambienceService,
+        BotActionExecutorService botActionExecutorService
+    ) {
         this.gameService = gameService;
+        this.ambienceService = ambienceService;
         this.botActionExecutorService = botActionExecutorService;
     }
 
@@ -91,6 +99,14 @@ public class GameController {
     public GameVersionDTO getGameVersion(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         return gameService.getGameVersion(gameId, extractToken(authorizationHeader));
+    }
+
+    @GetMapping("/games/{gameId}/ambience")
+    @ResponseStatus(HttpStatus.OK)
+    public GameAmbienceDTO getGameAmbience(@PathVariable Long gameId,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        gameService.getGameById(gameId, extractToken(authorizationHeader));
+        return ambienceService.getCurrentAmbience();
     }
 
     @PostMapping("/games/{gameId}/heartbeat")
@@ -450,6 +466,8 @@ public class GameController {
         dto.setGamePhase(game.getGamePhase());
         dto.setDiceValue(game.getDiceValue());
         dto.setDiceRolledAt(game.getDiceRolledAt() == null ? null : game.getDiceRolledAt().toString());
+        dto.setTradeRequestedAt(game.getTradeRequestedAt() == null ? null : game.getTradeRequestedAt().toString());
+        dto.setLatestTradeRequest(game.getLatestTradeRequest());
         dto.setRobberTileIndex(game.getRobberTileIndex());
         dto.setTargetVictoryPoints(game.getTargetVictoryPoints());
         dto.setStartedAt(game.getStartedAt());
