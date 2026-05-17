@@ -10,15 +10,23 @@ import ch.uzh.ifi.hase.soprafs26.service.GameService;
 public class BotActionExecutorService {
     private final GameService gameService;
     private final BotFallbackService botFallbackService;
+    private final BotAiService botAiService;
 
-    public BotActionExecutorService(GameService gameService, BotFallbackService botFallbackService) {
+    public BotActionExecutorService(GameService gameService, BotFallbackService botFallbackService, BotAiService botAiService) {
         this.gameService = gameService;
         this.botFallbackService = botFallbackService;
+        this.botAiService = botAiService;
     }
 
     public Game executeFallbackAction(Long gameId, String playerToken) {
+        return executeBotAction(gameId, playerToken, false);
+    }
+
+    public Game executeBotAction(Long gameId, String playerToken, boolean useAi) {
         Game game = gameService.getGameById(gameId, playerToken);
-        BotAction action = botFallbackService.chooseFallbackAction(game);
+        BotAction action = useAi
+            ? botAiService.chooseAction(game).orElseGet(() -> botFallbackService.chooseFallbackAction(game))
+            : botFallbackService.chooseFallbackAction(game);
 
         if (action == null || action.getType() == null || BotActionType.NONE.equals(action.getType())) {
             return game;

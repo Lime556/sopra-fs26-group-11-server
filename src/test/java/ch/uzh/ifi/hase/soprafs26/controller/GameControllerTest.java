@@ -5,7 +5,6 @@ import java.util.List;
 import static org.hamcrest.Matchers.is;
 import org.junit.jupiter.api.Test;
 import static org.mockito.BDDMockito.given;
-import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpStatus;

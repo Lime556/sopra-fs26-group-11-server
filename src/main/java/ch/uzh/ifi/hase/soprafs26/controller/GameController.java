@@ -193,24 +193,16 @@ public class GameController {
             @RequestBody Object body,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         String token = extractToken(authorizationHeader);
-        Long expectedGameVersion = null;
         Game game;
         if (body instanceof Number number) {
             game = gameService.moveRobber(gameId, token, number.intValue());
         } else if (body instanceof Map<?, ?> payload) {
-            expectedGameVersion = readOptionalLong(payload, "expectedGameVersion");
             Integer hexId = readRequiredInteger(payload, "hexId");
             Long sourcePlayerId = readOptionalLong(payload, "sourcePlayerId");
             Long targetPlayerId = readOptionalLong(payload, "targetPlayerId");
-            if (expectedGameVersion == null) {
-                game = sourcePlayerId == null
-                    ? gameService.moveRobber(gameId, token, hexId)
-                    : gameService.moveRobber(gameId, token, sourcePlayerId, hexId, targetPlayerId);
-            } else {
-                game = sourcePlayerId == null
-                    ? gameService.moveRobber(gameId, token, hexId, expectedGameVersion)
-                    : gameService.moveRobber(gameId, token, sourcePlayerId, hexId, targetPlayerId, expectedGameVersion);
-            }
+            game = sourcePlayerId == null
+                ? gameService.moveRobber(gameId, token, hexId)
+                : gameService.moveRobber(gameId, token, sourcePlayerId, hexId, targetPlayerId);
         } else {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid robber move payload.");
         }
