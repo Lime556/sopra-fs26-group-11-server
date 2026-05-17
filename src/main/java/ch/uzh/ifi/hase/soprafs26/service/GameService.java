@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -60,6 +61,8 @@ public class GameService {
     private static final long GAME_DISCONNECT_GRACE_SECONDS = 30;
     private static final long GAME_BOT_REPLACEMENT_TIMEOUT_SECONDS = 300;
     private static final long PRESENCE_REFRESH_SAVE_INTERVAL_SECONDS = 20;
+    private static final int HEARTBEAT_MAX_ATTEMPTS = 5;
+    private static final long HEARTBEAT_RETRY_DELAY_MILLIS = 500;
 
     private static final int MAX_ROADS = 15;
     private static final int MAX_SETTLEMENTS = 5;
@@ -371,6 +374,21 @@ public class GameService {
     }
 
     public Game heartbeatGame(Long gameId, String playerToken) {
+        for (int attempt = 1; attempt <= HEARTBEAT_MAX_ATTEMPTS; attempt++) {
+            try {
+                return heartbeatGameOnce(gameId, playerToken);
+            } catch (ObjectOptimisticLockingFailureException exception) {
+                if (attempt == HEARTBEAT_MAX_ATTEMPTS) {
+                    throw exception;
+                }
+                waitBeforeHeartbeatRetry();
+            }
+        }
+
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Game state changed. Please retry.");
+    }
+
+    private Game heartbeatGameOnce(Long gameId, String playerToken) {
         User authenticatedUser = authenticate(playerToken);
     
         Game game = gameRepository.findById(gameId)
@@ -391,6 +409,15 @@ public class GameService {
         }
     
         return game;
+    }
+
+    private void waitBeforeHeartbeatRetry() {
+        try {
+            Thread.sleep(HEARTBEAT_RETRY_DELAY_MILLIS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Heartbeat retry was interrupted.", exception);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -422,7 +449,7 @@ public class GameService {
         );
         chatMessages.add(message);
         game.setChatMessages(chatMessages);
-        gameRepository.saveAndFlush(game);
+        saveChangedGame(game);
     }
 
     private void appendEventLogEntry(Game game, String message) {

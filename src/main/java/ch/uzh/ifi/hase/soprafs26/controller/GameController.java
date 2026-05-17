@@ -439,6 +439,8 @@ public class GameController {
         dto.setGamePhase(game.getGamePhase());
         dto.setDiceValue(game.getDiceValue());
         dto.setDiceRolledAt(game.getDiceRolledAt() == null ? null : game.getDiceRolledAt().toString());
+        dto.setTradeRequestedAt(game.getTradeRequestedAt() == null ? null : game.getTradeRequestedAt().toString());
+        dto.setLatestTradeRequest(game.getLatestTradeRequest());
         dto.setRobberTileIndex(game.getRobberTileIndex());
         dto.setTargetVictoryPoints(game.getTargetVictoryPoints());
         dto.setStartedAt(game.getStartedAt());
