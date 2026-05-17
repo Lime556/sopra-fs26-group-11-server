@@ -230,13 +230,77 @@ public class LobbyServiceTest {
     public void getLobbies_returnsAll() {
         Lobby first = new Lobby();
         first.setId(1L);
+        first.setParticipants(new HashSet<>());
+        LobbyParticipant firstParticipant = new LobbyParticipant();
+        firstParticipant.setId(1L);
+        firstParticipant.setLobby(first);
+        firstParticipant.setUser(host);
+        firstParticipant.setBot(false);
+        firstParticipant.setOnline(true);
+        firstParticipant.setLastSeenAt(Instant.now());
+        first.getParticipants().add(firstParticipant);
+
         Lobby second = new Lobby();
         second.setId(2L);
+        second.setParticipants(new HashSet<>());
+        LobbyParticipant secondParticipant = new LobbyParticipant();
+        secondParticipant.setId(2L);
+        secondParticipant.setLobby(second);
+        secondParticipant.setUser(user);
+        secondParticipant.setBot(false);
+        secondParticipant.setOnline(true);
+        secondParticipant.setLastSeenAt(Instant.now());
+        second.getParticipants().add(secondParticipant);
+
         Mockito.when(lobbyRepository.findAll()).thenReturn(List.of(first, second));
 
         List<Lobby> lobbies = lobbyService.getLobbies();
 
         assertEquals(2, lobbies.size());
+    }
+
+    @Test
+    public void getLobbies_deletesPreGameLobbyWithoutOnlineHumanParticipants() {
+        Lobby abandonedLobby = new Lobby();
+        abandonedLobby.setId(30L);
+        abandonedLobby.setCapacity(4);
+        abandonedLobby.setGameId(null);
+        abandonedLobby.setParticipants(new HashSet<>());
+
+        User staleUser = new User();
+        staleUser.setId(30L);
+        staleUser.setEmail("stale@email.com");
+
+        LobbyParticipant staleParticipant = new LobbyParticipant();
+        staleParticipant.setId(300L);
+        staleParticipant.setLobby(abandonedLobby);
+        staleParticipant.setUser(staleUser);
+        staleParticipant.setBot(false);
+        staleParticipant.setOnline(true);
+        staleParticipant.setLastSeenAt(Instant.now().minusSeconds(60));
+
+        LobbyParticipant botParticipant = new LobbyParticipant();
+        botParticipant.setId(301L);
+        botParticipant.setLobby(abandonedLobby);
+        botParticipant.setUser(null);
+        botParticipant.setBot(true);
+        botParticipant.setOnline(true);
+        botParticipant.setLastSeenAt(Instant.now());
+
+        abandonedLobby.getParticipants().add(staleParticipant);
+        abandonedLobby.getParticipants().add(botParticipant);
+        abandonedLobby.setHostParticipant(staleParticipant);
+
+        Mockito.when(lobbyRepository.findAll()).thenReturn(List.of(abandonedLobby));
+
+        List<Lobby> lobbies = lobbyService.getLobbies();
+
+        assertTrue(lobbies.isEmpty());
+        assertTrue(abandonedLobby.getParticipants().isEmpty());
+        assertEquals(null, abandonedLobby.getHostParticipant());
+        Mockito.verify(lobbyParticipantRepository).delete(staleParticipant);
+        Mockito.verify(lobbyParticipantRepository).delete(botParticipant);
+        Mockito.verify(lobbyRepository).delete(abandonedLobby);
     }
 
     @Test
@@ -433,6 +497,15 @@ public class LobbyServiceTest {
     @Test
     public void getLobbyById_validId_success() {
         Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
+        LobbyParticipant participant = new LobbyParticipant();
+        participant.setId(1L);
+        participant.setLobby(lobby);
+        participant.setUser(user);
+        participant.setBot(false);
+        participant.setOnline(true);
+        participant.setLastSeenAt(Instant.now());
+        lobby.getParticipants().add(participant);
+
         Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.of(lobby));
 
         Lobby result = lobbyService.getLobbyById(1L, "valid-token");

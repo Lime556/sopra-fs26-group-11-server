@@ -156,6 +156,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
+        ensureGameNotFinished(game);
 
         if (gamePostDTO != null) {
             if (gamePostDTO.getBoard() != null) {
@@ -330,6 +331,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureGameNotFinished(game);
     
         if (TurnPhase.DISCARD.toString().equals(game.getTurnPhase()) || hasHumanPlayersWhoMustDiscard(game)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -367,13 +369,13 @@ public class GameService {
         return saveChangedGame(game);
     }
 
-    @Transactional(readOnly = true)
     public Game getGameById(Long gameId, String playerToken) {
         authenticate(playerToken);
     
-        return gameRepository.findById(gameId)
+        Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
+        return finishAbandonedBotOnlyGame(game) ? gameRepository.saveAndFlush(game) : game;
     }
 
     @Transactional(readOnly = true)
@@ -416,6 +418,7 @@ public class GameService {
     
         boolean changed = markPlayerOnline(game, player, false);
         changed = markDisconnectedPlayersAndReplaceTimedOut(game) || changed;
+        changed = finishAbandonedBotOnlyGame(game) || changed;
     
         if (changed) {
             game.setPlayers(game.getPlayers());
@@ -457,6 +460,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureGameNotFinished(game);
 
         List<String> chatMessages = new ArrayList<>(
             Optional.ofNullable(game.getChatMessages()).orElse(Collections.emptyList())
@@ -2481,6 +2485,7 @@ public class GameService {
             if (game.getFinishedAt() == null) {
                 game.setFinishedAt(LocalDateTime.now());
             }
+            game.setGamePhase("FINISHED");
         } else {
             game.setWinner(null);
             game.setFinishedAt(null);
@@ -2956,6 +2961,8 @@ public class GameService {
     }
 
     private void ensureExpectedGameVersion(Game game, Long expectedGameVersion) {
+        ensureGameNotFinished(game);
+
         if (expectedGameVersion == null) {
             return;
         }
@@ -2967,6 +2974,12 @@ public class GameService {
                 HttpStatus.CONFLICT,
                 "Game state changed. Please refresh and retry the action."
             );
+        }
+    }
+
+    private void ensureGameNotFinished(Game game) {
+        if (game != null && (game.getFinishedAt() != null || "FINISHED".equals(game.getGamePhase()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Game is already finished.");
         }
     }
 
@@ -3056,6 +3069,25 @@ public class GameService {
         }
     
         return botReplacementChanged || presenceOnlyChanged;
+    }
+
+    private boolean finishAbandonedBotOnlyGame(Game game) {
+        if (game == null || game.getFinishedAt() != null
+                || game.getPlayers() == null || game.getPlayers().isEmpty()) {
+            return false;
+        }
+
+        boolean allPlayersAreBots = game.getPlayers().stream()
+                .allMatch(player -> player != null && player.isBot());
+        if (!allPlayersAreBots) {
+            return false;
+        }
+
+        game.setWinner(null);
+        game.setFinishedAt(LocalDateTime.now());
+        game.setGamePhase("FINISHED");
+        game.incrementGameVersion();
+        return true;
     }
 
     public Game discardResources(Long gameId, String playerToken, Map<String, Integer> discardChoices) {

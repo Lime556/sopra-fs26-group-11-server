@@ -1065,6 +1065,70 @@ class GameServiceTest {
         assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
     }
 
+    @Test
+    void getGameById_botOnlyUnfinishedGame_marksGameFinished() {
+        Game game = new Game();
+        game.setId(166L);
+        game.setGamePhase("ACTIVE");
+        game.setGameVersion(7L);
+        game.setFinishedAt(null);
+
+        Player firstBot = new Player();
+        firstBot.setId(1L);
+        firstBot.setName("Bot 1");
+        firstBot.setUser(null);
+        firstBot.setBot(true);
+        firstBot.setOnline(true);
+
+        Player secondBot = new Player();
+        secondBot.setId(2L);
+        secondBot.setName("Bot 2");
+        secondBot.setUser(null);
+        secondBot.setBot(true);
+        secondBot.setOnline(true);
+
+        game.setPlayers(List.of(firstBot, secondBot));
+
+        Mockito.when(gameRepository.findById(166L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game result = gameService.getGameById(166L, "valid-token");
+
+        assertNotNull(result.getFinishedAt());
+        assertNull(result.getWinner());
+        assertEquals("FINISHED", result.getGamePhase());
+        assertEquals(8L, result.getGameVersion());
+        Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(game);
+    }
+
+    @Test
+    void endTurn_finishedGame_throwsConflict() {
+        Game game = new Game();
+        game.setId(167L);
+        game.setGamePhase("FINISHED");
+        game.setFinishedAt(java.time.LocalDateTime.now());
+        game.setCurrentTurnIndex(0);
+
+        Player player = new Player();
+        player.setId(1L);
+        player.setName("Finished Player");
+        player.setUser(user);
+        player.setBot(false);
+        player.setOnline(true);
+        game.setPlayers(List.of(player));
+
+        Mockito.when(gameRepository.findById(167L)).thenReturn(Optional.of(game));
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.endTurn(167L, "valid-token")
+        );
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
 
 
 
@@ -1305,6 +1369,43 @@ class GameServiceTest {
 
 
     // Tests for longest road and victory point recalculation logic
+    @Test
+    void recalculateVictoryState_playerReachesTarget_marksGameFinished() {
+        Game game = new Game();
+        game.setId(170L);
+        game.setGamePhase("ACTIVE");
+        game.setTargetVictoryPoints(10);
+        game.setBoard(new Board());
+
+        Player winner = new Player();
+        winner.setId(1L);
+        winner.setSettlementPoints(10);
+        winner.setCityPoints(0);
+        winner.setDevelopmentCardVictoryPoints(0);
+        winner.setHasLongestRoad(false);
+        winner.setHasLargestArmy(false);
+
+        Player otherPlayer = new Player();
+        otherPlayer.setId(2L);
+        otherPlayer.setSettlementPoints(3);
+        otherPlayer.setCityPoints(0);
+        otherPlayer.setDevelopmentCardVictoryPoints(0);
+        otherPlayer.setHasLongestRoad(false);
+        otherPlayer.setHasLargestArmy(false);
+
+        game.setPlayers(List.of(winner, otherPlayer));
+
+        Mockito.when(gameRepository.findById(170L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game result = gameService.updateGameState(170L, "valid-token", new GamePostDTO());
+
+        assertNotNull(result.getFinishedAt());
+        assertEquals(winner.getId(), result.getWinner().getId());
+        assertEquals("FINISHED", result.getGamePhase());
+    }
+
     @Test
     void recalculateVictoryState_fiveConnectedRoads_setsLongestRoad() {
         Game game = new Game();

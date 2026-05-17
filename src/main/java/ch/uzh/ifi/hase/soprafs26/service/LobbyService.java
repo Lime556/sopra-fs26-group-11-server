@@ -53,7 +53,13 @@ public class LobbyService {
     }
 
     public List<Lobby> getLobbies() {
-        return lobbyRepository.findAll();
+        List<Lobby> visibleLobbies = new ArrayList<>();
+        for (Lobby lobby : lobbyRepository.findAll()) {
+            if (!evictDisconnectedParticipants(lobby, null)) {
+                visibleLobbies.add(lobby);
+            }
+        }
+        return visibleLobbies;
     }
 
     public Lobby createLobby(String playerToken, Integer capacity, String lobbyPassword, String lobbyName) {
@@ -243,7 +249,10 @@ public class LobbyService {
     public Lobby getLobbyById(Long lobbyId, String playerToken) {
         User requester = userService.authenticate(playerToken);
         Lobby lobby = findLobbyOrThrow(lobbyId);
-        evictDisconnectedParticipants(lobby, requester.getId());
+        if (evictDisconnectedParticipants(lobby, requester.getId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Lobby with id " + lobbyId + " was not found.");
+        }
         return lobbyRepository.saveAndFlush(lobby);
     }
 
@@ -255,7 +264,10 @@ public class LobbyService {
 
         LobbyParticipant participant = findParticipantByUserOrThrow(lobby, user);
         markParticipantOnline(participant);
-        evictDisconnectedParticipants(lobby, user.getId());
+        if (evictDisconnectedParticipants(lobby, user.getId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Lobby with id " + lobbyId + " was not found.");
+        }
         return lobbyRepository.saveAndFlush(lobby);
     }
 
@@ -533,9 +545,9 @@ public class LobbyService {
         participant.setLastSeenAt(Instant.now());
     }
 
-    private void evictDisconnectedParticipants(Lobby lobby, Long protectedUserId) {
+    private boolean evictDisconnectedParticipants(Lobby lobby, Long protectedUserId) {
         if (lobby.getGameId() != null) {
-            return;
+            return false;
         }
 
         Instant cutoff = Instant.now().minusSeconds(LOBBY_DISCONNECT_GRACE_SECONDS);
@@ -546,18 +558,19 @@ public class LobbyService {
                 .filter(participant -> participant.getLastSeenAt() != null && participant.getLastSeenAt().isBefore(cutoff))
                 .toList();
 
-        if (disconnected.isEmpty()) {
-            return;
-        }
-
         for (LobbyParticipant participant : disconnected) {
             lobby.getParticipants().remove(participant);
             lobbyParticipantRepository.delete(participant);
         }
 
-        if (lobby.getParticipants().isEmpty()) {
+        if (!hasOnlineHumanParticipant(lobby)) {
+            for (LobbyParticipant participant : new HashSet<>(lobby.getParticipants())) {
+                lobbyParticipantRepository.delete(participant);
+            }
+            lobby.getParticipants().clear();
             lobby.setHostParticipant(null);
-            return;
+            lobbyRepository.delete(lobby);
+            return true;
         }
 
         boolean hostStillPresent = lobby.getHostParticipant() != null
@@ -569,6 +582,14 @@ public class LobbyService {
                     .orElse(null);
             lobby.setHostParticipant(newHost);
         }
+        return false;
+    }
+
+    private boolean hasOnlineHumanParticipant(Lobby lobby) {
+        return lobby.getParticipants().stream()
+                .anyMatch(participant -> !participant.isBot()
+                        && participant.getUser() != null
+                        && participant.isOnline());
     }
 
     private LobbyParticipant findParticipantByUserOrThrow(Lobby lobby, User user) {
