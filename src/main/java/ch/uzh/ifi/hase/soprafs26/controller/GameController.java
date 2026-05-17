@@ -688,6 +688,7 @@ public class GameController {
         dto.setTradeRequestedAt(game.getTradeRequestedAt() == null ? null : game.getTradeRequestedAt().toString());
         dto.setLatestTradeRequest(game.getLatestTradeRequest());
         dto.setChatMessageCount(game.getChatMessages() == null ? 0 : game.getChatMessages().size());
+        dto.setEventLogCount(game.getEventLog() == null ? 0 : game.getEventLog().size());
         dto.setCurrentPlayerId(currentPlayer != null ? currentPlayer.getId() : null);
         dto.setCurrentPlayerName(currentPlayer != null ? currentPlayer.getName() : null);
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);

@@ -367,6 +367,7 @@ public class GameService {
         dto.setGameId(game.getId());
         dto.setGameVersion(game.getGameVersion());
         dto.setChatMessageCount(game.getChatMessages() == null ? 0 : game.getChatMessages().size());
+        dto.setEventLogCount(game.getEventLog() == null ? 0 : game.getEventLog().size());
         return dto;
     }
 

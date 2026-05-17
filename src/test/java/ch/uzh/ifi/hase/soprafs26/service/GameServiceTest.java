@@ -626,6 +626,7 @@ class GameServiceTest {
         game.setId(165L);
         game.setGameVersion(8L);
         game.setChatMessages(List.of("Alice: hello", "Bob: hi"));
+        game.setEventLog(List.of("event1", "event2", "event3"));
 
         Mockito.when(gameRepository.findById(165L)).thenReturn(Optional.of(game));
 
@@ -634,6 +635,7 @@ class GameServiceTest {
         assertEquals(165L, result.getGameId());
         assertEquals(8L, result.getGameVersion());
         assertEquals(2, result.getChatMessageCount());
+        assertEquals(3, result.getEventLogCount());
         Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
         Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
     }
