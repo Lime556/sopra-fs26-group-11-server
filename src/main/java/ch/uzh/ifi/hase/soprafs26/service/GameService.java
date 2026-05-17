@@ -529,6 +529,12 @@ public class GameService {
             } catch (JsonProcessingException exception) {
                 throw new IllegalStateException("Could not serialize game event.", exception);
             }
+        } else if (Boolean.TRUE.equals(gameEventDTO.getBotAiFallbackUsed()) || Boolean.TRUE.equals(gameEventDTO.getBotAiConsultantUsed())) {
+            try {
+                result = objectMapper.writeValueAsString(gameEventDTO);
+            } catch (JsonProcessingException exception) {
+                throw new IllegalStateException("Could not serialize game event.", exception);
+            }
         } else if (gameEventDTO.getMessage() != null && !gameEventDTO.getMessage().isBlank()) {
             result = gameEventDTO.getMessage();
         } else {

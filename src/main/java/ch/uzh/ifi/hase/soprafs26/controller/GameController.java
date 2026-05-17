@@ -43,6 +43,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 import ch.uzh.ifi.hase.soprafs26.service.AmbienceService;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
+import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutionResult;
 import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
 
 @RestController
@@ -240,8 +241,30 @@ public class GameController {
     @PostMapping("/games/{gameId}/actions/bot/fallback")
     @ResponseStatus(HttpStatus.OK)
     public GameGetDTO executeBotFallbackAction(@PathVariable Long gameId,
+            @RequestBody(required = false) Map<String, Object> body,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-        Game game = botActionExecutorService.executeFallbackAction(gameId, extractToken(authorizationHeader));
+        String token = extractToken(authorizationHeader);
+        boolean useAi = readOptionalBoolean(body, "useAi", false);
+        BotActionExecutionResult result = botActionExecutorService.executeBotActionWithResult(gameId, token, useAi);
+        Game game = result.game();
+
+        if (result.fallbackUsed() || result.aiConsultantUsed()) {
+            GameEventDTO event = new GameEventDTO();
+            event.setType("ACTION");
+            event.setSourcePlayerId(result.playerId());
+            event.setBotAiRequested(result.aiRequested());
+            event.setBotAiFallbackUsed(result.fallbackUsed());
+            event.setBotAiConsultantUsed(result.aiConsultantUsed());
+            if (result.aiConsultantUsed()) {
+                event.setMessage("Bot AI consultant was used.");
+            } else if (result.aiRequested()) {
+                event.setMessage("Bot AI unavailable; deterministic fallback was used.");
+            } else {
+                event.setMessage("Bot deterministic fallback was used.");
+            }
+            game = gameService.appendGameEventAndReturnGame(gameId, token, event);
+        }
+
         return convertGameToDto(game);
     }
 
@@ -652,6 +675,17 @@ public class GameController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid field: " + key);
         }
         return number.longValue();
+    }
+
+    private static boolean readOptionalBoolean(Map<?, ?> body, String key, boolean defaultValue) {
+        Object value = body == null ? null : body.get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (!(value instanceof Boolean bool)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid field: " + key);
+        }
+        return bool;
     }
 
     @GetMapping("/games/{gameId}/sync")

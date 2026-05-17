@@ -23,22 +23,38 @@ public class BotActionExecutorService {
     }
 
     public Game executeBotAction(Long gameId, String playerToken, boolean useAi) {
+        return executeBotActionWithResult(gameId, playerToken, useAi).game();
+    }
+
+    public BotActionExecutionResult executeBotActionWithResult(Long gameId, String playerToken, boolean useAi) {
         Game game = gameService.getGameById(gameId, playerToken);
-        BotAction action = useAi
-            ? botAiService.chooseAction(game).orElseGet(() -> botFallbackService.chooseFallbackAction(game))
-            : botFallbackService.chooseFallbackAction(game);
+        BotAction action;
+        boolean aiConsultantUsed = false;
+        boolean fallbackUsed;
+
+        if (useAi) {
+            java.util.Optional<BotAction> aiAction = botAiService.chooseAction(game);
+            aiConsultantUsed = aiAction.isPresent();
+            fallbackUsed = !aiConsultantUsed;
+            action = aiAction.orElseGet(() -> botFallbackService.chooseFallbackAction(game));
+        } else {
+            fallbackUsed = true;
+            action = botFallbackService.chooseFallbackAction(game);
+        }
+
+        Long playerId = action == null ? null : action.getPlayerId();
 
         if (action == null || action.getType() == null || BotActionType.NONE.equals(action.getType())) {
-            return game;
+            return new BotActionExecutionResult(game, playerId, useAi, aiConsultantUsed, fallbackUsed);
         }
 
         try {
-            return execute(gameId, playerToken, action);
+            return new BotActionExecutionResult(execute(gameId, playerToken, action), playerId, useAi, aiConsultantUsed, fallbackUsed);
         } catch (ResponseStatusException exception) {
             if (BotActionType.END_TURN.equals(action.getType())) {
                 throw exception;
             }
-            return gameService.endTurn(gameId, playerToken);
+            return new BotActionExecutionResult(gameService.endTurn(gameId, playerToken), playerId, useAi, false, true);
         }
     }
 
