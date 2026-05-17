@@ -20,6 +20,10 @@ import org.springframework.web.server.ResponseStatusException;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
+import ch.uzh.ifi.hase.soprafs26.constant.TimeOfDayMood;
+import ch.uzh.ifi.hase.soprafs26.constant.WeatherCategory;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameAmbienceDTO;
+import ch.uzh.ifi.hase.soprafs26.service.AmbienceService;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
 import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
 
@@ -31,6 +35,9 @@ class GameControllerTest {
 
     @MockitoBean
     private GameService gameService;
+
+    @MockitoBean
+    private AmbienceService ambienceService;
 
     @MockitoBean
     @SuppressWarnings("unused")
@@ -183,6 +190,50 @@ class GameControllerTest {
         mockMvc.perform(getRequest)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.gameFinished", is(true)));
+    }
+
+    @Test
+    void getGameAmbience_validTokenAndExistingGame_returnsDto() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+        given(ambienceService.getCurrentAmbience()).willReturn(new GameAmbienceDTO(
+            WeatherCategory.SUNNY,
+            TimeOfDayMood.SUNSET,
+            "Sunny sunset over the island"
+        ));
+
+        MockHttpServletRequestBuilder getRequest = get("/games/1/ambience")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.weather", is("SUNNY")))
+                .andExpect(jsonPath("$.timeOfDay", is("SUNSET")))
+                .andExpect(jsonPath("$.description", is("Sunny sunset over the island")));
+    }
+
+    @Test
+    void getGameAmbience_missingToken_returnsUnauthorized() throws Exception {
+        given(gameService.getGameById(1L, null))
+                .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token."));
+
+        MockHttpServletRequestBuilder getRequest = get("/games/1/ambience");
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getGameAmbience_missingGame_returnsNotFound() throws Exception {
+        given(gameService.getGameById(999L, "token-123"))
+                .willThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Game with id 999 was not found."));
+
+        MockHttpServletRequestBuilder getRequest = get("/games/999/ambience")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isNotFound());
     }
 
     @Test

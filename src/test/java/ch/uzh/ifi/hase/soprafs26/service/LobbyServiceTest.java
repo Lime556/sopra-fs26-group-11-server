@@ -1,6 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -89,6 +90,8 @@ public class LobbyServiceTest {
 
         Mockito.when(playerRepository.save(Mockito.any(Player.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Mockito.when(gameRepository.findAll()).thenReturn(List.of());
     }
 
     @Test
@@ -135,6 +138,49 @@ public class LobbyServiceTest {
     }
 
     @Test
+    public void createLobby_userAlreadyInLobby_throwsConflict() {
+        LobbyParticipant existingParticipant = new LobbyParticipant();
+        existingParticipant.setId(100L);
+        existingParticipant.setUser(host);
+        existingParticipant.setLobby(lobby);
+        existingParticipant.setBot(false);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyParticipantRepository.findByUser_Id(host.getId())).thenReturn(List.of(existingParticipant));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.createLobby("valid-token", 4, null, "Test Lobby"));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+    }
+
+    @Test
+    public void createLobby_userOnlyInFinishedGameLobby_success() {
+        Lobby oldLobby = new Lobby();
+        oldLobby.setId(2L);
+        oldLobby.setGameId(99L);
+
+        LobbyParticipant existingParticipant = new LobbyParticipant();
+        existingParticipant.setId(100L);
+        existingParticipant.setUser(host);
+        existingParticipant.setLobby(oldLobby);
+        existingParticipant.setBot(false);
+
+        Game finishedGame = new Game();
+        finishedGame.setId(99L);
+        finishedGame.setFinishedAt(LocalDateTime.now());
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyParticipantRepository.findByUser_Id(host.getId())).thenReturn(List.of(existingParticipant));
+        Mockito.when(gameRepository.findById(99L)).thenReturn(Optional.of(finishedGame));
+
+        Lobby createdLobby = lobbyService.createLobby("valid-token", 4, null, "Test Lobby");
+
+        assertEquals("Test Lobby", createdLobby.getName());
+        assertNotNull(createdLobby.getHostParticipant());
+    }
+
+    @Test
     public void heartbeatLobby_refreshesRequesterAndEvictsDisconnectedParticipant() {
         Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
 
@@ -161,7 +207,7 @@ public class LobbyServiceTest {
         inactiveParticipant.setUser(inactiveUser);
         inactiveParticipant.setBot(false);
         inactiveParticipant.setOnline(true);
-        inactiveParticipant.setLastSeenAt(Instant.now().minusSeconds(10));
+        inactiveParticipant.setLastSeenAt(Instant.now().minusSeconds(60));
 
         testLobby.getParticipants().add(hostParticipant);
         testLobby.getParticipants().add(inactiveParticipant);
@@ -291,18 +337,91 @@ public class LobbyServiceTest {
     }
 
     @Test
-    public void joinLobby_userAlreadyInLobby_throwsConflict() {
+    public void joinLobby_userAlreadyInSameLobby_reconnectsSuccessfully() {
         LobbyParticipant existingParticipant = new LobbyParticipant();
         existingParticipant.setId(100L);
         existingParticipant.setUser(user);
         existingParticipant.setLobby(lobby);
         existingParticipant.setBot(false);
+        existingParticipant.setOnline(false);
 
         lobby.getParticipants().add(existingParticipant);
 
         Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
         Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+        Mockito.when(lobbyParticipantRepository.findByUser_Id(user.getId())).thenReturn(List.of(existingParticipant));
 
+        Lobby updatedLobby = lobbyService.joinLobby(1L, "valid-token", null);
+
+        assertEquals(lobby.getId(), updatedLobby.getId());
+        assertTrue(existingParticipant.isOnline());
+        assertNotNull(existingParticipant.getLastSeenAt());
+        Mockito.verify(lobbyParticipantRepository, Mockito.times(1)).saveAndFlush(existingParticipant);
+    }
+
+    @Test
+    public void joinLobby_userAlreadyInAnotherLobby_throwsConflict() {
+        Lobby otherLobby = new Lobby();
+        otherLobby.setId(2L);
+        LobbyParticipant existingParticipant = new LobbyParticipant();
+        existingParticipant.setId(100L);
+        existingParticipant.setUser(user);
+        existingParticipant.setLobby(otherLobby);
+        existingParticipant.setBot(false);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+        Mockito.when(lobbyParticipantRepository.findByUser_Id(user.getId())).thenReturn(List.of(existingParticipant));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> lobbyService.joinLobby(1L, "valid-token", null));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+    }
+
+    @Test
+    public void joinLobby_userOnlyInFinishedGameLobby_success() {
+        Lobby oldLobby = new Lobby();
+        oldLobby.setId(2L);
+        oldLobby.setGameId(99L);
+
+        LobbyParticipant existingParticipant = new LobbyParticipant();
+        existingParticipant.setId(100L);
+        existingParticipant.setUser(user);
+        existingParticipant.setLobby(oldLobby);
+        existingParticipant.setBot(false);
+
+        Game finishedGame = new Game();
+        finishedGame.setId(99L);
+        finishedGame.setFinishedAt(LocalDateTime.now());
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+        Mockito.when(lobbyParticipantRepository.findByUser_Id(user.getId())).thenReturn(List.of(existingParticipant));
+        Mockito.when(gameRepository.findById(99L)).thenReturn(Optional.of(finishedGame));
+
+        Lobby updatedLobby = lobbyService.joinLobby(1L, "valid-token", null);
+
+        Mockito.verify(lobbyParticipantRepository, Mockito.times(1))
+                .saveAndFlush(Mockito.argThat(participant -> participant.getLobby().equals(lobby)));
+        assertEquals(lobby.getId(), updatedLobby.getId());
+    }
+
+    @Test
+    public void joinLobby_userAlreadyInUnfinishedGameWithoutLobbyParticipant_throwsConflict() {
+        Game activeGame = new Game();
+        activeGame.setId(99L);
+        activeGame.setFinishedAt(null);
+
+        Player existingPlayer = new Player();
+        existingPlayer.setUser(user);
+        activeGame.setPlayers(List.of(existingPlayer));
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+        Mockito.when(lobbyParticipantRepository.findByUser_Id(user.getId())).thenReturn(List.of());
+        Mockito.when(gameRepository.findAll()).thenReturn(List.of(activeGame));
 
         ResponseStatusException exception = assertThrows(
                 ResponseStatusException.class,
@@ -319,6 +438,38 @@ public class LobbyServiceTest {
         Lobby result = lobbyService.getLobbyById(1L, "valid-token");
 
         assertEquals(1L, result.getId());
+    }
+
+    @Test
+    public void getLobbyById_startedGame_doesNotEvictDisconnectedParticipant() {
+        User inactiveUser = new User();
+        inactiveUser.setId(12L);
+
+        LobbyParticipant requesterParticipant = new LobbyParticipant();
+        requesterParticipant.setId(100L);
+        requesterParticipant.setUser(user);
+        requesterParticipant.setLobby(lobby);
+        requesterParticipant.setBot(false);
+        requesterParticipant.setLastSeenAt(Instant.now());
+
+        LobbyParticipant inactiveParticipant = new LobbyParticipant();
+        inactiveParticipant.setId(101L);
+        inactiveParticipant.setUser(inactiveUser);
+        inactiveParticipant.setLobby(lobby);
+        inactiveParticipant.setBot(false);
+        inactiveParticipant.setLastSeenAt(Instant.now().minusSeconds(10));
+
+        lobby.setGameId(99L);
+        lobby.getParticipants().add(requesterParticipant);
+        lobby.getParticipants().add(inactiveParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
+        Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.of(lobby));
+
+        Lobby result = lobbyService.getLobbyById(1L, "valid-token");
+
+        assertTrue(result.getParticipants().contains(inactiveParticipant));
+        Mockito.verify(lobbyParticipantRepository, Mockito.never()).delete(inactiveParticipant);
     }
 
     @Test
@@ -420,6 +571,29 @@ public class LobbyServiceTest {
 
         Mockito.verify(lobbyParticipantRepository, Mockito.times(1)).delete(existingParticipant);
         Mockito.verify(lobbyRepository, Mockito.times(1)).delete(lobby);
+    }
+
+    @Test
+    public void leaveLobby_gameAlreadyStarted_throwsConflictAndKeepsParticipant() {
+        LobbyParticipant existingParticipant = new LobbyParticipant();
+        existingParticipant.setId(100L);
+        existingParticipant.setUser(user);
+        existingParticipant.setLobby(lobby);
+        existingParticipant.setBot(false);
+        lobby.setGameId(99L);
+        lobby.getParticipants().add(existingParticipant);
+        lobby.setHostParticipant(existingParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(user);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> lobbyService.leaveLobby(1L, "valid-token"));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        Mockito.verify(lobbyParticipantRepository, Mockito.never()).delete(existingParticipant);
+        assertTrue(lobby.getParticipants().contains(existingParticipant));
     }
 
     @Test
