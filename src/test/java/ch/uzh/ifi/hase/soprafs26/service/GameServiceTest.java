@@ -800,6 +800,7 @@ class GameServiceTest {
         game.setId(165L);
         game.setGameVersion(8L);
         game.setChatMessages(List.of("Alice: hello", "Bob: hi"));
+        game.setEventLog(List.of("event1", "event2", "event3"));
 
         Mockito.when(gameRepository.findById(165L)).thenReturn(Optional.of(game));
 
@@ -808,6 +809,7 @@ class GameServiceTest {
         assertEquals(165L, result.getGameId());
         assertEquals(8L, result.getGameVersion());
         assertEquals(2, result.getChatMessageCount());
+        assertEquals(3, result.getEventLogCount());
         Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
         Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
     }
@@ -830,6 +832,137 @@ class GameServiceTest {
                 () -> gameService.getGameVersion(165L, null));
 
         assertEquals(401, exception.getStatusCode().value());
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void appendChatMessage_participant_persistsTrimmedMessage() {
+        Game game = new Game();
+        game.setId(171L);
+
+        Player participant = new Player();
+        participant.setId(user.getId());
+        participant.setName("Participant");
+        participant.setUser(user);
+        game.setPlayers(List.of(participant));
+
+        Mockito.when(gameRepository.findById(171L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        gameService.appendChatMessage(171L, "valid-token", " Participant: hello  ");
+
+        assertEquals(List.of("Participant: hello"), game.getChatMessages());
+        Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void appendChatMessage_participant_normalizesWhitespace() {
+        Game game = new Game();
+        game.setId(173L);
+
+        Player participant = new Player();
+        participant.setId(user.getId());
+        participant.setName("Participant");
+        participant.setUser(user);
+        game.setPlayers(List.of(participant));
+
+        Mockito.when(gameRepository.findById(173L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        gameService.appendChatMessage(173L, "valid-token", "  Participant:\tHello\nworld   ");
+
+        assertEquals(List.of("Participant: Hello world"), game.getChatMessages());
+        Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void appendChatMessage_emptyAfterNormalization_isIgnoredWithoutSaving() {
+        Game game = new Game();
+        game.setId(175L);
+
+        Player participant = new Player();
+        participant.setId(user.getId());
+        participant.setName("Participant");
+        participant.setUser(user);
+        game.setPlayers(List.of(participant));
+
+        Mockito.when(gameRepository.findById(175L)).thenReturn(Optional.of(game));
+
+        gameService.appendChatMessage(175L, "valid-token", "  \n\t   ");
+
+        assertTrue(game.getChatMessages() == null || game.getChatMessages().isEmpty());
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void appendChatMessage_nonParticipant_throwsForbidden() {
+        Game game = new Game();
+        game.setId(172L);
+
+        User someoneElse = new User();
+        someoneElse.setId(99L);
+        someoneElse.setUsername("someoneElse");
+
+        Player participant = new Player();
+        participant.setId(99L);
+        participant.setName("SomeoneElse");
+        participant.setUser(someoneElse);
+        game.setPlayers(List.of(participant));
+
+        Mockito.when(gameRepository.findById(172L)).thenReturn(Optional.of(game));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> gameService.appendChatMessage(172L, "valid-token", "Participant: hello"));
+
+        assertEquals(403, exception.getStatusCode().value());
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void appendChatMessage_tooLong_throwsBadRequest() {
+        Game game = new Game();
+        game.setId(174L);
+
+        Player participant = new Player();
+        participant.setId(user.getId());
+        participant.setName("Participant");
+        participant.setUser(user);
+        game.setPlayers(List.of(participant));
+
+        Mockito.when(gameRepository.findById(174L)).thenReturn(Optional.of(game));
+
+        String tooLongMessage = "x".repeat(301);
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> gameService.appendChatMessage(174L, "valid-token", tooLongMessage));
+
+        assertEquals(400, exception.getStatusCode().value());
+        Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
+    }
+
+    @Test
+    void appendChatMessage_withControlCharacter_throwsBadRequest() {
+        Game game = new Game();
+        game.setId(176L);
+
+        Player participant = new Player();
+        participant.setId(user.getId());
+        participant.setName("Participant");
+        participant.setUser(user);
+        game.setPlayers(List.of(participant));
+
+        Mockito.when(gameRepository.findById(176L)).thenReturn(Optional.of(game));
+
+        String containsControlCharacter = "Participant: hello" + Character.toString((char) 127);
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> gameService.appendChatMessage(176L, "valid-token", containsControlCharacter));
+
+        assertEquals(400, exception.getStatusCode().value());
         Mockito.verify(gameRepository, Mockito.never()).save(Mockito.any(Game.class));
         Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(Mockito.any(Game.class));
     }

@@ -21,6 +21,7 @@ class GameSyncDTOTest {
         String tradeRequestedAt = "2023-01-01T12:01:00Z";
         String latestTradeRequest = "Trade request data";
         Integer chatMessageCount = 5;
+        Integer eventLogCount = 9;
         Long currentPlayerId = 10L;
         String currentPlayerName = "Alice";
         Boolean gameFinished = false;
@@ -38,6 +39,7 @@ class GameSyncDTOTest {
         gameSyncDTO.setTradeRequestedAt(tradeRequestedAt);
         gameSyncDTO.setLatestTradeRequest(latestTradeRequest);
         gameSyncDTO.setChatMessageCount(chatMessageCount);
+        gameSyncDTO.setEventLogCount(eventLogCount);
         gameSyncDTO.setCurrentPlayerId(currentPlayerId);
         gameSyncDTO.setCurrentPlayerName(currentPlayerName);
         gameSyncDTO.setGameFinished(gameFinished);
@@ -55,6 +57,7 @@ class GameSyncDTOTest {
         assertEquals(tradeRequestedAt, gameSyncDTO.getTradeRequestedAt());
         assertEquals(latestTradeRequest, gameSyncDTO.getLatestTradeRequest());
         assertEquals(chatMessageCount, gameSyncDTO.getChatMessageCount());
+        assertEquals(eventLogCount, gameSyncDTO.getEventLogCount());
         assertEquals(currentPlayerId, gameSyncDTO.getCurrentPlayerId());
         assertEquals(currentPlayerName, gameSyncDTO.getCurrentPlayerName());
         assertEquals(gameFinished, gameSyncDTO.getGameFinished());
@@ -143,6 +146,14 @@ class GameSyncDTOTest {
     }
 
     @Test
+    void testEventLogCountField() {
+        GameSyncDTO gameSyncDTO = new GameSyncDTO();
+        Integer eventLogCount = 11;
+        gameSyncDTO.setEventLogCount(eventLogCount);
+        assertEquals(eventLogCount, gameSyncDTO.getEventLogCount());
+    }
+
+    @Test
     void testCurrentPlayerIdField() {
         GameSyncDTO gameSyncDTO = new GameSyncDTO();
         Long currentPlayerId = 20L;
@@ -195,6 +206,7 @@ class GameSyncDTOTest {
         assertEquals(null, gameSyncDTO.getTradeRequestedAt());
         assertEquals(null, gameSyncDTO.getLatestTradeRequest());
         assertEquals(null, gameSyncDTO.getChatMessageCount());
+        assertEquals(null, gameSyncDTO.getEventLogCount());
         assertEquals(null, gameSyncDTO.getCurrentPlayerId());
         assertEquals(null, gameSyncDTO.getCurrentPlayerName());
         assertEquals(null, gameSyncDTO.getGameFinished());

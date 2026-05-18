@@ -4,6 +4,7 @@ public class GameVersionDTO {
     private Long gameId;
     private Long gameVersion;
     private Integer chatMessageCount;
+    private Integer eventLogCount;
 
     public Long getGameId() {
         return gameId;
@@ -27,5 +28,13 @@ public class GameVersionDTO {
 
     public void setChatMessageCount(Integer chatMessageCount) {
         this.chatMessageCount = chatMessageCount;
+    }
+
+    public Integer getEventLogCount() {
+        return eventLogCount;
+    }
+
+    public void setEventLogCount(Integer eventLogCount) {
+        this.eventLogCount = eventLogCount;
     }
 }
