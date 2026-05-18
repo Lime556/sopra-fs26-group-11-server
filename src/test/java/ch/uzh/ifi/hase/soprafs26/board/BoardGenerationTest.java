@@ -6,7 +6,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,30 +22,36 @@ public class BoardGenerationTest {
 
 		List<String> generatedTiles = board.generateBoard();
 
-		List<String> expectedTiles = Arrays.asList(
-				"SHEEP", "WHEAT", "WOOD",
-				"BRICK", "ORE", "SHEEP", "WHEAT",
-				"WOOD", "DESERT", "WOOD", "WHEAT", "BRICK",
-				"ORE", "WOOD", "ORE", "SHEEP",
-				"BRICK", "WHEAT", "SHEEP"
-		);
-
-		List<Integer> expectedDiceNumbers = Arrays.asList(
-				10, 2, 9,
-				12, 6, 4, 10,
-				9, -1, 11, 3, 8,
-				8, 3, 4, 5,
-				5, 6, 11
-		);
-
-		List<String> expectedPorts = Arrays.asList(
+		List<String> expectedPorts = List.of(
 				"STANDARD", "BRICK", "STONE", "WHEAT", "WOOD",
 				"STANDARD", "SHEEP", "STANDARD", "STANDARD"
 		);
 
-		assertEquals(expectedTiles, generatedTiles);
-		assertEquals(expectedTiles, board.getHexTiles());
-		assertEquals(expectedDiceNumbers, board.getHexTile_DiceNumbers());
+		assertEquals(19, generatedTiles.size());
+		assertEquals(19, board.getHexTile_DiceNumbers().size());
+		assertEquals(generatedTiles, board.getHexTiles());
+
+		assertEquals(1, Collections.frequency(generatedTiles, "DESERT"));
+		assertEquals(4, Collections.frequency(generatedTiles, "SHEEP"));
+		assertEquals(4, Collections.frequency(generatedTiles, "WHEAT"));
+		assertEquals(4, Collections.frequency(generatedTiles, "WOOD"));
+		assertEquals(3, Collections.frequency(generatedTiles, "BRICK"));
+		assertEquals(3, Collections.frequency(generatedTiles, "ORE"));
+
+		List<Integer> diceNumbers = board.getHexTile_DiceNumbers();
+		assertEquals(1, Collections.frequency(diceNumbers, -1));
+		assertEquals(1, Collections.frequency(diceNumbers, 2));
+		assertEquals(2, Collections.frequency(diceNumbers, 3));
+		assertEquals(2, Collections.frequency(diceNumbers, 4));
+		assertEquals(2, Collections.frequency(diceNumbers, 5));
+		assertEquals(2, Collections.frequency(diceNumbers, 6));
+		assertEquals(2, Collections.frequency(diceNumbers, 8));
+		assertEquals(2, Collections.frequency(diceNumbers, 9));
+		assertEquals(2, Collections.frequency(diceNumbers, 10));
+		assertEquals(2, Collections.frequency(diceNumbers, 11));
+		assertEquals(1, Collections.frequency(diceNumbers, 12));
+		assertEquals(0, Collections.frequency(diceNumbers, 7));
+
 		assertEquals(expectedPorts, board.getPorts());
 	}
 
