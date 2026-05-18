@@ -69,6 +69,7 @@ public class GameService {
     private static final int MAX_ROADS = 15;
     private static final int MAX_SETTLEMENTS = 5;
     private static final int MAX_CITIES = 4;
+    private static final int MAX_CHAT_MESSAGE_LENGTH = 300;
 
     private final GameRepository gameRepository;
     private final UserService userService;
@@ -156,6 +157,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
+        ensureGameNotFinished(game);
 
         if (gamePostDTO != null) {
             if (gamePostDTO.getBoard() != null) {
@@ -330,6 +332,7 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureGameNotFinished(game);
     
         if (TurnPhase.DISCARD.toString().equals(game.getTurnPhase()) || hasHumanPlayersWhoMustDiscard(game)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -367,13 +370,13 @@ public class GameService {
         return saveChangedGame(game);
     }
 
-    @Transactional(readOnly = true)
     public Game getGameById(Long gameId, String playerToken) {
         authenticate(playerToken);
     
-        return gameRepository.findById(gameId)
+        Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
+        return finishAbandonedBotOnlyGame(game) ? gameRepository.saveAndFlush(game) : game;
     }
 
     @Transactional(readOnly = true)
@@ -384,6 +387,7 @@ public class GameService {
         dto.setGameId(game.getId());
         dto.setGameVersion(game.getGameVersion());
         dto.setChatMessageCount(game.getChatMessages() == null ? 0 : game.getChatMessages().size());
+        dto.setEventLogCount(game.getEventLog() == null ? 0 : game.getEventLog().size());
         return dto;
     }
 
@@ -416,6 +420,7 @@ public class GameService {
     
         boolean changed = markPlayerOnline(game, player, false);
         changed = markDisconnectedPlayersAndReplaceTimedOut(game) || changed;
+        changed = finishAbandonedBotOnlyGame(game) || changed;
     
         if (changed) {
             game.setPlayers(game.getPlayers());
@@ -452,16 +457,36 @@ public class GameService {
     }
 
     public void appendChatMessage(Long gameId, String playerToken, String message) {
-        authenticate(playerToken);
+        User authenticatedUser = authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
+        ensureGameNotFinished(game);
+
+        Player authenticatedPlayer = findAuthenticatedPlayer(game, authenticatedUser);
+        if (authenticatedPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this game.");
+        }
+
+        String normalizedMessage = message == null ? "" : message.trim().replaceAll("\\s+", " ");
+        if (normalizedMessage.isEmpty()) {
+            return;
+        }
+
+        if (normalizedMessage.chars().anyMatch(character -> Character.isISOControl(character))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chat message contains unsupported control characters.");
+        }
+
+        if (normalizedMessage.length() > MAX_CHAT_MESSAGE_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Chat message must be at most " + MAX_CHAT_MESSAGE_LENGTH + " characters long.");
+        }
 
         List<String> chatMessages = new ArrayList<>(
             Optional.ofNullable(game.getChatMessages()).orElse(Collections.emptyList())
         );
-        chatMessages.add(message);
+        chatMessages.add(normalizedMessage);
         game.setChatMessages(chatMessages);
         saveChangedGame(game);
     }
@@ -874,7 +899,7 @@ public class GameService {
             game,
             describePlayer(source),
             "BANK_TRADE",
-            "traded " + formatResourceBundle(giveBundle) + " for " + formatResourceBundle(receiveBundle) + " with bank"
+            "traded with bank: gave " + totalGive + " resources and received " + totalReceiveUnits + " resources"
         );
         return saveChangedGame(game);
     }
@@ -1137,12 +1162,14 @@ public class GameService {
         }
 
         game.setPlayers(players);
+        int totalGive = sumTradeBundle(giveBundle);
+        int totalReceive = sumTradeBundle(receiveBundle);
         appendStructuredEvent(
             game,
             describePlayer(source),
             "PLAYER_TRADE_FINALIZE",
-            "traded " + formatResourceBundle(giveBundle) + " for " + formatResourceBundle(receiveBundle)
-                + " with " + describePlayer(target)
+            "traded with " + describePlayer(target) + ": gave " + totalGive
+                + " resources and received " + totalReceive + " resources"
         );
         return saveChangedGame(game);
     }
@@ -2487,6 +2514,7 @@ public class GameService {
             if (game.getFinishedAt() == null) {
                 game.setFinishedAt(LocalDateTime.now());
             }
+            game.setGamePhase("FINISHED");
         } else {
             game.setWinner(null);
             game.setFinishedAt(null);
@@ -2962,6 +2990,8 @@ public class GameService {
     }
 
     private void ensureExpectedGameVersion(Game game, Long expectedGameVersion) {
+        ensureGameNotFinished(game);
+
         if (expectedGameVersion == null) {
             return;
         }
@@ -2973,6 +3003,12 @@ public class GameService {
                 HttpStatus.CONFLICT,
                 "Game state changed. Please refresh and retry the action."
             );
+        }
+    }
+
+    private void ensureGameNotFinished(Game game) {
+        if (game != null && (game.getFinishedAt() != null || "FINISHED".equals(game.getGamePhase()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Game is already finished.");
         }
     }
 
@@ -3062,6 +3098,25 @@ public class GameService {
         }
     
         return botReplacementChanged || presenceOnlyChanged;
+    }
+
+    private boolean finishAbandonedBotOnlyGame(Game game) {
+        if (game == null || game.getFinishedAt() != null
+                || game.getPlayers() == null || game.getPlayers().isEmpty()) {
+            return false;
+        }
+
+        boolean allPlayersAreBots = game.getPlayers().stream()
+                .allMatch(player -> player != null && player.isBot());
+        if (!allPlayersAreBots) {
+            return false;
+        }
+
+        game.setWinner(null);
+        game.setFinishedAt(LocalDateTime.now());
+        game.setGamePhase("FINISHED");
+        game.incrementGameVersion();
+        return true;
     }
 
     public Game discardResources(Long gameId, String playerToken, Map<String, Integer> discardChoices) {

@@ -11,6 +11,7 @@ public class GameSyncDTO {
     private String tradeRequestedAt;
     private String latestTradeRequest;
     private Integer chatMessageCount;
+    private Integer eventLogCount;
     private Long currentPlayerId;
     private String currentPlayerName;
     private Boolean gameFinished;
@@ -95,6 +96,14 @@ public class GameSyncDTO {
 
     public void setChatMessageCount(Integer chatMessageCount) {
         this.chatMessageCount = chatMessageCount;
+    }
+
+    public Integer getEventLogCount() {
+        return eventLogCount;
+    }
+
+    public void setEventLogCount(Integer eventLogCount) {
+        this.eventLogCount = eventLogCount;
     }
 
     public Long getCurrentPlayerId() {
