@@ -889,7 +889,7 @@ public class GameService {
             game,
             describePlayer(source),
             "BANK_TRADE",
-            "traded " + formatResourceBundle(giveBundle) + " for " + formatResourceBundle(receiveBundle) + " with bank"
+            "traded with bank: gave " + totalGive + " resources and received " + totalReceiveUnits + " resources"
         );
         return saveChangedGame(game);
     }
@@ -1152,12 +1152,14 @@ public class GameService {
         }
 
         game.setPlayers(players);
+        int totalGive = sumTradeBundle(giveBundle);
+        int totalReceive = sumTradeBundle(receiveBundle);
         appendStructuredEvent(
             game,
             describePlayer(source),
             "PLAYER_TRADE_FINALIZE",
-            "traded " + formatResourceBundle(giveBundle) + " for " + formatResourceBundle(receiveBundle)
-                + " with " + describePlayer(target)
+            "traded with " + describePlayer(target) + ": gave " + totalGive
+                + " resources and received " + totalReceive + " resources"
         );
         return saveChangedGame(game);
     }
