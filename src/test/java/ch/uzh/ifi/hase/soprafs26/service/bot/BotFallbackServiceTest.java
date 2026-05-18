@@ -57,6 +57,22 @@ public class BotFallbackServiceTest {
     }
 
     @Test
+    public void listCandidateActions_setupAfterSettlementAndRoad_canEndTurn() {
+        Game game = setupGame();
+        Player bot = botPlayer();
+        game.getBoard().getIntersections().get(0).setBuilding(settlement(bot.getId(), 1));
+        game.getBoard().getEdges().get(0).setRoad(road(bot.getId(), 1));
+        game.setPlayers(List.of(bot));
+        game.setCurrentTurnIndex(0);
+        game.setGamePhase(GamePhase.SETUP);
+
+        List<BotActionCandidate> actions = botFallbackService.listCandidateActions(game);
+
+        assertEquals(1, actions.size());
+        assertEquals(BotActionType.END_TURN, actions.get(0).action().getType());
+    }
+
+    @Test
     public void chooseFallbackAction_activeRollPhase_rollsDice() {
         Game game = setupGame();
         Player bot = botPlayer();

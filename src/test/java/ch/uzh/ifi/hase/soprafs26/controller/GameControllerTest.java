@@ -26,6 +26,7 @@ import ch.uzh.ifi.hase.soprafs26.constant.WeatherCategory;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameAmbienceDTO;
 import ch.uzh.ifi.hase.soprafs26.service.AmbienceService;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
+import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutionResult;
 import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
 
 @WebMvcTest(GameController.class)
@@ -1211,7 +1212,8 @@ class GameControllerTest {
         Game game = new Game();
         game.setId(1L);
 
-        given(botActionExecutorService.executeFallbackAction(1L, "token-123")).willReturn(game);
+        given(botActionExecutorService.executeBotActionWithResult(1L, "token-123", false))
+                .willReturn(new BotActionExecutionResult(game, null, false, false, false, null));
 
         MockHttpServletRequestBuilder postRequest = post("/games/1/actions/bot/fallback")
                 .header("Authorization", "token-123");

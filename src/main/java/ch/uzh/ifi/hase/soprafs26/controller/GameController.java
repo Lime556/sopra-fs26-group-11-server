@@ -43,6 +43,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 import ch.uzh.ifi.hase.soprafs26.service.AmbienceService;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
+import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutionResult;
 import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
 
 @RestController
@@ -220,24 +221,16 @@ public class GameController {
             @RequestBody Object body,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         String token = extractToken(authorizationHeader);
-        Long expectedGameVersion = null;
         Game game;
         if (body instanceof Number number) {
             game = gameService.moveRobber(gameId, token, number.intValue());
         } else if (body instanceof Map<?, ?> payload) {
-            expectedGameVersion = readOptionalLong(payload, "expectedGameVersion");
             Integer hexId = readRequiredInteger(payload, "hexId");
             Long sourcePlayerId = readOptionalLong(payload, "sourcePlayerId");
             Long targetPlayerId = readOptionalLong(payload, "targetPlayerId");
-            if (expectedGameVersion == null) {
-                game = sourcePlayerId == null
-                    ? gameService.moveRobber(gameId, token, hexId)
-                    : gameService.moveRobber(gameId, token, sourcePlayerId, hexId, targetPlayerId);
-            } else {
-                game = sourcePlayerId == null
-                    ? gameService.moveRobber(gameId, token, hexId, expectedGameVersion)
-                    : gameService.moveRobber(gameId, token, sourcePlayerId, hexId, targetPlayerId, expectedGameVersion);
-            }
+            game = sourcePlayerId == null
+                ? gameService.moveRobber(gameId, token, hexId)
+                : gameService.moveRobber(gameId, token, sourcePlayerId, hexId, targetPlayerId);
         } else {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid robber move payload.");
         }
@@ -259,8 +252,30 @@ public class GameController {
     @PostMapping("/games/{gameId}/actions/bot/fallback")
     @ResponseStatus(HttpStatus.OK)
     public GameGetDTO executeBotFallbackAction(@PathVariable Long gameId,
+            @RequestBody(required = false) Map<String, Object> body,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-        Game game = botActionExecutorService.executeFallbackAction(gameId, extractToken(authorizationHeader));
+        String token = extractToken(authorizationHeader);
+        boolean useAi = readOptionalBoolean(body, "useAi", false);
+        BotActionExecutionResult result = botActionExecutorService.executeBotActionWithResult(gameId, token, useAi);
+        Game game = result.game();
+
+        if (result.fallbackUsed() || result.aiConsultantUsed()) {
+            GameEventDTO event = new GameEventDTO();
+            event.setType("ACTION");
+            event.setSourcePlayerId(result.playerId());
+            event.setBotAiRequested(result.aiRequested());
+            event.setBotAiFallbackUsed(result.fallbackUsed());
+            event.setBotAiConsultantUsed(result.aiConsultantUsed());
+            if (result.aiConsultantUsed()) {
+                event.setMessage("Bot AI consultant was used.");
+            } else if (result.aiRequested()) {
+                event.setMessage("Bot AI skipped/fallback used: " + result.fallbackReason());
+            } else {
+                event.setMessage("Bot deterministic fallback was used.");
+            }
+            game = gameService.appendGameEventAndReturnGame(gameId, token, event);
+        }
+
         return convertGameToDto(game);
     }
 
@@ -671,6 +686,17 @@ public class GameController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid field: " + key);
         }
         return number.longValue();
+    }
+
+    private static boolean readOptionalBoolean(Map<?, ?> body, String key, boolean defaultValue) {
+        Object value = body == null ? null : body.get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (!(value instanceof Boolean bool)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid field: " + key);
+        }
+        return bool;
     }
 
     @GetMapping("/games/{gameId}/sync")
