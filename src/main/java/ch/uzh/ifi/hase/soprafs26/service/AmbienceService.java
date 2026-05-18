@@ -1,5 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
@@ -7,6 +9,7 @@ import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -24,6 +27,8 @@ public class AmbienceService {
     private static final Logger log = LoggerFactory.getLogger(AmbienceService.class);
     private static final String OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
         + "?latitude=47.3769&longitude=8.5417&current=weather_code,is_day&timezone=auto";
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(1);
+    private static final Duration CACHE_TTL = Duration.ofMinutes(10);
     private static final Set<Integer> SUNNY_CODES = Set.of(0);
     private static final Set<Integer> CLOUDY_CODES = Set.of(1, 2, 3);
     private static final Set<Integer> FOGGY_CODES = Set.of(45, 48);
@@ -32,26 +37,51 @@ public class AmbienceService {
     private static final Set<Integer> LIGHTNING_CODES = Set.of(95, 96, 99);
 
     private final RestTemplate restTemplate;
+    private GameAmbienceDTO cachedAmbience;
+    private Instant cachedAt;
 
     public AmbienceService() {
-        this(new RestTemplate());
+        this(createRestTemplateWithTimeouts());
     }
 
     AmbienceService(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
     }
 
-    public GameAmbienceDTO getCurrentAmbience() {
+    public synchronized GameAmbienceDTO getCurrentAmbience() {
+        if (isCacheFresh()) {
+            return cachedAmbience;
+        }
+
         try {
             OpenMeteoResponse response = restTemplate.getForObject(OPEN_METEO_URL, OpenMeteoResponse.class);
             OpenMeteoCurrent current = response == null ? null : response.getCurrent();
             WeatherCategory weather = mapWeatherCode(current == null ? null : current.getWeather_code());
             TimeOfDayMood timeOfDay = mapTimeOfDay(current == null ? null : current.getTime(), current == null ? null : current.getIs_day());
-            return new GameAmbienceDTO(weather, timeOfDay, describe(weather, timeOfDay));
+            GameAmbienceDTO ambience = new GameAmbienceDTO(weather, timeOfDay, describe(weather, timeOfDay));
+            cachedAmbience = ambience;
+            cachedAt = Instant.now();
+            return ambience;
         } catch (RestClientException | IllegalArgumentException exception) {
             log.warn("Could not fetch or parse Open-Meteo ambience.", exception);
+            if (cachedAmbience != null) {
+                return cachedAmbience;
+            }
             return unavailable();
         }
+    }
+
+    private static RestTemplate createRestTemplateWithTimeouts() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(REQUEST_TIMEOUT);
+        requestFactory.setReadTimeout(REQUEST_TIMEOUT);
+        return new RestTemplate(requestFactory);
+    }
+
+    private boolean isCacheFresh() {
+        return cachedAmbience != null
+                && cachedAt != null
+                && cachedAt.plus(CACHE_TTL).isAfter(Instant.now());
     }
 
     public static WeatherCategory mapWeatherCode(Integer weatherCode) {

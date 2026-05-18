@@ -164,6 +164,30 @@ class GameServiceTest {
     }
 
     @Test
+    void ambienceSuccessfulFetch_reusesCachedAmbience() {
+        RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+        AmbienceService.OpenMeteoCurrent current = new AmbienceService.OpenMeteoCurrent();
+        current.setWeather_code(0);
+        current.setIs_day(1);
+        current.setTime("2026-05-17T13:00");
+        AmbienceService.OpenMeteoResponse response = new AmbienceService.OpenMeteoResponse();
+        response.setCurrent(current);
+        Mockito.when(restTemplate.getForObject(Mockito.anyString(), Mockito.eq(AmbienceService.OpenMeteoResponse.class)))
+            .thenReturn(response);
+
+        AmbienceService ambienceService = new AmbienceService(restTemplate);
+
+        var firstAmbience = ambienceService.getCurrentAmbience();
+        var secondAmbience = ambienceService.getCurrentAmbience();
+
+        assertEquals(WeatherCategory.SUNNY, firstAmbience.getWeather());
+        assertEquals(TimeOfDayMood.DAY, secondAmbience.getTimeOfDay());
+        assertEquals("Sunny day", secondAmbience.getDescription());
+        Mockito.verify(restTemplate, Mockito.times(1))
+            .getForObject(Mockito.anyString(), Mockito.eq(AmbienceService.OpenMeteoResponse.class));
+    }
+
+    @Test
     void ambienceOpenMeteoJsonShape_deserializesSnakeCaseCurrentFields() throws Exception {
         String json = """
             {
