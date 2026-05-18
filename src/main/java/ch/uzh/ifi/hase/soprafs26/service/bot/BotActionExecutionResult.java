@@ -7,6 +7,7 @@ public record BotActionExecutionResult(
     Long playerId,
     boolean aiRequested,
     boolean aiConsultantUsed,
-    boolean fallbackUsed
+    boolean fallbackUsed,
+    String fallbackReason
 ) {
 }

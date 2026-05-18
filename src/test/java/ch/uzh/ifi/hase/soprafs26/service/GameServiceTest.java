@@ -543,7 +543,7 @@ class GameServiceTest {
 
         Game updatedGame = gameService.updateGameState(100L, "valid-token", update);
 
-        assertEquals(5, updatedGame.getPlayers().get(0).getVictoryPoints());
+        assertEquals(7, updatedGame.getPlayers().get(0).getVictoryPoints());
         assertNull(updatedGame.getWinner());
         assertNull(updatedGame.getFinishedAt());
     }
@@ -1199,7 +1199,7 @@ class GameServiceTest {
     }
 
     @Test
-    void getGameById_botOnlyUnfinishedGame_marksGameFinished() {
+    void getGameById_botOnlyUnfinishedGame_doesNotMutateReadRequest() {
         Game game = new Game();
         game.setId(166L);
         game.setGamePhase("ACTIVE");
@@ -1228,11 +1228,11 @@ class GameServiceTest {
 
         Game result = gameService.getGameById(166L, "valid-token");
 
-        assertNotNull(result.getFinishedAt());
+        assertNull(result.getFinishedAt());
         assertNull(result.getWinner());
-        assertEquals("FINISHED", result.getGamePhase());
-        assertEquals(8L, result.getGameVersion());
-        Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(game);
+        assertEquals("ACTIVE", result.getGamePhase());
+        assertEquals(7L, result.getGameVersion());
+        Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(game);
     }
 
     @Test

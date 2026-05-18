@@ -269,7 +269,7 @@ public class GameController {
             if (result.aiConsultantUsed()) {
                 event.setMessage("Bot AI consultant was used.");
             } else if (result.aiRequested()) {
-                event.setMessage("Bot AI unavailable; deterministic fallback was used.");
+                event.setMessage("Bot AI skipped/fallback used: " + result.fallbackReason());
             } else {
                 event.setMessage("Bot deterministic fallback was used.");
             }

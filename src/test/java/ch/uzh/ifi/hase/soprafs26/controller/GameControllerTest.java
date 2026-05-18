@@ -5,6 +5,7 @@ import java.util.List;
 import static org.hamcrest.Matchers.is;
 import org.junit.jupiter.api.Test;
 import static org.mockito.BDDMockito.given;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpStatus;
@@ -1212,7 +1213,7 @@ class GameControllerTest {
         game.setId(1L);
 
         given(botActionExecutorService.executeBotActionWithResult(1L, "token-123", false))
-                .willReturn(new BotActionExecutionResult(game, null, false, false, false));
+                .willReturn(new BotActionExecutionResult(game, null, false, false, false, null));
 
         MockHttpServletRequestBuilder postRequest = post("/games/1/actions/bot/fallback")
                 .header("Authorization", "token-123");

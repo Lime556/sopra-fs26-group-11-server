@@ -409,6 +409,13 @@ public class BotFallbackService {
                     );
                 }
             }
+            return;
+        }
+
+        boolean firstSetupComplete = game.isFirstSetupRound() && settlements >= 1 && roads >= 1;
+        boolean secondSetupComplete = game.isSecondSetupRound() && settlements >= 2 && roads >= 2;
+        if (firstSetupComplete || secondSetupComplete) {
+            addCandidate(candidates, BotAction.of(BotActionType.END_TURN, bot.getId()), Map.of("t", "END_TURN"));
         }
     }
 

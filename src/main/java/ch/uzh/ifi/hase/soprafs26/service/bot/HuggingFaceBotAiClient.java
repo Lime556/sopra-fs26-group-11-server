@@ -14,6 +14,8 @@ import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -21,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class HuggingFaceBotAiClient implements BotAiClient {
 
     private static final URI HF_CHAT_COMPLETIONS_URI = URI.create("https://router.huggingface.co/v1/chat/completions");
+    private static final Logger log = LoggerFactory.getLogger(HuggingFaceBotAiClient.class);
 
     private final boolean enabled;
     private final String apiToken;
@@ -74,16 +77,25 @@ public class HuggingFaceBotAiClient implements BotAiClient {
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestPayload), StandardCharsets.UTF_8))
                 .build();
 
+            long startedAt = System.nanoTime();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            long durationMs = Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.info("Hugging Face bot AI request failed: status={}, durationMs={}, model={}",
+                    response.statusCode(), durationMs, model);
                 return Optional.empty();
             }
 
-            return extractMessageContent(response.body());
+            Optional<String> content = extractMessageContent(response.body());
+            log.info("Hugging Face bot AI request completed: status={}, durationMs={}, model={}, validContent={}",
+                response.statusCode(), durationMs, model, content.isPresent());
+            return content;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+            log.info("Hugging Face bot AI request interrupted.");
             return Optional.empty();
         } catch (IOException | RuntimeException exception) {
+            log.info("Hugging Face bot AI request failed before valid response: {}", exception.getMessage());
             return Optional.empty();
         }
     }
