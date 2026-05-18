@@ -721,11 +721,12 @@ class GameControllerTest {
     }
 
     @Test
-    void moveRobber_withExpectedVersion_usesVersionedServiceCall() throws Exception {
+    void moveRobber_withExpectedVersion_acceptsPayloadAndMovesRobber() throws Exception {
         Game game = new Game();
         game.setId(1L);
         game.setRobberTileIndex(12);
 
+        given(gameService.moveRobber(1L, "token-123", 10L, 12, 11L)).willReturn(game);
         given(gameService.moveRobber(1L, "token-123", 10L, 12, 11L, 7L)).willReturn(game);
 
         String body = """
@@ -913,8 +914,12 @@ class GameControllerTest {
     void publishGameChatMessage_blankName_trimsAndUsesDefaultSender() throws Exception {
         Game game = new Game();
         game.setId(1L);
+        Player player = new Player();
+        player.setId(10L);
+        player.setName("   ");
 
         given(gameService.getGameById(1L, "token-123")).willReturn(game);
+        given(gameService.getAuthenticatedPlayer(game, "token-123")).willReturn(player);
 
         String body = """
             {
