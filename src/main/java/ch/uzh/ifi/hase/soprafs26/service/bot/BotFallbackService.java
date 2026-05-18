@@ -3,6 +3,7 @@ package ch.uzh.ifi.hase.soprafs26.service.bot;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ public class BotFallbackService {
     private static final int MAX_ROADS = 15;
     private static final int MAX_SETTLEMENTS = 5;
     private static final int MAX_CITIES = 4;
+    private static final int[] DICE_WEIGHTS = {0, 0, 1, 2, 3, 4, 5, 4, 5, 4, 3, 2, 1};
 
     public BotAction chooseFallbackAction(Game game) {
         Player bot = getCurrentBotPlayer(game);
@@ -51,6 +53,48 @@ public class BotFallbackService {
         }
 
         return chooseMainAction(game, bot);
+    }
+
+    public List<BotActionCandidate> listCandidateActions(Game game) {
+        Player bot = getCurrentBotPlayer(game);
+        if (bot == null || bot.getId() == null) {
+            return Collections.emptyList();
+        }
+
+        List<BotActionCandidate> candidates = new ArrayList<>();
+
+        if (game.isSetupPhase()) {
+            addSetupCandidates(game, bot, candidates);
+            return candidates;
+        }
+
+        if (TurnPhase.ROLL_DICE.toString().equals(game.getTurnPhase())) {
+            addCandidate(candidates, BotAction.of(BotActionType.ROLL_DICE, bot.getId()), Map.of("t", "ROLL_DICE"));
+            return candidates;
+        }
+
+        if (TurnPhase.DISCARD.toString().equals(game.getTurnPhase())) {
+            return candidates;
+        }
+
+        if (Integer.valueOf(7).equals(game.getDiceValue()) && !Boolean.TRUE.equals(game.getRobberMovedAfterSevenRoll())) {
+            addRobberCandidates(game, bot, candidates);
+        }
+
+        addMainCandidates(game, bot, candidates);
+        return candidates;
+    }
+
+    Player getCurrentBotPlayer(Game game) {
+        if (game == null || game.getPlayers() == null || game.getPlayers().isEmpty()) {
+            return null;
+        }
+        Integer index = game.getCurrentTurnIndex();
+        if (index == null || index < 0 || index >= game.getPlayers().size()) {
+            return null;
+        }
+        Player currentPlayer = game.getPlayers().get(index);
+        return currentPlayer != null && currentPlayer.isBot() ? currentPlayer : null;
     }
 
     private BotAction chooseSetupAction(Game game, Player bot) {
@@ -95,18 +139,6 @@ public class BotFallbackService {
         }
 
         return BotAction.of(BotActionType.END_TURN, bot.getId());
-    }
-
-    private Player getCurrentBotPlayer(Game game) {
-        if (game == null || game.getPlayers() == null || game.getPlayers().isEmpty()) {
-            return null;
-        }
-        Integer index = game.getCurrentTurnIndex();
-        if (index == null || index < 0 || index >= game.getPlayers().size()) {
-            return null;
-        }
-        Player currentPlayer = game.getPlayers().get(index);
-        return currentPlayer != null && currentPlayer.isBot() ? currentPlayer : null;
     }
 
     private Integer randomValidSetupSettlement(Game game) {
@@ -281,6 +313,10 @@ public class BotFallbackService {
     }
 
     private boolean hasAdjacentBuilding(Game game, Integer intersectionId) {
+        if (intersectionId == null) {
+            return false;
+        }
+
         for (Edge edge : edges(game)) {
             if (edge == null) {
                 continue;
@@ -301,10 +337,17 @@ public class BotFallbackService {
     }
 
     private boolean hasOwnRoadAtIntersection(Game game, Integer intersectionId, Long playerId) {
+        if (intersectionId == null || playerId == null) {
+            return false;
+        }
+
         for (Edge edge : edges(game)) {
             Road road = edge == null ? null : edge.getRoad();
+            Integer intersectionAId = edge == null ? null : edge.getIntersectionAId();
+            Integer intersectionBId = edge == null ? null : edge.getIntersectionBId();
             if (road != null && playerId.equals(road.getOwnerPlayerId())
-                && (intersectionId.equals(edge.getIntersectionAId()) || intersectionId.equals(edge.getIntersectionBId()))) {
+                && ((intersectionAId != null && intersectionAId.equals(intersectionId))
+                    || (intersectionBId != null && intersectionBId.equals(intersectionId)))) {
                 return true;
             }
         }
@@ -315,6 +358,309 @@ public class BotFallbackService {
         Intersection intersection = findIntersectionById(game, intersectionId);
         Building building = intersection == null ? null : intersection.getBuilding();
         return building != null && playerId.equals(building.getOwnerPlayerId());
+    }
+
+    private void addSetupCandidates(Game game, Player bot, List<BotActionCandidate> candidates) {
+        int settlements = countPlayerSettlements(game, bot.getId());
+        int roads = countPlayerRoads(game, bot.getId());
+
+        if ((game.isFirstSetupRound() && settlements < 1) || (game.isSecondSetupRound() && settlements < 2)) {
+            for (Intersection intersection : intersections(game)) {
+                if (intersection != null && !intersection.isOccupied() && !hasAdjacentBuilding(game, intersection.getId())) {
+                    addCandidate(
+                        candidates,
+                        BotAction.settlement(BotActionType.BUILD_INITIAL_SETTLEMENT, bot.getId(), intersection.getId()),
+                        Map.of(
+                            "t", "BUILD_INITIAL_SETTLEMENT",
+                            "at", intersection.getId(),
+                            "hex", buildAdjacentHexSummary(game, intersection.getId()),
+                            "score", productionScoreForIntersection(game, intersection.getId())
+                        )
+                    );
+                }
+            }
+            return;
+        }
+
+        if ((game.isFirstSetupRound() && roads < 1) || (game.isSecondSetupRound() && roads < 2)) {
+            Integer settlementId = bot.getLastPlacedSetupSettlementIntersectionId();
+            if (settlementId == null) {
+                return;
+            }
+
+            for (Edge edge : edges(game)) {
+                if (edge == null || edge.isOccupied()) {
+                    continue;
+                }
+
+                boolean connectedToNewSettlement = settlementId.equals(edge.getIntersectionAId()) || settlementId.equals(edge.getIntersectionBId());
+                boolean connectedToOwnBuilding =
+                    hasOwnBuildingAtIntersection(game, edge.getIntersectionAId(), bot.getId())
+                        || hasOwnBuildingAtIntersection(game, edge.getIntersectionBId(), bot.getId());
+                if (connectedToNewSettlement && connectedToOwnBuilding) {
+                    addCandidate(
+                        candidates,
+                        BotAction.road(BotActionType.BUILD_INITIAL_ROAD, bot.getId(), edge.getId()),
+                        Map.of(
+                            "t", "BUILD_INITIAL_ROAD",
+                            "edgeId", edge.getId(),
+                            "connects", List.of(edge.getIntersectionAId(), edge.getIntersectionBId())
+                        )
+                    );
+                }
+            }
+            return;
+        }
+
+        boolean firstSetupComplete = game.isFirstSetupRound() && settlements >= 1 && roads >= 1;
+        boolean secondSetupComplete = game.isSecondSetupRound() && settlements >= 2 && roads >= 2;
+        if (firstSetupComplete || secondSetupComplete) {
+            addCandidate(candidates, BotAction.of(BotActionType.END_TURN, bot.getId()), Map.of("t", "END_TURN"));
+        }
+    }
+
+    private void addMainCandidates(Game game, Player bot, List<BotActionCandidate> candidates) {
+        for (Intersection intersection : intersections(game)) {
+            if (intersection == null || !(intersection.getBuilding() instanceof Settlement settlement)) {
+                continue;
+            }
+            if (!bot.getId().equals(settlement.getOwnerPlayerId())) {
+                continue;
+            }
+            if (resourceValue(bot.getWheat()) >= 2 && resourceValue(bot.getOre()) >= 3 && countPlayerCities(game, bot.getId()) < MAX_CITIES) {
+                addCandidate(
+                    candidates,
+                    BotAction.settlement(BotActionType.BUILD_CITY, bot.getId(), intersection.getId()),
+                    Map.of(
+                        "t", "BUILD_CITY",
+                        "at", intersection.getId(),
+                        "c", List.of(0, 0, 2, 0, 3),
+                        "gain", buildProductionGain(game, intersection.getId()),
+                        "score", productionScoreForIntersection(game, intersection.getId())
+                    )
+                );
+            }
+        }
+
+        if (resourceValue(bot.getWood()) >= 1 && resourceValue(bot.getBrick()) >= 1
+            && resourceValue(bot.getWool()) >= 1 && resourceValue(bot.getWheat()) >= 1
+            && countPlayerSettlements(game, bot.getId()) < MAX_SETTLEMENTS) {
+            for (Intersection intersection : intersections(game)) {
+                if (intersection == null || intersection.isOccupied() || hasAdjacentBuilding(game, intersection.getId())) {
+                    continue;
+                }
+                if (hasOwnRoadAtIntersection(game, intersection.getId(), bot.getId())) {
+                    addCandidate(
+                        candidates,
+                        BotAction.settlement(BotActionType.BUILD_SETTLEMENT, bot.getId(), intersection.getId()),
+                        Map.of(
+                            "t", "BUILD_SETTLEMENT",
+                            "at", intersection.getId(),
+                            "c", List.of(1, 1, 1, 1, 0),
+                            "hex", buildAdjacentHexSummary(game, intersection.getId()),
+                            "score", productionScoreForIntersection(game, intersection.getId())
+                        )
+                    );
+                }
+            }
+        }
+
+        if ((resourceValue(bot.getFreeRoadBuildsRemaining()) > 0 || (resourceValue(bot.getWood()) >= 1 && resourceValue(bot.getBrick()) >= 1))
+            && countPlayerRoads(game, bot.getId()) < MAX_ROADS) {
+            for (Edge edge : edges(game)) {
+                if (edge == null || edge.isOccupied()) {
+                    continue;
+                }
+
+                boolean connectedToOwnBuilding =
+                    hasOwnBuildingAtIntersection(game, edge.getIntersectionAId(), bot.getId())
+                        || hasOwnBuildingAtIntersection(game, edge.getIntersectionBId(), bot.getId());
+                boolean connectedToOwnRoad =
+                    hasOwnRoadAtIntersection(game, edge.getIntersectionAId(), bot.getId())
+                        || hasOwnRoadAtIntersection(game, edge.getIntersectionBId(), bot.getId());
+
+                if (connectedToOwnBuilding || connectedToOwnRoad) {
+                    addCandidate(
+                        candidates,
+                        BotAction.road(BotActionType.BUILD_ROAD, bot.getId(), edge.getId()),
+                        Map.of(
+                            "t", "BUILD_ROAD",
+                            "edgeId", edge.getId(),
+                            "connects", List.of(edge.getIntersectionAId(), edge.getIntersectionBId())
+                        )
+                    );
+                }
+            }
+        }
+
+        if (canBuyDevelopmentCard(game, bot)) {
+            addCandidate(
+                candidates,
+                BotAction.of(BotActionType.BUY_DEVELOPMENT_CARD, bot.getId()),
+                Map.of("t", "BUY_DEVELOPMENT_CARD", "cost", List.of(0, 0, 1, 1, 1))
+            );
+        }
+
+        if (Integer.valueOf(7).equals(game.getDiceValue()) && !Boolean.TRUE.equals(game.getRobberMovedAfterSevenRoll())) {
+            addRobberCandidates(game, bot, candidates);
+        }
+
+        addCandidate(candidates, BotAction.of(BotActionType.END_TURN, bot.getId()), Map.of("t", "END_TURN"));
+    }
+
+    private void addRobberCandidates(Game game, Player bot, List<BotActionCandidate> candidates) {
+        Board board = game.getBoard();
+        if (board == null || board.getHexTiles() == null) {
+            return;
+        }
+
+        for (int i = 0; i < board.getHexTiles().size(); i++) {
+            int hexId = i + 1;
+            if (Integer.valueOf(hexId).equals(game.getRobberTileIndex())) {
+                continue;
+            }
+
+            addCandidate(
+                candidates,
+                BotAction.robber(bot.getId(), hexId),
+                Map.of(
+                    "t", "MOVE_ROBBER",
+                    "hexId", hexId,
+                    "threat", robberThreatScore(game, hexId)
+                )
+            );
+        }
+    }
+
+    private int robberThreatScore(Game game, int hexId) {
+        Board board = game == null ? null : game.getBoard();
+        Player bot = getCurrentBotPlayer(game);
+        if (board == null || bot == null || bot.getId() == null) {
+            return 0;
+        }
+
+        int score = 0;
+        for (Integer intersectionId : board.getIntersectionIdsForHex(hexId)) {
+            Intersection intersection = findIntersectionById(game, intersectionId);
+            if (intersection == null || intersection.getBuilding() == null || intersection.getBuilding().getOwnerPlayerId() == null) {
+                continue;
+            }
+            if (!bot.getId().equals(intersection.getBuilding().getOwnerPlayerId())) {
+                score += 1;
+            }
+        }
+
+        return score;
+    }
+
+    private List<List<Object>> buildAdjacentHexSummary(Game game, Integer intersectionId) {
+        Board board = game == null ? null : game.getBoard();
+        if (board == null || intersectionId == null) {
+            return List.of();
+        }
+
+        List<List<Object>> hexSummary = new ArrayList<>();
+        List<Integer> hexIds = board.buildIntersectionToHexIdsMap().getOrDefault(intersectionId, List.of());
+        List<String> hexTypes = board.getHexTiles();
+        List<Integer> diceNumbers = board.getHexTile_DiceNumbers();
+        Integer robberTileIndex = game == null ? null : game.getRobberTileIndex();
+
+        for (Integer hexId : hexIds) {
+            if (hexId == null || hexId < 1 || hexId > safeSize(hexTypes)) {
+                continue;
+            }
+
+            String resourceType = hexTypes.get(hexId - 1);
+            Integer diceNumber = hexId <= safeSize(diceNumbers) ? diceNumbers.get(hexId - 1) : null;
+            boolean blocked = robberTileIndex != null && robberTileIndex.equals(hexId);
+            hexSummary.add(List.of(resourceCode(resourceType), diceNumber, blocked));
+        }
+
+        return hexSummary;
+    }
+
+    private List<Integer> buildProductionGain(Game game, Integer intersectionId) {
+        int[] gain = {0, 0, 0, 0, 0};
+        Board board = game == null ? null : game.getBoard();
+        if (board == null || intersectionId == null) {
+            return List.of(0, 0, 0, 0, 0);
+        }
+
+        List<Integer> hexIds = board.buildIntersectionToHexIdsMap().getOrDefault(intersectionId, List.of());
+        List<String> hexTypes = board.getHexTiles();
+        List<Integer> diceNumbers = board.getHexTile_DiceNumbers();
+        Integer robberTileIndex = game == null ? null : game.getRobberTileIndex();
+
+        for (Integer hexId : hexIds) {
+            if (hexId == null || hexId < 1 || hexId > safeSize(hexTypes)) {
+                continue;
+            }
+
+            String resourceType = hexTypes.get(hexId - 1);
+            Integer diceNumber = hexId <= safeSize(diceNumbers) ? diceNumbers.get(hexId - 1) : null;
+            if (resourceType == null || "DESERT".equalsIgnoreCase(resourceType) || diceNumber == null) {
+                continue;
+            }
+            if (robberTileIndex != null && robberTileIndex.equals(hexId)) {
+                continue;
+            }
+
+            int weight = diceWeight(diceNumber);
+            switch (resourceCode(resourceType)) {
+                case "B" -> gain[0] += weight;
+                case "W" -> gain[1] += weight;
+                case "H" -> gain[2] += weight;
+                case "S" -> gain[3] += weight;
+                case "O" -> gain[4] += weight;
+                default -> {
+                }
+            }
+        }
+
+        return List.of(gain[0], gain[1], gain[2], gain[3], gain[4]);
+    }
+
+    private int productionScoreForIntersection(Game game, Integer intersectionId) {
+        int score = 0;
+        for (Integer value : buildProductionGain(game, intersectionId)) {
+            score += value == null ? 0 : value;
+        }
+        return score;
+    }
+
+    private void addCandidate(List<BotActionCandidate> candidates, BotAction action, Map<String, Object> details) {
+        if (candidates == null || action == null || action.getType() == null) {
+            return;
+        }
+
+        String id = "A" + (candidates.size() + 1);
+        candidates.add(new BotActionCandidate(id, action, details));
+    }
+
+    private int diceWeight(Integer diceNumber) {
+        if (diceNumber == null || diceNumber < 0 || diceNumber >= DICE_WEIGHTS.length) {
+            return 0;
+        }
+        return DICE_WEIGHTS[diceNumber];
+    }
+
+    private String resourceCode(String resourceType) {
+        if (resourceType == null) {
+            return "D";
+        }
+
+        return switch (resourceType.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "BRICK" -> "B";
+            case "WOOD" -> "W";
+            case "WHEAT" -> "H";
+            case "SHEEP", "WOOL" -> "S";
+            case "ORE" -> "O";
+            default -> "D";
+        };
+    }
+
+    private int safeSize(List<?> values) {
+        return values == null ? 0 : values.size();
     }
 
     private Intersection findIntersectionById(Game game, Integer intersectionId) {

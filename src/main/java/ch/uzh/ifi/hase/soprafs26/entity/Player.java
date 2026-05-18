@@ -267,7 +267,7 @@ public class Player implements Serializable {
 
     public int calculateVictoryPoints() {
         int score = safeValue(settlementPoints)
-                + safeValue(cityPoints)
+                + (2 * safeValue(cityPoints))
                 + safeValue(developmentCardVictoryPoints);
 
         if (Boolean.TRUE.equals(hasLongestRoad)) {

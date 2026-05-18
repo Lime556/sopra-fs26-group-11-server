@@ -246,7 +246,7 @@ public class GameService {
             }
         }
     
-        robberHelper(game, player, targetHexId, targetPlayerId);
+        String stolenResource = robberHelper(game, player, targetHexId, targetPlayerId);
 
         if (Integer.valueOf(7).equals(game.getDiceValue())) {
             game.setRobberMovedAfterSevenRoll(true);
@@ -258,7 +258,9 @@ public class GameService {
             "ROBBER_MOVE",
             targetPlayerId == null
                 ? "moved robber to hex " + targetHexId
-                : "moved robber to hex " + targetHexId + " and stole from player " + targetPlayerId
+                : "moved robber to hex " + targetHexId + " and stole "
+                    + (stolenResource == null ? "a resource" : "1 " + stolenResource)
+                    + " from player " + targetPlayerId
         );
         return saveChangedGame(game);
     }
@@ -285,7 +287,7 @@ public class GameService {
         return saveChangedGame(game);
     }
 
-    private void robberHelper(Game game, Player player, Integer targetHexId, Long targetPlayerId) {
+    private String robberHelper(Game game, Player player, Integer targetHexId, Long targetPlayerId) {
         if (targetHexId != null) {
             if (!isValidHexId(game, targetHexId)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -322,8 +324,9 @@ public class GameService {
                     "Target player has no settlements or cities adjacent to robber position on hex " + effectiveRobberHexId + ".");
             }
         
-            stealRandomResource(target, player);
+            return stealRandomResource(target, player);
         }
+        return null;
     }
 
     public Game moveRobberAndStealFromFirstAdjacentPlayer(Long gameId, String token, Long sourcePlayerId, Integer hexId) {
@@ -347,9 +350,7 @@ public class GameService {
         robberHelper(game, source, hexId, null);
     
         Player target = findFirstRobberStealTarget(game, sourcePlayerId, hexId);
-        if (target != null) {
-            stealRandomResource(target, source);
-        }
+        String stolenResource = target == null ? null : stealRandomResource(target, source);
     
         if (Integer.valueOf(7).equals(game.getDiceValue())) {
             game.setRobberMovedAfterSevenRoll(true);
@@ -364,24 +365,30 @@ public class GameService {
             "ROBBER_MOVE",
             target == null
                 ? "moved robber to hex " + hexId
-                : "moved robber to hex " + hexId + " and stole from " + describePlayer(target)
+                : "moved robber to hex " + hexId + " and stole "
+                    + (stolenResource == null ? "a resource" : "1 " + stolenResource)
+                    + " from " + describePlayer(target)
         );
     
         return saveChangedGame(game);
     }
 
+    @Transactional(readOnly = true)
     public Game getGameById(Long gameId, String playerToken) {
         authenticate(playerToken);
     
-        Game game = gameRepository.findById(gameId)
+        return gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
-        return finishAbandonedBotOnlyGame(game) ? gameRepository.saveAndFlush(game) : game;
     }
 
     @Transactional(readOnly = true)
     public GameVersionDTO getGameVersion(Long gameId, String playerToken) {
-        Game game = getGameById(gameId, playerToken);
+        authenticate(playerToken);
+
+        Game game = gameRepository.findById(gameId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Game with id " + gameId + " was not found."));
 
         GameVersionDTO dto = new GameVersionDTO();
         dto.setGameId(game.getId());
@@ -551,6 +558,12 @@ public class GameService {
                 // and can update their UI (e.g., trade response status or popup visibility)
                 game.setTradeRequestedAt(java.time.Instant.now());
                 game.setLatestTradeRequest(result);
+            } catch (JsonProcessingException exception) {
+                throw new IllegalStateException("Could not serialize game event.", exception);
+            }
+        } else if (Boolean.TRUE.equals(gameEventDTO.getBotAiFallbackUsed()) || Boolean.TRUE.equals(gameEventDTO.getBotAiConsultantUsed())) {
+            try {
+                result = objectMapper.writeValueAsString(gameEventDTO);
             } catch (JsonProcessingException exception) {
                 throw new IllegalStateException("Could not serialize game event.", exception);
             }
@@ -2322,7 +2335,7 @@ public class GameService {
         player.setDevelopmentCards(hand);
     }
 
-    private void stealRandomResource(Player from, Player to) {
+    private String stealRandomResource(Player from, Player to) {
         List<String> available = new ArrayList<>();
         addResourceIfAvailable(available, "wood", from.getWood());
         addResourceIfAvailable(available, "brick", from.getBrick());
@@ -2331,12 +2344,13 @@ public class GameService {
         addResourceIfAvailable(available, "ore", from.getOre());
 
         if (available.isEmpty()) {
-            return;
+            return null;
         }
 
         String selected = available.get(ThreadLocalRandom.current().nextInt(available.size()));
         setResourceByName(from, selected, getResourceByName(from, selected) - 1);
         setResourceByName(to, selected, getResourceByName(to, selected) + 1);
+        return selected;
     }
 
     private Player findFirstRobberStealTarget(Game game, Long sourcePlayerId, Integer robberHexId) {
