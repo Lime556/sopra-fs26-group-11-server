@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Random;
 import java.util.stream.Collectors;
 
 public class Board implements Serializable {
@@ -49,6 +50,18 @@ public class Board implements Serializable {
         8, 3, 4, 5,
         5, 6, 11
     );
+
+    private static final List<Integer> OFFICIAL_DICE_TOKEN_ORDER = Arrays.asList(
+        5, 2, 6, 3, 8, 10, 9, 12, 11,
+        4, 8, 10, 9, 4, 5, 6, 3, 11
+    );
+
+    private static final List<Integer> OFFICIAL_SPIRAL_HEX_ORDER = Arrays.asList(
+        1, 2, 3, 7, 12, 16, 19, 18, 17, 13, 8, 4,
+        5, 6, 11, 15, 14, 9, 10
+    );
+
+    private static final int MAX_BOARD_GENERATION_ATTEMPTS = 100;
 
     private List<String> hexTiles;
     private List<Intersection> intersections;
@@ -398,11 +411,79 @@ public List<Integer> getAdjacentHexIdsForIntersection(Integer intersectionId) {
 }
 
     public List<String> generateBoard() {
-        this.hexTiles = new ArrayList<>(STANDARD_HEX_TILES);
+        Random random = new Random();
         createDefaultIntersectionsAndEdges();
         this.ports = new ArrayList<>(STANDARD_PORTS);
         this.boats = createDefaultBoats(this.ports);
-        this.hexTile_DiceNumbers = new ArrayList<>(STANDARD_HEX_TILE_DICE_NUMBERS);
+
+        for (int attempt = 0; attempt < MAX_BOARD_GENERATION_ATTEMPTS; attempt++) {
+            List<String> randomizedTiles = createRandomizedHexTiles(random);
+            List<Integer> officialDiceNumbers = createOfficialDiceNumbers(randomizedTiles);
+
+            if (!hasAdjacentRedNumbers(officialDiceNumbers)) {
+                this.hexTiles = randomizedTiles;
+                this.hexTile_DiceNumbers = officialDiceNumbers;
+                return this.hexTiles;
+            }
+        }
+
+        this.hexTiles = createRandomizedHexTiles(random);
+        this.hexTile_DiceNumbers = createOfficialDiceNumbers(this.hexTiles);
         return this.hexTiles;
+    }
+
+    private List<String> createRandomizedHexTiles(Random random) {
+        List<String> randomizedTiles = new ArrayList<>(STANDARD_HEX_TILES);
+        Collections.shuffle(randomizedTiles, random);
+        return randomizedTiles;
+    }
+
+    private List<Integer> createOfficialDiceNumbers(List<String> randomizedTiles) {
+        List<Integer> diceNumbers = new ArrayList<>(Collections.nCopies(STANDARD_HEX_TILES.size(), -1));
+        int tokenIndex = 0;
+
+        for (Integer hexId : OFFICIAL_SPIRAL_HEX_ORDER) {
+            int tileIndex = hexId - 1;
+            if ("DESERT".equals(randomizedTiles.get(tileIndex))) {
+                continue;
+            }
+
+            diceNumbers.set(tileIndex, OFFICIAL_DICE_TOKEN_ORDER.get(tokenIndex));
+            tokenIndex++;
+        }
+
+        return diceNumbers;
+    }
+
+    private boolean hasAdjacentRedNumbers(List<Integer> diceNumbers) {
+        for (int hexId = 1; hexId <= diceNumbers.size(); hexId++) {
+            int diceNumber = diceNumbers.get(hexId - 1);
+            if (!isRedNumber(diceNumber)) {
+                continue;
+            }
+
+            for (int otherHexId = hexId + 1; otherHexId <= diceNumbers.size(); otherHexId++) {
+                int otherDiceNumber = diceNumbers.get(otherHexId - 1);
+                if (isRedNumber(otherDiceNumber) && areAdjacentHexes(hexId, otherHexId)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isRedNumber(int diceNumber) {
+        return diceNumber == 6 || diceNumber == 8;
+    }
+
+    private boolean areAdjacentHexes(int firstHexId, int secondHexId) {
+        double[] firstCoordinates = boardCoordinatesForHex(firstHexId);
+        double[] secondCoordinates = boardCoordinatesForHex(secondHexId);
+
+        double deltaX = Math.abs(firstCoordinates[0] - secondCoordinates[0]);
+        double deltaY = Math.abs(firstCoordinates[1] - secondCoordinates[1]);
+
+        return (deltaX == 1.0 && deltaY == 0.0) || (deltaX == 0.5 && deltaY == 1.0);
     }
 }
