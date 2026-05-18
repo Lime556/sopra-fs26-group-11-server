@@ -450,6 +450,50 @@ class GameControllerTest {
     }
 
     @Test
+    void buildSettlement_withExpectedVersionAndSetupPhase_usesVersionedInitialPlacement() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setGamePhase("SETUP");
+
+        given(gameService.isSetupPhase(1L, "valid-token")).willReturn(true);
+        given(gameService.placeInitialSettlement(1L, "valid-token", 10L, 0, 4L))
+                .willReturn(game);
+
+        String body = """
+            {
+              "playerId": 10,
+              "intersectionId": 0,
+              "expectedGameVersion": 4
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/build-settlement")
+                .header("Authorization", "valid-token")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void buildSettlement_missingPlayerId_returnsBadRequest() throws Exception {
+        String body = """
+            {
+              "intersectionId": 0
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/build-settlement")
+                .header("Authorization", "valid-token")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void buildSettlement_invalidPlacement_occupied_badRequest() throws Exception {
         Game game = new Game();
         game.setId(1L);
@@ -520,6 +564,32 @@ class GameControllerTest {
             {
               "playerId": 10,
               "edgeId": 0
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/build-road")
+                .header("Authorization", "valid-token")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void buildRoad_withExpectedVersionAndMainPhase_usesVersionedRoadPurchase() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.isSetupPhase(1L, "valid-token")).willReturn(false);
+        given(gameService.addRoadToPlayer(1L, "valid-token", 10L, 0, 4L))
+                .willReturn(game);
+
+        String body = """
+            {
+              "playerId": 10,
+              "edgeId": 0,
+              "expectedGameVersion": 4
             }
             """;
 
@@ -648,6 +718,50 @@ class GameControllerTest {
                 .andExpect(jsonPath("$.robberMovedAfterSevenRoll", is(true)))
                 .andExpect(jsonPath("$.turnPhase", is("ACTION")));
 
+    }
+
+    @Test
+    void moveRobber_withExpectedVersion_usesVersionedServiceCall() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setRobberTileIndex(12);
+
+        given(gameService.moveRobber(1L, "token-123", 10L, 12, 11L, 7L)).willReturn(game);
+
+        String body = """
+            {
+              "sourcePlayerId": 10,
+              "hexId": 12,
+              "targetPlayerId": 11,
+              "expectedGameVersion": 7
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/move-robber")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.robberTileIndex", is(12)));
+    }
+
+    @Test
+    void moveRobber_missingHexId_returnsBadRequest() throws Exception {
+        String body = """
+            {
+              "sourcePlayerId": 10
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/move-robber")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -793,6 +907,31 @@ class GameControllerTest {
 
         mockMvc.perform(postRequest)
                 .andExpect(status().isAccepted());
+    }
+
+    @Test
+    void publishGameChatMessage_blankName_trimsAndUsesDefaultSender() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+
+        String body = """
+            {
+              "playerName": "   ",
+              "text": "  Hello table  "
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/chat")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isAccepted());
+
+        Mockito.verify(gameService).appendChatMessage(1L, "token-123", "Player: Hello table");
     }
 
     @Test
@@ -1134,6 +1273,46 @@ class GameControllerTest {
 
         mockMvc.perform(postRequest)
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void discardResources_withExpectedVersion_removesVersionFromResourceMap() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.discardResources(
+            org.mockito.ArgumentMatchers.eq(1L),
+            org.mockito.ArgumentMatchers.eq("token-123"),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.eq(8L)
+        )).willReturn(game);
+
+        String body = """
+            {
+              "wood": 1,
+              "expectedGameVersion": 8
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/discard-resources")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<java.util.Map<String, Integer>> captor =
+            org.mockito.ArgumentCaptor.forClass(java.util.Map.class);
+        Mockito.verify(gameService).discardResources(
+            org.mockito.ArgumentMatchers.eq(1L),
+            org.mockito.ArgumentMatchers.eq("token-123"),
+            captor.capture(),
+            org.mockito.ArgumentMatchers.eq(8L)
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(1, captor.getValue().get("wood"));
+        org.junit.jupiter.api.Assertions.assertFalse(captor.getValue().containsKey("expectedGameVersion"));
     }
 
     @Test
