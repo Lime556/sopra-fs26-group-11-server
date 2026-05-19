@@ -166,7 +166,7 @@ public class LobbyService {
         List<LobbyParticipant> orderedParticipants = new ArrayList<>(humanParticipants);
         orderedParticipants.addAll(botParticipants);
 
-        String[] colors = {"#d13f34", "#2e7ccf", "#3f9e56", "#e0a120"};
+        String[] colors = {"#b4233a", "#2e7ccf", "#e0a120", "#166534"};
         List<Player> gamePlayers = new ArrayList<>();
         int botCount = 0;
 
