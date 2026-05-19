@@ -26,6 +26,7 @@ import ch.uzh.ifi.hase.soprafs26.constant.WeatherCategory;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameAmbienceDTO;
 import ch.uzh.ifi.hase.soprafs26.service.AmbienceService;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
+import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutionResult;
 import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
 
 @WebMvcTest(GameController.class)
@@ -845,6 +846,7 @@ class GameControllerTest {
         Game game = new Game();
         game.setId(1L);
         game.setCurrentTurnIndex(0);
+                game.setChatMessages(List.of("Player1: Hello", "Player2: Hi"));
 
         given(gameService.getGameById(1L, "token-123")).willReturn(game);
 
@@ -854,13 +856,18 @@ class GameControllerTest {
         mockMvc.perform(getRequest)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id", is(1)))
-                .andExpect(jsonPath("$.currentTurnIndex", is(0)));
+                .andExpect(jsonPath("$.currentTurnIndex", is(0)))
+                .andExpect(jsonPath("$.chatMessages[0]", is("Player1: Hello")))
+                .andExpect(jsonPath("$.chatMessages[1]", is("Player2: Hi")));
     }
 
     @Test
     void getGameVersion_validRequest_success() throws Exception {
         ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO versionDTO = new ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO();
+                versionDTO.setGameId(1L);
         versionDTO.setGameVersion(5L);
+                versionDTO.setChatMessageCount(4);
+                versionDTO.setEventLogCount(7);
 
         given(gameService.getGameVersion(1L, "token-123")).willReturn(versionDTO);
 
@@ -869,7 +876,10 @@ class GameControllerTest {
 
         mockMvc.perform(getRequest)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.gameVersion", is(5)));
+                .andExpect(jsonPath("$.gameId", is(1)))
+                .andExpect(jsonPath("$.gameVersion", is(5)))
+                .andExpect(jsonPath("$.chatMessageCount", is(4)))
+                .andExpect(jsonPath("$.eventLogCount", is(7)));
     }
 
     @Test
@@ -890,8 +900,12 @@ class GameControllerTest {
     void publishGameChatMessage_validMessage_success() throws Exception {
         Game game = new Game();
         game.setId(1L);
+        Player player = new Player();
+        player.setId(10L);
+        player.setName("Player1");
 
         given(gameService.getGameById(1L, "token-123")).willReturn(game);
+        given(gameService.getAuthenticatedPlayer(game, "token-123")).willReturn(player);
 
         String body = """
             {
@@ -907,7 +921,13 @@ class GameControllerTest {
                 .content(body);
 
         mockMvc.perform(postRequest)
-                .andExpect(status().isAccepted());
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.playerId", is(10)))
+                .andExpect(jsonPath("$.playerName", is("Player1")))
+                .andExpect(jsonPath("$.text", is("Hello everyone!")));
+
+        Mockito.verify(gameService, Mockito.times(1))
+                .appendChatMessage(1L, "token-123", "Player1: Hello everyone!");
     }
 
     @Test
@@ -943,8 +963,12 @@ class GameControllerTest {
     void publishGameChatMessage_emptyMessage_isIgnored() throws Exception {
         Game game = new Game();
         game.setId(1L);
+        Player player = new Player();
+        player.setId(10L);
+        player.setName("Player1");
 
         given(gameService.getGameById(1L, "token-123")).willReturn(game);
+        given(gameService.getAuthenticatedPlayer(game, "token-123")).willReturn(player);
 
         String body = """
             {
@@ -961,6 +985,33 @@ class GameControllerTest {
 
         mockMvc.perform(postRequest)
                 .andExpect(status().isAccepted());
+
+        Mockito.verify(gameService, Mockito.never())
+                .appendChatMessage(Mockito.anyLong(), Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    void publishGameChatMessage_nonParticipant_returnsForbidden() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+        given(gameService.getAuthenticatedPlayer(game, "token-123")).willReturn(null);
+
+        String body = """
+            {
+              "playerName": "Intruder",
+              "text": "Hello everyone!"
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/chat")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -1234,6 +1285,8 @@ class GameControllerTest {
         game.setTurnPhase(TurnPhase.ACTION.toString());
         game.setGamePhase("MAIN");
         game.setDiceValue(7);
+                game.setChatMessages(List.of("Player1: Hello", "Player2: Hi"));
+                game.setEventLog(List.of("event1", "event2", "event3"));
 
         Player currentPlayer = new Player();
         currentPlayer.setId(10L);
@@ -1253,7 +1306,9 @@ class GameControllerTest {
                 .andExpect(jsonPath("$.gameId", is(1)))
                 .andExpect(jsonPath("$.gameVersion", is(2)))
                 .andExpect(jsonPath("$.currentTurnIndex", is(1)))
-                .andExpect(jsonPath("$.turnPhase", is("ACTION")));
+                .andExpect(jsonPath("$.turnPhase", is("ACTION")))
+                .andExpect(jsonPath("$.chatMessageCount", is(2)))
+                .andExpect(jsonPath("$.eventLogCount", is(3)));
     }
 
     @Test
@@ -1341,7 +1396,8 @@ class GameControllerTest {
         Game game = new Game();
         game.setId(1L);
 
-        given(botActionExecutorService.executeFallbackAction(1L, "token-123")).willReturn(game);
+        given(botActionExecutorService.executeBotActionWithResult(1L, "token-123", false))
+                .willReturn(new BotActionExecutionResult(game, null, false, false, false, null));
 
         MockHttpServletRequestBuilder postRequest = post("/games/1/actions/bot/fallback")
                 .header("Authorization", "token-123");

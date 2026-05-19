@@ -43,6 +43,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 import ch.uzh.ifi.hase.soprafs26.service.AmbienceService;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
+import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutionResult;
 import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
 
 @RestController
@@ -148,16 +149,27 @@ public class GameController {
     public GameChatMessageDTO publishGameChatMessage(@PathVariable Long gameId,
             @RequestBody GameChatMessageDTO gameChatMessageDTO,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-        gameService.getGameById(gameId, extractToken(authorizationHeader));
+        String token = extractToken(authorizationHeader);
+        Game game = gameService.getGameById(gameId, token);
+        Player authenticatedPlayer = gameService.getAuthenticatedPlayer(game, token);
+        if (authenticatedPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this game.");
+        }
 
-        String sender = (gameChatMessageDTO.getPlayerName() == null || gameChatMessageDTO.getPlayerName().isBlank())
-                ? "Player"
-                : gameChatMessageDTO.getPlayerName().trim();
+        String sender = (authenticatedPlayer.getName() == null || authenticatedPlayer.getName().isBlank())
+                ? ((gameChatMessageDTO.getPlayerName() == null || gameChatMessageDTO.getPlayerName().isBlank())
+                    ? "Player"
+                    : gameChatMessageDTO.getPlayerName().trim())
+                : authenticatedPlayer.getName().trim();
         String text = gameChatMessageDTO.getText() == null ? "" : gameChatMessageDTO.getText().trim();
         if (!text.isEmpty()) {
             String formattedMessage = String.format("%s: %s", sender, text);
-            gameService.appendChatMessage(gameId, extractToken(authorizationHeader), formattedMessage);
+            gameService.appendChatMessage(gameId, token, formattedMessage);
         }
+
+        gameChatMessageDTO.setPlayerId(authenticatedPlayer.getId());
+        gameChatMessageDTO.setPlayerName(sender);
+        gameChatMessageDTO.setText(text);
 
         return gameChatMessageDTO;
     }
@@ -209,24 +221,16 @@ public class GameController {
             @RequestBody Object body,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         String token = extractToken(authorizationHeader);
-        Long expectedGameVersion = null;
         Game game;
         if (body instanceof Number number) {
             game = gameService.moveRobber(gameId, token, number.intValue());
         } else if (body instanceof Map<?, ?> payload) {
-            expectedGameVersion = readOptionalLong(payload, "expectedGameVersion");
             Integer hexId = readRequiredInteger(payload, "hexId");
             Long sourcePlayerId = readOptionalLong(payload, "sourcePlayerId");
             Long targetPlayerId = readOptionalLong(payload, "targetPlayerId");
-            if (expectedGameVersion == null) {
-                game = sourcePlayerId == null
-                    ? gameService.moveRobber(gameId, token, hexId)
-                    : gameService.moveRobber(gameId, token, sourcePlayerId, hexId, targetPlayerId);
-            } else {
-                game = sourcePlayerId == null
-                    ? gameService.moveRobber(gameId, token, hexId, expectedGameVersion)
-                    : gameService.moveRobber(gameId, token, sourcePlayerId, hexId, targetPlayerId, expectedGameVersion);
-            }
+            game = sourcePlayerId == null
+                ? gameService.moveRobber(gameId, token, hexId)
+                : gameService.moveRobber(gameId, token, sourcePlayerId, hexId, targetPlayerId);
         } else {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid robber move payload.");
         }
@@ -248,8 +252,30 @@ public class GameController {
     @PostMapping("/games/{gameId}/actions/bot/fallback")
     @ResponseStatus(HttpStatus.OK)
     public GameGetDTO executeBotFallbackAction(@PathVariable Long gameId,
+            @RequestBody(required = false) Map<String, Object> body,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-        Game game = botActionExecutorService.executeFallbackAction(gameId, extractToken(authorizationHeader));
+        String token = extractToken(authorizationHeader);
+        boolean useAi = readOptionalBoolean(body, "useAi", false);
+        BotActionExecutionResult result = botActionExecutorService.executeBotActionWithResult(gameId, token, useAi);
+        Game game = result.game();
+
+        if (result.fallbackUsed() || result.aiConsultantUsed()) {
+            GameEventDTO event = new GameEventDTO();
+            event.setType("ACTION");
+            event.setSourcePlayerId(result.playerId());
+            event.setBotAiRequested(result.aiRequested());
+            event.setBotAiFallbackUsed(result.fallbackUsed());
+            event.setBotAiConsultantUsed(result.aiConsultantUsed());
+            if (result.aiConsultantUsed()) {
+                event.setMessage("Bot AI consultant was used.");
+            } else if (result.aiRequested()) {
+                event.setMessage("Bot AI skipped/fallback used: " + result.fallbackReason());
+            } else {
+                event.setMessage("Bot deterministic fallback was used.");
+            }
+            game = gameService.appendGameEventAndReturnGame(gameId, token, event);
+        }
+
         return convertGameToDto(game);
     }
 
@@ -466,7 +492,7 @@ public class GameController {
         dto.setWinner(convertPlayerToDto(game.getWinner()));
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
         dto.setEventLog(game.getEventLog() == null ? Collections.emptyList() : new ArrayList<>(game.getEventLog()));
-        dto.setChatMessages(game.getChatMessages());
+        dto.setChatMessages(game.getChatMessages() == null ? Collections.emptyList() : new ArrayList<>(game.getChatMessages()));
         dto.setBankResources(readBankResources(game));
         dto.setRobberMovedAfterSevenRoll(game.getRobberMovedAfterSevenRoll());
         return dto;
@@ -662,6 +688,17 @@ public class GameController {
         return number.longValue();
     }
 
+    private static boolean readOptionalBoolean(Map<?, ?> body, String key, boolean defaultValue) {
+        Object value = body == null ? null : body.get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (!(value instanceof Boolean bool)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid field: " + key);
+        }
+        return bool;
+    }
+
     @GetMapping("/games/{gameId}/sync")
     @ResponseStatus(HttpStatus.OK)
     public GameSyncDTO getGameSync(@PathVariable Long gameId,
@@ -695,6 +732,7 @@ public class GameController {
         dto.setTradeRequestedAt(game.getTradeRequestedAt() == null ? null : game.getTradeRequestedAt().toString());
         dto.setLatestTradeRequest(game.getLatestTradeRequest());
         dto.setChatMessageCount(game.getChatMessages() == null ? 0 : game.getChatMessages().size());
+        dto.setEventLogCount(game.getEventLog() == null ? 0 : game.getEventLog().size());
         dto.setCurrentPlayerId(currentPlayer != null ? currentPlayer.getId() : null);
         dto.setCurrentPlayerName(currentPlayer != null ? currentPlayer.getName() : null);
         dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);

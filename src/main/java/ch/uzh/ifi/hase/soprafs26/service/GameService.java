@@ -75,6 +75,7 @@ public class GameService {
     private static final int MAX_ROADS = 15;
     private static final int MAX_SETTLEMENTS = 5;
     private static final int MAX_CITIES = 4;
+    private static final int MAX_CHAT_MESSAGE_LENGTH = 300;
 
     private final GameRepository gameRepository;
     private final UserService userService;
@@ -262,7 +263,7 @@ public class GameService {
             }
         }
     
-        robberHelper(game, player, targetHexId, targetPlayerId);
+        String stolenResource = robberHelper(game, player, targetHexId, targetPlayerId);
 
         if (Integer.valueOf(7).equals(game.getDiceValue())) {
             game.setRobberMovedAfterSevenRoll(true);
@@ -274,7 +275,9 @@ public class GameService {
             "ROBBER_MOVE",
             targetPlayerId == null
                 ? "moved robber to hex " + targetHexId
-                : "moved robber to hex " + targetHexId + " and stole from player " + targetPlayerId
+                : "moved robber to hex " + targetHexId + " and stole "
+                    + (stolenResource == null ? "a resource" : "1 " + stolenResource)
+                    + " from player " + targetPlayerId
         );
         return saveChangedGame(game);
     }
@@ -301,7 +304,7 @@ public class GameService {
         return saveChangedGame(game);
     }
 
-    private void robberHelper(Game game, Player player, Integer targetHexId, Long targetPlayerId) {
+    private String robberHelper(Game game, Player player, Integer targetHexId, Long targetPlayerId) {
         if (targetHexId != null) {
             if (!isValidHexId(game, targetHexId)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -338,8 +341,9 @@ public class GameService {
                     "Target player has no settlements or cities adjacent to robber position on hex " + effectiveRobberHexId + ".");
             }
         
-            stealRandomResource(target, player);
+            return stealRandomResource(target, player);
         }
+        return null;
     }
 
     public Game moveRobberAndStealFromFirstAdjacentPlayer(Long gameId, String token, Long sourcePlayerId, Integer hexId) {
@@ -363,9 +367,7 @@ public class GameService {
         robberHelper(game, source, hexId, null);
     
         Player target = findFirstRobberStealTarget(game, sourcePlayerId, hexId);
-        if (target != null) {
-            stealRandomResource(target, source);
-        }
+        String stolenResource = target == null ? null : stealRandomResource(target, source);
     
         if (Integer.valueOf(7).equals(game.getDiceValue())) {
             game.setRobberMovedAfterSevenRoll(true);
@@ -380,19 +382,21 @@ public class GameService {
             "ROBBER_MOVE",
             target == null
                 ? "moved robber to hex " + hexId
-                : "moved robber to hex " + hexId + " and stole from " + describePlayer(target)
+                : "moved robber to hex " + hexId + " and stole "
+                    + (stolenResource == null ? "a resource" : "1 " + stolenResource)
+                    + " from " + describePlayer(target)
         );
     
         return saveChangedGame(game);
     }
 
+    @Transactional(readOnly = true)
     public Game getGameById(Long gameId, String playerToken) {
         authenticate(playerToken);
     
-        Game game = gameRepository.findById(gameId)
+        return gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
-        return finishAbandonedBotOnlyGame(game) ? saveGameAndCleanupFinishedLobby(game) : game;
     }
 
     @Scheduled(
@@ -417,12 +421,17 @@ public class GameService {
 
     @Transactional(readOnly = true)
     public GameVersionDTO getGameVersion(Long gameId, String playerToken) {
-        Game game = getGameById(gameId, playerToken);
+        authenticate(playerToken);
+
+        Game game = gameRepository.findById(gameId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Game with id " + gameId + " was not found."));
 
         GameVersionDTO dto = new GameVersionDTO();
         dto.setGameId(game.getId());
         dto.setGameVersion(game.getGameVersion());
         dto.setChatMessageCount(game.getChatMessages() == null ? 0 : game.getChatMessages().size());
+        dto.setEventLogCount(game.getEventLog() == null ? 0 : game.getEventLog().size());
         return dto;
     }
 
@@ -492,17 +501,36 @@ public class GameService {
     }
 
     public void appendChatMessage(Long gameId, String playerToken, String message) {
-        authenticate(playerToken);
+        User authenticatedUser = authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Game with id " + gameId + " was not found."));
         ensureGameNotFinished(game);
 
+        Player authenticatedPlayer = findAuthenticatedPlayer(game, authenticatedUser);
+        if (authenticatedPlayer == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this game.");
+        }
+
+        String normalizedMessage = message == null ? "" : message.trim().replaceAll("\\s+", " ");
+        if (normalizedMessage.isEmpty()) {
+            return;
+        }
+
+        if (normalizedMessage.chars().anyMatch(character -> Character.isISOControl(character))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chat message contains unsupported control characters.");
+        }
+
+        if (normalizedMessage.length() > MAX_CHAT_MESSAGE_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Chat message must be at most " + MAX_CHAT_MESSAGE_LENGTH + " characters long.");
+        }
+
         List<String> chatMessages = new ArrayList<>(
             Optional.ofNullable(game.getChatMessages()).orElse(Collections.emptyList())
         );
-        chatMessages.add(message);
+        chatMessages.add(normalizedMessage);
         game.setChatMessages(chatMessages);
         saveChangedGame(game);
     }
@@ -567,6 +595,12 @@ public class GameService {
                 // and can update their UI (e.g., trade response status or popup visibility)
                 game.setTradeRequestedAt(java.time.Instant.now());
                 game.setLatestTradeRequest(result);
+            } catch (JsonProcessingException exception) {
+                throw new IllegalStateException("Could not serialize game event.", exception);
+            }
+        } else if (Boolean.TRUE.equals(gameEventDTO.getBotAiFallbackUsed()) || Boolean.TRUE.equals(gameEventDTO.getBotAiConsultantUsed())) {
+            try {
+                result = objectMapper.writeValueAsString(gameEventDTO);
             } catch (JsonProcessingException exception) {
                 throw new IllegalStateException("Could not serialize game event.", exception);
             }
@@ -909,7 +943,7 @@ public class GameService {
             game,
             describePlayer(source),
             "BANK_TRADE",
-            "traded " + formatResourceBundle(giveBundle) + " for " + formatResourceBundle(receiveBundle) + " with bank"
+            "traded with bank: gave " + totalGive + " resources and received " + totalReceiveUnits + " resources"
         );
         return saveChangedGame(game);
     }
@@ -1172,12 +1206,14 @@ public class GameService {
         }
 
         game.setPlayers(players);
+        int totalGive = sumTradeBundle(giveBundle);
+        int totalReceive = sumTradeBundle(receiveBundle);
         appendStructuredEvent(
             game,
             describePlayer(source),
             "PLAYER_TRADE_FINALIZE",
-            "traded " + formatResourceBundle(giveBundle) + " for " + formatResourceBundle(receiveBundle)
-                + " with " + describePlayer(target)
+            "traded with " + describePlayer(target) + ": gave " + totalGive
+                + " resources and received " + totalReceive + " resources"
         );
         return saveChangedGame(game);
     }
@@ -2336,7 +2372,7 @@ public class GameService {
         player.setDevelopmentCards(hand);
     }
 
-    private void stealRandomResource(Player from, Player to) {
+    private String stealRandomResource(Player from, Player to) {
         List<String> available = new ArrayList<>();
         addResourceIfAvailable(available, "wood", from.getWood());
         addResourceIfAvailable(available, "brick", from.getBrick());
@@ -2345,12 +2381,13 @@ public class GameService {
         addResourceIfAvailable(available, "ore", from.getOre());
 
         if (available.isEmpty()) {
-            return;
+            return null;
         }
 
         String selected = available.get(ThreadLocalRandom.current().nextInt(available.size()));
         setResourceByName(from, selected, getResourceByName(from, selected) - 1);
         setResourceByName(to, selected, getResourceByName(to, selected) + 1);
+        return selected;
     }
 
     private Player findFirstRobberStealTarget(Game game, Long sourcePlayerId, Integer robberHexId) {

@@ -23,6 +23,9 @@ public class GameEventDTO {
     private String secondResource;
     private String message;
     private Long expectedGameVersion;
+    private Boolean botAiRequested;
+    private Boolean botAiFallbackUsed;
+    private Boolean botAiConsultantUsed;
 
     public String getType() {
         return type;
@@ -174,5 +177,29 @@ public class GameEventDTO {
 
     public void setExpectedGameVersion(Long expectedGameVersion) {
         this.expectedGameVersion = expectedGameVersion;
+    }
+
+    public Boolean getBotAiRequested() {
+        return botAiRequested;
+    }
+
+    public void setBotAiRequested(Boolean botAiRequested) {
+        this.botAiRequested = botAiRequested;
+    }
+
+    public Boolean getBotAiFallbackUsed() {
+        return botAiFallbackUsed;
+    }
+
+    public void setBotAiFallbackUsed(Boolean botAiFallbackUsed) {
+        this.botAiFallbackUsed = botAiFallbackUsed;
+    }
+
+    public Boolean getBotAiConsultantUsed() {
+        return botAiConsultantUsed;
+    }
+
+    public void setBotAiConsultantUsed(Boolean botAiConsultantUsed) {
+        this.botAiConsultantUsed = botAiConsultantUsed;
     }
 }

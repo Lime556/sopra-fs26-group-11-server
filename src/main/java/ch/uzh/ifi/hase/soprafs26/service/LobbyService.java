@@ -2,6 +2,7 @@ package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -152,12 +153,18 @@ public class LobbyService {
         game.setFinishedAt(null);
         game = gameRepository.saveAndFlush(game);
 
-        List<LobbyParticipant> orderedParticipants = lobby.getParticipants().stream()
-            .sorted(Comparator
-                .comparing((LobbyParticipant participant) -> participant.isBot())
-                .thenComparing(participant -> participant.getUser() != null ? participant.getUser().getId() : Long.MAX_VALUE)
-                .thenComparing(participant -> participant.getId() != null ? participant.getId() : Long.MAX_VALUE))
+        List<LobbyParticipant> humanParticipants = lobby.getParticipants().stream()
+            .filter(participant -> !participant.isBot())
+            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        Collections.shuffle(humanParticipants);
+
+        List<LobbyParticipant> botParticipants = lobby.getParticipants().stream()
+            .filter(LobbyParticipant::isBot)
+            .sorted(Comparator.comparing(participant -> participant.getId() == null ? Long.MAX_VALUE : participant.getId()))
             .toList();
+
+        List<LobbyParticipant> orderedParticipants = new ArrayList<>(humanParticipants);
+        orderedParticipants.addAll(botParticipants);
 
         String[] colors = {"#d13f34", "#2e7ccf", "#3f9e56", "#e0a120"};
         List<Player> gamePlayers = new ArrayList<>();
