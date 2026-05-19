@@ -1,45 +1,70 @@
-# Settlers of Catan: Game Explanation
 
-This project implements the core gameplay flow of **Settlers of Catan** in a digital multiplayer format.
-The goal is to reach the configured victory point target (default: **10 VP**) before all other players.
+# Settlers of Catan — Game Server
 
-## Core Objective
+This repository contains the backend services for the course project implementation of Settlers of Catan. It provides the REST API, game state management, matchmaking/lobby controllers, and persistence.
 
-Players earn victory points by expanding their presence on the board and using strategic advantages.
+The motivation for the project was to bring players together through a seamless and engaging  online experience, making strategy and competition accessible anytime, anywhere.
 
-| Source | Victory Points |
-| --- | --- |
-| Settlement | 1 VP |
-| City | 2 VP |
-| Development card (victory point type) | 1 VP |
-| Longest Road bonus | 2 VP |
-| Largest Army bonus | 2 VP |
+## Introduction
 
-When a player reaches or exceeds the target, the game ends and that player is declared the winner.
+The server runs a Spring Boot application that manages game logic, player sessions, and synchronization between clients. The default victory points target is configurable (default: 10 VP).
 
-## Turn Flow
+## Technologies
 
-Each turn follows the same high-level sequence:
+- Java 17 (system.properties)
+- Spring Boot (REST controllers)
+- Gradle (wrapper provided)
+- Docker (Dockerfile included)
 
-1. **Roll dice** to produce resources for players with adjacent settlements/cities.
-2. **Trade** with the bank or other players to optimize resources.
-3. **Build or upgrade** structures (roads, settlements, cities).
-4. **Play development cards** where applicable.
-5. **End turn** and pass control to the next player.
+## High-level components
 
-## Board and Player Systems
+- **Application**: Spring Boot main class and CORS config [src/main/java/ch/uzh/ifi/hase/soprafs26/Application.java](sopra-fs26-group-11-server/src/main/java/ch/uzh/ifi/hase/soprafs26/Application.java#L1).
+- **Controllers**: REST endpoints for game, lobby, and user flows e.g. [src/main/java/ch/uzh/ifi/hase/soprafs26/controller/GameController.java](sopra-fs26-group-11-server/src/main/java/ch/uzh/ifi/hase/soprafs26/controller/GameController.java#L1), [src/main/java/ch/uzh/ifi/hase/soprafs26/controller/LobbyController.java](sopra-fs26-group-11-server/src/main/java/ch/uzh/ifi/hase/soprafs26/controller/LobbyController.java#L1), [src/main/java/ch/uzh/ifi/hase/soprafs26/controller/UserController.java](sopra-fs26-group-11-server/src/main/java/ch/uzh/ifi/hase/soprafs26/controller/UserController.java#L1).
+- **Services & Domain**: Business logic and domain model under `src/main/java/ch/uzh/ifi/hase/soprafs26/service` and `domain` (search the `src/main/java` tree for specific classes).
+- **Persistence / Repositories**: Data access layer and in-memory or persistent stores used by the services.
 
-- **Hex tiles** represent resource regions (wood, brick, wool, grain, ore, desert).
-- **Ports** improve trade rates for specific resources or generic trades.
-- **Robber** blocks production on its tile and can influence player resource economy.
-- **Road/settlement/city placement** controls expansion and scoring opportunities.
+## Launch & Deployment
 
-## Endgame and Leaderboard
+Prerequisites: Java 17 (or higher), Docker (optional).
 
-The game state tracks victory points dynamically for every player.
+Run locally using the Gradle wrapper (from this folder):
 
-- The backend recalculates and synchronizes points, winner, and finished state.
-- The frontend displays the winner panel and final leaderboard ranking.
-- All clients observe the same game-end result and order of players.
+```bash
+./gradlew bootRun    # starts the server on default port 8080
+./gradlew build      # builds the project
+./gradlew test       # runs server-side tests
+```
 
----
+Build an executable JAR for release:
+
+```bash
+./gradlew bootJar
+# then run with:
+java -jar build/libs/*.jar
+```
+
+Docker image / deployment:
+
+- Build the image with `docker build -t catan-server .` and run it with `docker run -p 8080:8080 catan-server`.
+- Cloud and CI deployment helpers (Cloud Run / Cloud Build) are included in `cloudbuild.yaml` and `deploy-cloud-run.sh`.
+
+
+## Illustrations — API & game flow
+
+1. Client authenticates and creates/joins a lobby via the LobbyController endpoints.
+2. When enough players are ready, the server initializes a game instance and exposes game endpoints for moves, trades, and state polling.
+3. The server enforces game rules and synchronizes state for all connected clients.
+
+## Roadmap
+
+- Introduce a ranked mode with internal MMR for compeditive play.
+- For better scalability implement websocket for the polling.
+- Improve API documentation (OpenAPI / Swagger docs).
+- To continue working on the project host it on your own server and insert a huggingface token for the bot to work
+
+## Authors & Acknowledgments
+
+Developed by the `sopra-fs26-group-11` team for the course project. 
+## License
+
+This project is licensed under the Apache License 2.0. See the `LICENSE` file for details.
