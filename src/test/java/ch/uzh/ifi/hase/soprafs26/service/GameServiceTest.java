@@ -44,6 +44,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
+import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO;
@@ -57,6 +58,7 @@ class GameServiceTest {
     private GameService gameService;
     private GameRepository gameRepository;
     private LobbyParticipantRepository lobbyParticipantRepository;
+    private LobbyRepository lobbyRepository;
     private UserService userService;
     private User user;
 
@@ -65,9 +67,10 @@ class GameServiceTest {
         repo = Mockito.mock(GameRepository.class);
         gameRepository = Mockito.mock(GameRepository.class);
         lobbyParticipantRepository = Mockito.mock(LobbyParticipantRepository.class);
+        lobbyRepository = Mockito.mock(LobbyRepository.class);
         userService = Mockito.mock(UserService.class);
-        service = new GameService(repo, userService, lobbyParticipantRepository);
-        gameService = new GameService(gameRepository, userService, lobbyParticipantRepository);
+        service = new GameService(repo, userService, lobbyParticipantRepository, lobbyRepository);
+        gameService = new GameService(gameRepository, userService, lobbyParticipantRepository, lobbyRepository);
 
         user = new User();
         user.setId(1L);
@@ -1115,6 +1118,97 @@ class GameServiceTest {
     }
 
     @Test
+    void cleanupInactiveGames_replacesInactiveHumanPlayerWithoutHeartbeat() {
+        User inactiveUser = new User();
+        inactiveUser.setId(2L);
+        inactiveUser.setEmail("inactive@email.com");
+
+        Game game = new Game();
+        game.setId(168L);
+        game.setGamePhase("ACTIVE");
+        game.setCurrentTurnIndex(0);
+        game.setGameVersion(7L);
+
+        Player activePlayer = new Player();
+        activePlayer.setId(1L);
+        activePlayer.setName("Active");
+        activePlayer.setUser(user);
+        activePlayer.setBot(false);
+        activePlayer.setOnline(true);
+        activePlayer.setLastSeenAt(Instant.now());
+
+        Player inactivePlayer = new Player();
+        inactivePlayer.setId(2L);
+        inactivePlayer.setName("Inactive");
+        inactivePlayer.setUser(inactiveUser);
+        inactivePlayer.setBot(false);
+        inactivePlayer.setOnline(false);
+        inactivePlayer.setLastSeenAt(Instant.now().minusSeconds(360));
+        inactivePlayer.setDisconnectedAt(Instant.now().minusSeconds(301));
+
+        game.setPlayers(List.of(activePlayer, inactivePlayer));
+
+        Mockito.when(gameRepository.findAll()).thenReturn(List.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        gameService.cleanupInactiveGames();
+
+        assertTrue(inactivePlayer.isBot());
+        assertTrue(inactivePlayer.isOnline());
+        assertNull(inactivePlayer.getUser());
+        assertNull(inactivePlayer.getDisconnectedAt());
+        assertEquals("Inactive replacement Bot", inactivePlayer.getName());
+        assertEquals(8L, game.getGameVersion());
+        Mockito.verify(gameRepository).saveAndFlush(game);
+    }
+
+    @Test
+    void cleanupInactiveGames_finishesBotOnlyGameAndDeletesLinkedLobby() {
+        Game game = new Game();
+        game.setId(169L);
+        game.setGamePhase("ACTIVE");
+        game.setGameVersion(7L);
+        game.setFinishedAt(null);
+
+        Player bot = new Player();
+        bot.setId(1L);
+        bot.setName("Bot 1");
+        bot.setUser(null);
+        bot.setBot(true);
+        bot.setOnline(true);
+        game.setPlayers(List.of(bot));
+
+        Lobby linkedLobby = new Lobby();
+        linkedLobby.setId(69L);
+        linkedLobby.setGameId(169L);
+        linkedLobby.setParticipants(new HashSet<>());
+
+        LobbyParticipant participant = new LobbyParticipant();
+        participant.setId(691L);
+        participant.setLobby(linkedLobby);
+        linkedLobby.getParticipants().add(participant);
+        linkedLobby.setHostParticipant(participant);
+
+        Mockito.when(gameRepository.findAll()).thenReturn(List.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        Mockito.when(lobbyRepository.findByGameId(169L)).thenReturn(Optional.of(linkedLobby));
+
+        gameService.cleanupInactiveGames();
+
+        assertNotNull(game.getFinishedAt());
+        assertEquals("FINISHED", game.getGamePhase());
+        assertNull(game.getWinner());
+        assertEquals(8L, game.getGameVersion());
+        assertTrue(linkedLobby.getParticipants().isEmpty());
+        assertNull(linkedLobby.getHostParticipant());
+        Mockito.verify(gameRepository).saveAndFlush(game);
+        Mockito.verify(lobbyParticipantRepository).delete(participant);
+        Mockito.verify(lobbyRepository).delete(linkedLobby);
+    }
+
+    @Test
     void heartbeatGame_userNoLongerOwnsReplacedBot_throwsForbidden() {
         User replacedUser = user;
 
@@ -1174,9 +1268,21 @@ class GameServiceTest {
 
         game.setPlayers(List.of(firstBot, secondBot));
 
+        Lobby finishedGameLobby = new Lobby();
+        finishedGameLobby.setId(66L);
+        finishedGameLobby.setGameId(166L);
+        finishedGameLobby.setParticipants(new HashSet<>());
+
+        LobbyParticipant oldParticipant = new LobbyParticipant();
+        oldParticipant.setId(661L);
+        oldParticipant.setLobby(finishedGameLobby);
+        finishedGameLobby.getParticipants().add(oldParticipant);
+        finishedGameLobby.setHostParticipant(oldParticipant);
+
         Mockito.when(gameRepository.findById(166L)).thenReturn(Optional.of(game));
         Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
             .thenAnswer(invocation -> invocation.getArgument(0));
+        Mockito.when(lobbyRepository.findByGameId(166L)).thenReturn(Optional.of(finishedGameLobby));
 
         Game result = gameService.getGameById(166L, "valid-token");
 
@@ -1184,7 +1290,11 @@ class GameServiceTest {
         assertNull(result.getWinner());
         assertEquals("FINISHED", result.getGamePhase());
         assertEquals(8L, result.getGameVersion());
+        assertTrue(finishedGameLobby.getParticipants().isEmpty());
+        assertNull(finishedGameLobby.getHostParticipant());
         Mockito.verify(gameRepository, Mockito.times(1)).saveAndFlush(game);
+        Mockito.verify(lobbyParticipantRepository).delete(oldParticipant);
+        Mockito.verify(lobbyRepository).delete(finishedGameLobby);
     }
 
     @Test

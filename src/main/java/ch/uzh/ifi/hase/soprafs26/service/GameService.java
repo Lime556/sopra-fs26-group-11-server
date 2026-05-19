@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -18,6 +19,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,6 +35,8 @@ import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
+import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.Road;
 import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
@@ -40,6 +44,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
+import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoardGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.BoatGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
@@ -65,6 +70,7 @@ public class GameService {
     private static final long PRESENCE_REFRESH_SAVE_INTERVAL_SECONDS = 20;
     private static final int HEARTBEAT_MAX_ATTEMPTS = 5;
     private static final long HEARTBEAT_RETRY_DELAY_MILLIS = 500;
+    private static final long INACTIVE_GAME_CLEANUP_INTERVAL_MILLIS = 30_000;
 
     private static final int MAX_ROADS = 15;
     private static final int MAX_SETTLEMENTS = 5;
@@ -73,17 +79,28 @@ public class GameService {
     private final GameRepository gameRepository;
     private final UserService userService;
     private final LobbyParticipantRepository lobbyParticipantRepository;
+    private final LobbyRepository lobbyRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
     
     @Autowired
     public GameService(
         @Qualifier("gameRepository") GameRepository gameRepository,
         UserService userService,
-        LobbyParticipantRepository lobbyParticipantRepository
+        LobbyParticipantRepository lobbyParticipantRepository,
+        LobbyRepository lobbyRepository
     ) {
         this.gameRepository = gameRepository;
         this.userService = userService;
         this.lobbyParticipantRepository = lobbyParticipantRepository;
+        this.lobbyRepository = lobbyRepository;
+    }
+
+    public GameService(
+        @Qualifier("gameRepository") GameRepository gameRepository,
+        UserService userService,
+        LobbyParticipantRepository lobbyParticipantRepository
+    ) {
+        this(gameRepository, userService, lobbyParticipantRepository, null);
     }
 
     public GameService(
@@ -375,7 +392,27 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
-        return finishAbandonedBotOnlyGame(game) ? gameRepository.saveAndFlush(game) : game;
+        return finishAbandonedBotOnlyGame(game) ? saveGameAndCleanupFinishedLobby(game) : game;
+    }
+
+    @Scheduled(
+        fixedDelay = INACTIVE_GAME_CLEANUP_INTERVAL_MILLIS,
+        initialDelay = INACTIVE_GAME_CLEANUP_INTERVAL_MILLIS
+    )
+    public void cleanupInactiveGames() {
+        for (Game game : gameRepository.findAll()) {
+            if (game == null || game.getFinishedAt() != null) {
+                continue;
+            }
+
+            boolean changed = markDisconnectedPlayersAndReplaceTimedOut(game);
+            changed = finishAbandonedBotOnlyGame(game) || changed;
+
+            if (changed) {
+                game.setPlayers(game.getPlayers());
+                saveGameAndCleanupFinishedLobby(game);
+            }
+        }
     }
 
     @Transactional(readOnly = true)
@@ -422,7 +459,7 @@ public class GameService {
     
         if (changed) {
             game.setPlayers(game.getPlayers());
-            return gameRepository.saveAndFlush(game);
+            return saveGameAndCleanupFinishedLobby(game);
         }
     
         return game;
@@ -2956,8 +2993,32 @@ public class GameService {
 
     private Game saveChangedGame(Game game) {
         game.incrementGameVersion();
+        return saveGameAndCleanupFinishedLobby(game);
+    }
+
+    private Game saveGameAndCleanupFinishedLobby(Game game) {
         Game savedGame = gameRepository.saveAndFlush(game);
-        return savedGame == null ? game : savedGame;
+        Game result = savedGame == null ? game : savedGame;
+        cleanupLobbyForFinishedGame(result);
+        return result;
+    }
+
+    private void cleanupLobbyForFinishedGame(Game game) {
+        if (game == null || game.getId() == null || game.getFinishedAt() == null
+                || lobbyRepository == null || lobbyParticipantRepository == null) {
+            return;
+        }
+
+        lobbyRepository.findByGameId(game.getId()).ifPresent(lobby -> {
+            if (lobby.getParticipants() != null) {
+                for (LobbyParticipant participant : new HashSet<>(lobby.getParticipants())) {
+                    lobbyParticipantRepository.delete(participant);
+                }
+                lobby.getParticipants().clear();
+            }
+            lobby.setHostParticipant(null);
+            lobbyRepository.delete(lobby);
+        });
     }
 
     private void ensureExpectedGameVersion(Game game, Long expectedGameVersion) {

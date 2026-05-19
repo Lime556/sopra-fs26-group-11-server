@@ -17,4 +17,6 @@ public interface LobbyRepository extends JpaRepository<Lobby, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT l FROM Lobby l WHERE l.id = :lobbyId")
     Optional<Lobby> findByIdWithLock(@Param("lobbyId") Long lobbyId);
+
+    Optional<Lobby> findByGameId(Long gameId);
 }
