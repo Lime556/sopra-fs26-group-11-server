@@ -1,6 +1,7 @@
 package ch.uzh.ifi.hase.soprafs26.service;
 
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -161,6 +162,90 @@ class GameServiceTest {
         assertEquals(WeatherCategory.CLOUDY, ambience.getWeather());
         assertEquals(TimeOfDayMood.DAY, ambience.getTimeOfDay());
         assertEquals("Cloudy day", ambience.getDescription());
+    }
+
+    @Test
+    void ambienceSuccessfulFetch_reusesCachedAmbience() {
+        RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+        AmbienceService.OpenMeteoCurrent current = new AmbienceService.OpenMeteoCurrent();
+        current.setWeather_code(0);
+        current.setIs_day(1);
+        current.setTime("2026-05-17T13:00");
+        AmbienceService.OpenMeteoResponse response = new AmbienceService.OpenMeteoResponse();
+        response.setCurrent(current);
+        Mockito.when(restTemplate.getForObject(Mockito.anyString(), Mockito.eq(AmbienceService.OpenMeteoResponse.class)))
+            .thenReturn(response);
+
+        AmbienceService ambienceService = new AmbienceService(restTemplate);
+
+        var firstAmbience = ambienceService.getCurrentAmbience();
+        var secondAmbience = ambienceService.getCurrentAmbience();
+
+        assertEquals(WeatherCategory.SUNNY, firstAmbience.getWeather());
+        assertEquals(TimeOfDayMood.DAY, secondAmbience.getTimeOfDay());
+        assertEquals("Sunny day", secondAmbience.getDescription());
+        Mockito.verify(restTemplate, Mockito.times(1))
+            .getForObject(Mockito.anyString(), Mockito.eq(AmbienceService.OpenMeteoResponse.class));
+    }
+
+    @Test
+    void ambienceExpiredCacheAndExternalFailure_returnsPreviousAmbience() throws Exception {
+        RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+        AmbienceService.OpenMeteoCurrent current = new AmbienceService.OpenMeteoCurrent();
+        current.setWeather_code(95);
+        current.setIs_day(0);
+        current.setTime("2026-05-17T23:00");
+        AmbienceService.OpenMeteoResponse response = new AmbienceService.OpenMeteoResponse();
+        response.setCurrent(current);
+        Mockito.when(restTemplate.getForObject(Mockito.anyString(), Mockito.eq(AmbienceService.OpenMeteoResponse.class)))
+            .thenReturn(response)
+            .thenThrow(new RestClientException("Open-Meteo unavailable"));
+
+        AmbienceService ambienceService = new AmbienceService(restTemplate);
+        var firstAmbience = ambienceService.getCurrentAmbience();
+        Field cachedAt = AmbienceService.class.getDeclaredField("cachedAt");
+        cachedAt.setAccessible(true);
+        cachedAt.set(ambienceService, Instant.now().minusSeconds(660));
+
+        var fallbackAmbience = ambienceService.getCurrentAmbience();
+
+        assertEquals(WeatherCategory.LIGHTNING, firstAmbience.getWeather());
+        assertEquals(TimeOfDayMood.NIGHT, fallbackAmbience.getTimeOfDay());
+        assertEquals("Stormy night over the island", fallbackAmbience.getDescription());
+        Mockito.verify(restTemplate, Mockito.times(2))
+            .getForObject(Mockito.anyString(), Mockito.eq(AmbienceService.OpenMeteoResponse.class));
+    }
+
+    @Test
+    void ambienceNullOpenMeteoResponse_returnsUnknownAndCachesIt() {
+        RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+        Mockito.when(restTemplate.getForObject(Mockito.anyString(), Mockito.eq(AmbienceService.OpenMeteoResponse.class)))
+            .thenReturn(null);
+
+        AmbienceService ambienceService = new AmbienceService(restTemplate);
+
+        var firstAmbience = ambienceService.getCurrentAmbience();
+        var secondAmbience = ambienceService.getCurrentAmbience();
+
+        assertEquals(WeatherCategory.UNKNOWN, firstAmbience.getWeather());
+        assertEquals(TimeOfDayMood.UNKNOWN, firstAmbience.getTimeOfDay());
+        assertEquals("Weather ambience unavailable", secondAmbience.getDescription());
+        Mockito.verify(restTemplate, Mockito.times(1))
+            .getForObject(Mockito.anyString(), Mockito.eq(AmbienceService.OpenMeteoResponse.class));
+    }
+
+    @Test
+    void ambienceDescribe_coversWeatherMoodCombinations() {
+        assertEquals("Sunny sunrise over the island",
+            AmbienceService.describe(WeatherCategory.SUNNY, TimeOfDayMood.SUNRISE));
+        assertEquals("Rainy sunset over the island",
+            AmbienceService.describe(WeatherCategory.RAINY, TimeOfDayMood.SUNSET));
+        assertEquals("Snowy day over the island",
+            AmbienceService.describe(WeatherCategory.SNOWING, TimeOfDayMood.DAY));
+        assertEquals("Foggy night over the island",
+            AmbienceService.describe(WeatherCategory.FOGGY, TimeOfDayMood.NIGHT));
+        assertEquals("Weather ambience unavailable",
+            AmbienceService.describe(WeatherCategory.UNKNOWN, TimeOfDayMood.DAY));
     }
 
     @Test
