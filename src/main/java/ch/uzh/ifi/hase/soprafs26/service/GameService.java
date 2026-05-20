@@ -169,12 +169,19 @@ public class GameService {
     }
 
     public Game updateGameState(Long gameId, String playerToken, GamePostDTO gamePostDTO) {
-        authenticate(playerToken);
+        User authenticatedUser = authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
         ensureGameNotFinished(game);
+        if (!game.isSetupPhase()) {
+            ensureActiveGameReadableByUser(game, authenticatedUser);
+            if (gamePostDTO != null && gamePostDTO.getPlayers() != null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Cannot change players after the game has started.");
+            }
+        }
 
         if (gamePostDTO != null) {
             if (gamePostDTO.getBoard() != null) {
@@ -392,11 +399,13 @@ public class GameService {
 
     @Transactional(readOnly = true)
     public Game getGameById(Long gameId, String playerToken) {
-        authenticate(playerToken);
+        User authenticatedUser = authenticate(playerToken);
     
-        return gameRepository.findById(gameId)
+        Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
+        ensureActiveGameReadableByUser(game, authenticatedUser);
+        return game;
     }
 
     @Scheduled(
@@ -421,11 +430,12 @@ public class GameService {
 
     @Transactional(readOnly = true)
     public GameVersionDTO getGameVersion(Long gameId, String playerToken) {
-        authenticate(playerToken);
+        User authenticatedUser = authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
+        ensureActiveGameReadableByUser(game, authenticatedUser);
 
         GameVersionDTO dto = new GameVersionDTO();
         dto.setGameId(game.getId());
@@ -485,11 +495,12 @@ public class GameService {
 
     @Transactional(readOnly = true)
     public boolean isSetupPhase(Long gameId, String playerToken) {
-        authenticate(playerToken);
+        User authenticatedUser = authenticate(playerToken);
 
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Game with id " + gameId + " was not found."));
+        ensureActiveGameReadableByUser(game, authenticatedUser);
 
         return game.isSetupPhase();
     }
@@ -2577,6 +2588,22 @@ public class GameService {
         return userService.authenticate(playerToken);
     }
 
+    private void ensureActiveGameReadableByUser(Game game, User authenticatedUser) {
+        if (game == null || authenticatedUser == null) {
+            return;
+        }
+
+        if (game.getFinishedAt() != null || "FINISHED".equals(game.getGamePhase())) {
+            return;
+        }
+
+        if (findAuthenticatedPlayer(game, authenticatedUser) != null) {
+            return;
+        }
+
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not part of this game.");
+    }
+
     private void ensureUserNotInActiveLobbyOrGame(User user) {
         if (user == null || user.getId() == null) {
             return;
@@ -2584,14 +2611,7 @@ public class GameService {
 
         if (lobbyParticipantRepository != null) {
             for (var participant : lobbyParticipantRepository.findByUser_Id(user.getId())) {
-                if (participant == null || participant.getLobby() == null) {
-                    continue;
-                }
-
-                Long gameId = participant.getLobby().getGameId();
-                if (gameId == null || gameRepository.findById(gameId)
-                        .map(game -> game.getFinishedAt() == null)
-                        .orElse(false)) {
+                if (participantBlocksNewGameMembership(participant, user)) {
                     throw new ResponseStatusException(
                             HttpStatus.CONFLICT,
                             "User with id " + user.getId() + " is already part of an active lobby or game."
@@ -2615,6 +2635,25 @@ public class GameService {
                 );
             }
         }
+    }
+
+    private boolean participantBlocksNewGameMembership(LobbyParticipant participant, User user) {
+        if (participant == null || participant.getLobby() == null) {
+            return false;
+        }
+
+        Long gameId = participant.getLobby().getGameId();
+        if (gameId == null) {
+            return true;
+        }
+
+        return gameRepository.findById(gameId)
+                .map(game -> game.getFinishedAt() == null
+                        && game.getPlayers() != null
+                        && game.getPlayers().stream()
+                                .filter(Objects::nonNull)
+                                .anyMatch(player -> isSameUserById(player, user)))
+                .orElse(false);
     }
 
     private void ensureCurrentPlayerCanRollDice(Player currentPlayer, User authenticatedUser) {

@@ -32,6 +32,7 @@ public class LobbyService {
     private static final int DEFAULT_LOBBY_CAPACITY = 4;
     private static final int MIN_PLAYERS_TO_START = 2;
     private static final long LOBBY_DISCONNECT_GRACE_SECONDS = 40;
+    private static final long ACTIVE_GAME_REJOIN_GRACE_SECONDS = 300;
 
     private final GameRepository gameRepository;
     private final LobbyRepository lobbyRepository;
@@ -96,11 +97,13 @@ public class LobbyService {
 
         LobbyParticipant existingParticipant = findExistingParticipantForJoin(lobby, user);
         if (existingParticipant != null) {
+            ensureStartedGameReconnectAllowed(lobby, existingParticipant);
             markParticipantOnline(existingParticipant);
             lobbyParticipantRepository.saveAndFlush(existingParticipant);
             return lobby;
         }
       
+        ensureLobbyGameAcceptsNewParticipant(lobby);
         validateLobbyPassword(lobby, lobbyPassword);
         ensureLobbyNotFull(lobby);
 
@@ -503,8 +506,67 @@ public class LobbyService {
         }
 
         return gameRepository.findById(gameId)
+                .map(game -> game.getFinishedAt() == null && participantIsPlayerInGame(participant, game))
+                .orElse(false);
+    }
+
+    private void ensureLobbyGameAcceptsNewParticipant(Lobby lobby) {
+        Long gameId = lobby == null ? null : lobby.getGameId();
+        if (gameId == null) {
+            return;
+        }
+
+        boolean activeGame = gameRepository.findById(gameId)
                 .map(game -> game.getFinishedAt() == null)
                 .orElse(false);
+        if (activeGame) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Game already started");
+        }
+    }
+
+    private void ensureStartedGameReconnectAllowed(Lobby lobby, LobbyParticipant participant) {
+        Long gameId = lobby == null ? null : lobby.getGameId();
+        if (gameId == null) {
+            return;
+        }
+
+        Game game = gameRepository.findById(gameId).orElse(null);
+        if (game == null || game.getFinishedAt() != null) {
+            return;
+        }
+
+        Long userId = participant.getUser() == null ? null : participant.getUser().getId();
+        Player player = userId == null || game.getPlayers() == null
+                ? null
+                : game.getPlayers().stream()
+                        .filter(candidate -> candidate != null && candidate.getUser() != null)
+                        .filter(candidate -> userId.equals(candidate.getUser().getId()))
+                        .findFirst()
+                        .orElse(null);
+        if (player == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Game already started");
+        }
+
+        Instant rejoinSince = player.getDisconnectedAt() != null ? player.getDisconnectedAt() : player.getLastSeenAt();
+        if (rejoinSince == null) {
+            rejoinSince = participant.getLastSeenAt();
+        }
+
+        if (rejoinSince != null
+                && !rejoinSince.plusSeconds(ACTIVE_GAME_REJOIN_GRACE_SECONDS).isAfter(Instant.now())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Game already started");
+        }
+    }
+
+    private boolean participantIsPlayerInGame(LobbyParticipant participant, Game game) {
+        if (participant.getUser() == null || participant.getUser().getId() == null || game.getPlayers() == null) {
+            return false;
+        }
+
+        Long userId = participant.getUser().getId();
+        return game.getPlayers().stream()
+                .filter(player -> player != null && player.getUser() != null)
+                .anyMatch(player -> userId.equals(player.getUser().getId()));
     }
 
     private void ensureUserNotInAnyActiveGame(User user, Long allowedGameId) {
