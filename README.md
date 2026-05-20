@@ -18,8 +18,8 @@ The server runs a Spring Boot application that manages game logic, player sessio
 
 ## High-level components
 
-- **Application**: Spring Boot main class and CORS config [src/main/java/ch/uzh/ifi/hase/soprafs26/Application.java](sopra-fs26-group-11-server/src/main/java/ch/uzh/ifi/hase/soprafs26/Application.java#L1).
-- **Controllers**: REST endpoints for game, lobby, and user flows e.g. [src/main/java/ch/uzh/ifi/hase/soprafs26/controller/GameController.java](sopra-fs26-group-11-server/src/main/java/ch/uzh/ifi/hase/soprafs26/controller/GameController.java#L1), [src/main/java/ch/uzh/ifi/hase/soprafs26/controller/LobbyController.java](sopra-fs26-group-11-server/src/main/java/ch/uzh/ifi/hase/soprafs26/controller/LobbyController.java#L1), [src/main/java/ch/uzh/ifi/hase/soprafs26/controller/UserController.java](sopra-fs26-group-11-server/src/main/java/ch/uzh/ifi/hase/soprafs26/controller/UserController.java#L1).
+- **Application**: Spring Boot main class and CORS config [src/main/java/ch/uzh/ifi/hase/soprafs26/Application.java](src/main/java/ch/uzh/ifi/hase/soprafs26/Application.java#L1).
+- **Controllers**: REST endpoints for game, lobby, and user flows e.g. [src/main/java/ch/uzh/ifi/hase/soprafs26/controller/GameController.java](src/main/java/ch/uzh/ifi/hase/soprafs26/controller/GameController.java#L1), [src/main/java/ch/uzh/ifi/hase/soprafs26/controller/LobbyController.java](src/main/java/ch/uzh/ifi/hase/soprafs26/controller/LobbyController.java#L1), [src/main/java/ch/uzh/ifi/hase/soprafs26/controller/UserController.java](src/main/java/ch/uzh/ifi/hase/soprafs26/controller/UserController.java#L1).
 - **Services & Domain**: Business logic and domain model under `src/main/java/ch/uzh/ifi/hase/soprafs26/service` and `domain` (search the `src/main/java` tree for specific classes).
 - **Persistence / Repositories**: Data access layer and in-memory or persistent stores used by the services.
 
