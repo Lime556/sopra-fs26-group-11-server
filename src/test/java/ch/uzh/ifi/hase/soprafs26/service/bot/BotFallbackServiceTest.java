@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
+import ch.uzh.ifi.hase.soprafs26.entity.Boat;
 import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
@@ -116,6 +117,96 @@ public class BotFallbackServiceTest {
         BotAction action = botFallbackService.chooseFallbackAction(game);
 
         assertEquals(BotActionType.END_TURN, action.getType());
+    }
+
+    @Test
+    public void chooseFallbackAction_oneResourceFromSettlement_usesBankTrade() {
+        Game game = setupGame();
+        Player bot = botPlayer();
+        bot.setWood(1);
+        bot.setBrick(1);
+        bot.setWheat(1);
+        bot.setOre(4);
+        game.getBoard().getEdges().get(0).setRoad(road(bot.getId(), 1));
+        game.setBankWool(19);
+        game.setPlayers(List.of(bot));
+        game.setCurrentTurnIndex(0);
+        game.setGamePhase(GamePhase.ACTIVE);
+        game.setTurnPhase(TurnPhase.ACTION);
+
+        BotAction action = botFallbackService.chooseFallbackAction(game);
+
+        assertEquals(BotActionType.BANK_TRADE, action.getType());
+        assertEquals("ore", action.getGiveResource());
+        assertEquals(Integer.valueOf(4), action.getGiveAmount());
+        assertEquals("wool", action.getReceiveResource());
+        assertEquals(Integer.valueOf(1), action.getReceiveAmount());
+    }
+
+    @Test
+    public void chooseFallbackAction_oneResourceFromSettlement_usesSpecificPortRatio() {
+        Game game = new Game();
+        Board board = new Board();
+        board.generateBoard();
+        Boat woodPort = board.getBoats().stream()
+            .filter(boat -> "WOOD".equals(boat.getBoatType()))
+            .findFirst()
+            .orElseThrow();
+        Integer portIntersectionId = board.getIntersectionIdsForHex(woodPort.getHexId()).get(woodPort.getFirstCorner());
+        board.getIntersections().get(portIntersectionId).setBuilding(settlement(10L, portIntersectionId));
+        Edge remoteEdge = board.getEdges().stream()
+            .filter(edge -> !portIntersectionId.equals(edge.getIntersectionAId()) && !portIntersectionId.equals(edge.getIntersectionBId()))
+            .findFirst()
+            .orElseThrow();
+        remoteEdge.setRoad(road(10L, remoteEdge.getId()));
+        game.setBoard(board);
+
+        Player bot = botPlayer();
+        bot.setWood(3);
+        bot.setBrick(1);
+        bot.setWheat(1);
+        game.setBankWool(19);
+        game.setPlayers(List.of(bot));
+        game.setCurrentTurnIndex(0);
+        game.setGamePhase(GamePhase.ACTIVE);
+        game.setTurnPhase(TurnPhase.ACTION);
+
+        BotAction action = botFallbackService.chooseFallbackAction(game);
+
+        assertEquals(BotActionType.BANK_TRADE, action.getType());
+        assertEquals("wood", action.getGiveResource());
+        assertEquals(Integer.valueOf(2), action.getGiveAmount());
+        assertEquals("wool", action.getReceiveResource());
+    }
+
+    @Test
+    public void chooseFallbackAction_oneResourceFromSettlement_tradesWithBotWhenBankUnavailable() {
+        Game game = setupGame();
+        Player bot = botPlayer();
+        bot.setWood(1);
+        bot.setBrick(1);
+        bot.setWheat(1);
+        bot.setOre(1);
+        Player targetBot = botPlayer();
+        targetBot.setId(11L);
+        targetBot.setName("Bot 2");
+        targetBot.setWool(2);
+        targetBot.setWheat(2);
+        targetBot.setOre(2);
+        game.getBoard().getEdges().get(0).setRoad(road(bot.getId(), 1));
+        game.getBoard().getIntersections().get(2).setBuilding(settlement(targetBot.getId(), 3));
+        game.setBankWool(0);
+        game.setPlayers(List.of(bot, targetBot));
+        game.setCurrentTurnIndex(0);
+        game.setGamePhase(GamePhase.ACTIVE);
+        game.setTurnPhase(TurnPhase.ACTION);
+
+        BotAction action = botFallbackService.chooseFallbackAction(game);
+
+        assertEquals(BotActionType.PLAYER_TRADE, action.getType());
+        assertEquals(targetBot.getId(), action.getTargetPlayerId());
+        assertEquals("ore", action.getGiveResource());
+        assertEquals("wool", action.getReceiveResource());
     }
 
     @Test

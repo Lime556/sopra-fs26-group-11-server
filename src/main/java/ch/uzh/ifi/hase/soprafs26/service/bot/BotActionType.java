@@ -9,6 +9,8 @@ public enum BotActionType {
     BUILD_SETTLEMENT,
     BUILD_ROAD,
     BUY_DEVELOPMENT_CARD,
+    BANK_TRADE,
+    PLAYER_TRADE,
     END_TURN,
     NONE
 }

@@ -1,6 +1,8 @@
 package ch.uzh.ifi.hase.soprafs26.service.bot;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
 
 @Service
@@ -111,7 +114,13 @@ public class BotActionExecutorService {
     private boolean shouldAskAi(List<BotActionCandidate> candidates) {
         List<BotActionCandidate> meaningful = meaningfulCandidates(candidates);
         if (meaningful.size() <= 1) {
-            return false;
+            return candidates != null
+                && candidates.stream().anyMatch(candidate -> candidate != null
+                    && candidate.action() != null
+                    && isTradeAction(candidate.action().getType()))
+                && candidates.stream().anyMatch(candidate -> candidate != null
+                    && candidate.action() != null
+                    && BotActionType.END_TURN.equals(candidate.action().getType()));
         }
 
         return meaningful.stream()
@@ -172,19 +181,44 @@ public class BotActionExecutorService {
         }
         BotAction action = candidate.action();
         int score = switch (action.getType()) {
-            case BUILD_INITIAL_SETTLEMENT, BUILD_SETTLEMENT -> 1000;
-            case BUILD_CITY -> 900;
-            case BUILD_INITIAL_ROAD, BUILD_ROAD -> 700;
-            case BUY_DEVELOPMENT_CARD -> 500;
+            case BUILD_INITIAL_SETTLEMENT -> 1200;
+            case BUILD_SETTLEMENT -> 1100;
+            case BUILD_CITY -> 1050;
+            case BUILD_INITIAL_ROAD -> 700;
+            case BUILD_ROAD -> 180;
+            case BUY_DEVELOPMENT_CARD -> 120;
+            case BANK_TRADE -> 1060;
+            case PLAYER_TRADE -> 980;
             case MOVE_ROBBER -> 400;
             case ROLL_DICE -> 300;
-            case END_TURN -> 0;
+            case END_TURN -> 220;
             case NONE -> -100;
         };
 
         Object productionScore = candidate.promptDetails() == null ? null : candidate.promptDetails().get("score");
         if (productionScore instanceof Number number) {
             score += number.intValue() * 20;
+        }
+        Object expansionScore = candidate.promptDetails() == null ? null : candidate.promptDetails().get("expansionScore");
+        if (expansionScore instanceof Number number) {
+            score += number.intValue() * 16;
+        }
+        Object opensSettlement = candidate.promptDetails() == null ? null : candidate.promptDetails().get("opensSettlement");
+        if (Boolean.TRUE.equals(opensSettlement)) {
+            score += 360;
+        }
+        Object savingForSettlement = candidate.promptDetails() == null ? null : candidate.promptDetails().get("savingForSettlement");
+        Object freeRoad = candidate.promptDetails() == null ? null : candidate.promptDetails().get("freeRoad");
+        if (Boolean.TRUE.equals(savingForSettlement)
+            && !Boolean.TRUE.equals(freeRoad)
+            && (action.getType() == BotActionType.BUILD_ROAD || action.getType() == BotActionType.BUY_DEVELOPMENT_CARD)) {
+            score -= 350;
+        }
+        Object enables = candidate.promptDetails() == null ? null : candidate.promptDetails().get("enables");
+        if ("settlement".equals(enables)) {
+            score += 90;
+        } else if ("city".equals(enables)) {
+            score += 60;
         }
         Object threatScore = candidate.promptDetails() == null ? null : candidate.promptDetails().get("threat");
         if (threatScore instanceof Number number) {
@@ -215,7 +249,12 @@ public class BotActionExecutorService {
         return java.util.Objects.equals(left.getPlayerId(), right.getPlayerId())
             && java.util.Objects.equals(left.getIntersectionId(), right.getIntersectionId())
             && java.util.Objects.equals(left.getEdgeId(), right.getEdgeId())
-            && java.util.Objects.equals(left.getHexId(), right.getHexId());
+            && java.util.Objects.equals(left.getHexId(), right.getHexId())
+            && java.util.Objects.equals(left.getTargetPlayerId(), right.getTargetPlayerId())
+            && java.util.Objects.equals(left.getGiveResource(), right.getGiveResource())
+            && java.util.Objects.equals(left.getReceiveResource(), right.getReceiveResource())
+            && java.util.Objects.equals(left.getGiveAmount(), right.getGiveAmount())
+            && java.util.Objects.equals(left.getReceiveAmount(), right.getReceiveAmount());
     }
 
     private boolean sameVersion(Long left, Long right) {
@@ -264,8 +303,45 @@ public class BotActionExecutorService {
                 action.getEdgeId()
             );
             case BUY_DEVELOPMENT_CARD -> gameService.buyDevelopmentCard(gameId, playerToken, action.getPlayerId());
+            case BANK_TRADE -> gameService.applyBankTrade(gameId, playerToken, tradeEvent(action, "BANK_TRADE"));
+            case PLAYER_TRADE -> gameService.applyBotPlayerTrade(gameId, playerToken, tradeEvent(action, "PLAYER_TRADE_FINALIZE"));
             case END_TURN -> gameService.endTurn(gameId, playerToken);
             case NONE -> gameService.getGameById(gameId, playerToken);
         };
+    }
+
+    private boolean isTradeAction(BotActionType type) {
+        return BotActionType.BANK_TRADE.equals(type) || BotActionType.PLAYER_TRADE.equals(type);
+    }
+
+    private GameEventDTO tradeEvent(BotAction action, String type) {
+        GameEventDTO event = new GameEventDTO();
+        event.setType(type);
+        event.setSourcePlayerId(action.getPlayerId());
+        event.setTargetPlayerId(action.getTargetPlayerId());
+        event.setGiveResources(singleResourceBundle(action.getGiveResource(), action.getGiveAmount()));
+        event.setReceiveResources(singleResourceBundle(action.getReceiveResource(), action.getReceiveAmount()));
+        event.setGiveResource(action.getGiveResource());
+        event.setReceiveResource(action.getReceiveResource());
+        event.setGiveAmount(action.getGiveAmount());
+        event.setReceiveAmount(action.getReceiveAmount());
+        event.setAmount(action.getReceiveAmount());
+        return event;
+    }
+
+    private Map<String, Integer> singleResourceBundle(String resource, Integer amount) {
+        Map<String, Integer> bundle = new HashMap<>();
+        bundle.put("wood", 0);
+        bundle.put("brick", 0);
+        bundle.put("wool", 0);
+        bundle.put("wheat", 0);
+        bundle.put("ore", 0);
+        if (resource != null) {
+            String normalizedResource = resource.toLowerCase(java.util.Locale.ROOT);
+            if (bundle.containsKey(normalizedResource)) {
+                bundle.put(normalizedResource, amount == null ? 0 : amount);
+            }
+        }
+        return bundle;
     }
 }

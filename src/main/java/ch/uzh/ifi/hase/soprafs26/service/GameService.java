@@ -264,6 +264,7 @@ public class GameService {
         }
     
         String stolenResource = robberHelper(game, player, targetHexId, targetPlayerId);
+        Player target = targetPlayerId == null ? null : requirePlayer(game, targetPlayerId);
 
         if (Integer.valueOf(7).equals(game.getDiceValue())) {
             game.setRobberMovedAfterSevenRoll(true);
@@ -277,7 +278,7 @@ public class GameService {
                 ? "moved robber to hex " + targetHexId
                 : "moved robber to hex " + targetHexId + " and stole "
                     + (stolenResource == null ? "a resource" : "1 " + stolenResource)
-                    + " from player " + targetPlayerId
+                    + " from " + describePlayer(target)
         );
         return saveChangedGame(game);
     }
@@ -1137,6 +1138,14 @@ public class GameService {
     }
 
     public Game applyPlayerTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+        return applyPlayerTradeInternal(gameId, playerToken, tradeEvent, true);
+    }
+
+    public Game applyBotPlayerTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+        return applyPlayerTradeInternal(gameId, playerToken, tradeEvent, false);
+    }
+
+    private Game applyPlayerTradeInternal(Long gameId, String playerToken, GameEventDTO tradeEvent, boolean enforceSourceAuthentication) {
         User authenticatedUser = authenticate(playerToken);
 
         if (tradeEvent == null || tradeEvent.getSourcePlayerId() == null || tradeEvent.getTargetPlayerId() == null) {
@@ -1181,7 +1190,11 @@ public class GameService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trade player was not found.");
         }
 
-        ensurePlayerMatchesAuthenticatedUser(source, authenticatedUser, "finalize trade");
+        if (enforceSourceAuthentication) {
+            ensurePlayerMatchesAuthenticatedUser(source, authenticatedUser, "finalize trade");
+        } else if (!source.isBot() || !target.isBot()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only bot-to-bot trades can be finalized automatically.");
+        }
 
         for (String resource : TRADE_RESOURCES) {
             int giveAmount = giveBundle.get(resource);
@@ -1591,7 +1604,8 @@ public class GameService {
 
         player.setKnightsPlayed(safeInt(player.getKnightsPlayed(), 0) + 1);
 
-        robberHelper(game, player, targetHexId, targetPlayerId);
+        String stolenResource = robberHelper(game, player, targetHexId, targetPlayerId);
+        Player target = targetPlayerId == null ? null : requirePlayer(game, targetPlayerId);
 
         updateLargestArmyOwnership(game);
         recalculateVictoryState(game);
@@ -1601,7 +1615,9 @@ public class GameService {
             "PLAY_KNIGHT",
             targetPlayerId == null
                 ? "moved robber to hex " + targetHexId
-                : "moved robber to hex " + targetHexId + " and stole from player " + targetPlayerId
+                : "moved robber to hex " + targetHexId + " and stole "
+                    + (stolenResource == null ? "a resource" : "1 " + stolenResource)
+                    + " from " + describePlayer(target)
         );
         return saveChangedGame(game);
     }

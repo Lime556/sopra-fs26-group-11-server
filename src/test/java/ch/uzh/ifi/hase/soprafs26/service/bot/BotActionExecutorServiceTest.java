@@ -1,30 +1,35 @@
 package ch.uzh.ifi.hase.soprafs26.service.bot;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
 
 class BotActionExecutorServiceTest {
@@ -105,6 +110,91 @@ class BotActionExecutorServiceTest {
         assertFalse(result.fallbackUsed());
         assertTrue(result.aiConsultantUsed());
         assertEquals(null, result.fallbackReason());
+    }
+
+    @Test
+    void executeBotActionWithResult_aiChoosesBankTrade_executesBankTradePayload() {
+        Game game = gameWithVersion(5L);
+        game.setId(77L);
+        Game updatedGame = gameWithVersion(6L);
+        updatedGame.setId(77L);
+
+        BotAction bankTrade = BotAction.bankTrade(10L, "ore", "wool", 4, 1);
+        BotActionCandidate tradeCandidate = candidate(
+            "A1",
+            bankTrade,
+            Map.of("t", "BANK_TRADE", "give", "ore", "receive", "wool", "enables", "settlement")
+        );
+        BotActionCandidate endTurnCandidate = candidate(
+            "A2",
+            BotAction.of(BotActionType.END_TURN, 10L),
+            Map.of("t", "END_TURN")
+        );
+        List<BotActionCandidate> candidates = List.of(tradeCandidate, endTurnCandidate);
+
+        when(gameService.getGameById(77L, "token")).thenReturn(game);
+        when(botFallbackService.listCandidateActions(game)).thenReturn(candidates);
+        when(botAiService.chooseAction(game)).thenReturn(Optional.of(bankTrade));
+        when(gameService.applyBankTrade(eq(77L), eq("token"), any(GameEventDTO.class))).thenReturn(updatedGame);
+
+        BotActionExecutionResult result = service.executeBotActionWithResult(77L, "token", true);
+
+        assertSame(updatedGame, result.game());
+        assertEquals(10L, result.playerId());
+        assertTrue(result.aiRequested());
+        assertTrue(result.aiConsultantUsed());
+        assertFalse(result.fallbackUsed());
+
+        ArgumentCaptor<GameEventDTO> eventCaptor = ArgumentCaptor.forClass(GameEventDTO.class);
+        verify(gameService).applyBankTrade(eq(77L), eq("token"), eventCaptor.capture());
+        GameEventDTO event = eventCaptor.getValue();
+        assertEquals("BANK_TRADE", event.getType());
+        assertEquals(10L, event.getSourcePlayerId());
+        assertEquals(4, event.getGiveResources().get("ore"));
+        assertEquals(1, event.getReceiveResources().get("wool"));
+        assertEquals(Integer.valueOf(4), event.getGiveAmount());
+        assertEquals(Integer.valueOf(1), event.getReceiveAmount());
+    }
+
+    @Test
+    void executeBotActionWithResult_fallbackChoosesBotPlayerTrade_executesInternalBotTrade() {
+        Game game = new Game();
+        game.setId(88L);
+        Game updatedGame = new Game();
+        updatedGame.setId(88L);
+
+        BotAction playerTrade = BotAction.playerTrade(10L, 11L, "ore", "wool", 1, 1);
+        BotActionCandidate tradeCandidate = candidate(
+            "A1",
+            playerTrade,
+            Map.of("t", "PLAYER_TRADE", "targetPlayerId", 11L, "enables", "settlement")
+        );
+        BotActionCandidate endTurnCandidate = candidate(
+            "A2",
+            BotAction.of(BotActionType.END_TURN, 10L),
+            Map.of("t", "END_TURN")
+        );
+
+        when(gameService.getGameById(88L, "token")).thenReturn(game);
+        when(botFallbackService.listCandidateActions(game)).thenReturn(List.of(endTurnCandidate, tradeCandidate));
+        when(gameService.applyBotPlayerTrade(eq(88L), eq("token"), any(GameEventDTO.class))).thenReturn(updatedGame);
+
+        BotActionExecutionResult result = service.executeBotActionWithResult(88L, "token", false);
+
+        assertSame(updatedGame, result.game());
+        assertFalse(result.aiRequested());
+        assertFalse(result.aiConsultantUsed());
+        assertTrue(result.fallbackUsed());
+        assertEquals("AI not requested", result.fallbackReason());
+
+        ArgumentCaptor<GameEventDTO> eventCaptor = ArgumentCaptor.forClass(GameEventDTO.class);
+        verify(gameService).applyBotPlayerTrade(eq(88L), eq("token"), eventCaptor.capture());
+        GameEventDTO event = eventCaptor.getValue();
+        assertEquals("PLAYER_TRADE_FINALIZE", event.getType());
+        assertEquals(10L, event.getSourcePlayerId());
+        assertEquals(11L, event.getTargetPlayerId());
+        assertEquals(1, event.getGiveResources().get("ore"));
+        assertEquals(1, event.getReceiveResources().get("wool"));
     }
 
     @Test
@@ -208,8 +298,13 @@ class BotActionExecutorServiceTest {
             candidate("A1", BotAction.of(BotActionType.ROLL_DICE, 1L), Map.of()),
             candidate("A2", BotAction.of(BotActionType.BUILD_ROAD, 1L), Map.of())
         ));
+        boolean askAiTradeChoice = invokePrivate(service, "shouldAskAi", new Class<?>[] {List.class}, List.of(
+            candidate("A1", BotAction.bankTrade(1L, "ore", "wool", 4, 1), Map.of()),
+            candidate("A2", BotAction.of(BotActionType.END_TURN, 1L), Map.of())
+        ));
         assertFalse(askAiFalse);
         assertTrue(askAiTrue);
+        assertTrue(askAiTradeChoice);
 
         String emptyReason = invokePrivate(service, "explainAiSkipped", new Class<?>[] {List.class}, List.of());
         String rollReason = invokePrivate(service, "explainAiSkipped", new Class<?>[] {List.class}, List.of(
@@ -264,6 +359,10 @@ class BotActionExecutorServiceTest {
         boolean sameTrue = invokePrivate(service, "sameAction",
             new Class<?>[] {BotAction.class, BotAction.class},
             BotAction.road(BotActionType.BUILD_ROAD, 1L, 4), BotAction.road(BotActionType.BUILD_ROAD, 1L, 4));
+        boolean sameTradeTrue = invokePrivate(service, "sameAction",
+            new Class<?>[] {BotAction.class, BotAction.class},
+            BotAction.playerTrade(1L, 2L, "ore", "wool", 1, 1),
+            BotAction.playerTrade(1L, 2L, "ore", "wool", 1, 1));
         boolean sameFalseNull = invokePrivate(service, "sameAction",
             new Class<?>[] {BotAction.class, BotAction.class},
             null, BotAction.road(BotActionType.BUILD_ROAD, 1L, 4));
@@ -274,6 +373,7 @@ class BotActionExecutorServiceTest {
         assertFalse(sameFalseNull);
         assertFalse(sameFalseDifferentFields);
         assertTrue(sameTrue);
+        assertTrue(sameTradeTrue);
 
         Boolean sameVersionNulls = invokePrivate(service, "sameVersion", new Class<?>[] {Long.class, Long.class}, null, null);
         Boolean sameVersionDifferent = invokePrivate(service, "sameVersion", new Class<?>[] {Long.class, Long.class}, 1L, 2L);
@@ -285,6 +385,8 @@ class BotActionExecutorServiceTest {
                 case BUILD_INITIAL_SETTLEMENT, BUILD_SETTLEMENT, BUILD_CITY -> BotAction.settlement(type, 1L, 3);
                 case BUILD_INITIAL_ROAD, BUILD_ROAD -> BotAction.road(type, 1L, 9);
                 case MOVE_ROBBER -> BotAction.robber(1L, 2);
+                case BANK_TRADE -> BotAction.bankTrade(1L, "ore", "wool", 4, 1);
+                case PLAYER_TRADE -> BotAction.playerTrade(1L, 2L, "ore", "wool", 1, 1);
                 default -> BotAction.of(type, 1L);
             };
             Integer score = invokePrivate(service, "scoreCandidate", new Class<?>[] {BotActionCandidate.class},
@@ -304,6 +406,8 @@ class BotActionExecutorServiceTest {
         when(gameService.addSettlementToPlayer(anyLong(), anyString(), anyLong(), any())).thenReturn(expected);
         when(gameService.addRoadToPlayer(anyLong(), anyString(), anyLong(), any())).thenReturn(expected);
         when(gameService.buyDevelopmentCard(anyLong(), anyString(), anyLong())).thenReturn(expected);
+        when(gameService.applyBankTrade(anyLong(), anyString(), any(GameEventDTO.class))).thenReturn(expected);
+        when(gameService.applyBotPlayerTrade(anyLong(), anyString(), any(GameEventDTO.class))).thenReturn(expected);
         when(gameService.endTurn(anyLong(), anyString())).thenReturn(expected);
         when(gameService.getGameById(anyLong(), anyString())).thenReturn(expected);
 
@@ -316,6 +420,8 @@ class BotActionExecutorServiceTest {
             BotAction.settlement(BotActionType.BUILD_SETTLEMENT, 1L, 6),
             BotAction.road(BotActionType.BUILD_ROAD, 1L, 7),
             BotAction.of(BotActionType.BUY_DEVELOPMENT_CARD, 1L),
+            BotAction.bankTrade(1L, "ore", "wool", 4, 1),
+            BotAction.playerTrade(1L, 2L, "ore", "wool", 1, 1),
             BotAction.of(BotActionType.END_TURN, 1L),
             BotAction.of(BotActionType.NONE, 1L)
         };
@@ -334,6 +440,8 @@ class BotActionExecutorServiceTest {
         verify(gameService).addSettlementToPlayer(1L, "token", 1L, 6);
         verify(gameService).addRoadToPlayer(1L, "token", 1L, 7);
         verify(gameService).buyDevelopmentCard(1L, "token", 1L);
+        verify(gameService).applyBankTrade(eq(1L), eq("token"), any(GameEventDTO.class));
+        verify(gameService).applyBotPlayerTrade(eq(1L), eq("token"), any(GameEventDTO.class));
         verify(gameService).endTurn(1L, "token");
         verify(gameService).getGameById(1L, "token");
     }
