@@ -1,21 +1,27 @@
 package ch.uzh.ifi.hase.soprafs26.service.bot;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.anyString;
 import org.mockito.Mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
-import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 
@@ -174,6 +180,122 @@ public class BotAiServiceTest {
 
         assertTrue(result.isPresent());
         assertEquals(BotActionType.BUY_DEVELOPMENT_CARD, result.get().getType());
+    }
+
+    @Test
+    public void chooseAction_missingChosenActionId_returnsEmpty() {
+        Game game = new Game();
+        Player bot = createBotPlayer();
+        game.setPlayers(List.of(bot));
+        game.setCurrentTurnIndex(0);
+
+        BotAction action1 = BotAction.of(BotActionType.ROLL_DICE, bot.getId());
+        BotActionCandidate candidate1 = new BotActionCandidate("A1", action1, Map.of("t", "ROLL_DICE"));
+
+        when(botFallbackService.listCandidateActions(game)).thenReturn(List.of(candidate1));
+        when(botAiClient.generateDecision(anyString())).thenReturn(Optional.of("{}"));
+
+        Optional<BotAction> result = botAiService.chooseAction(game);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void chooseAction_blankChosenActionId_returnsEmpty() {
+        Game game = new Game();
+        Player bot = createBotPlayer();
+        game.setPlayers(List.of(bot));
+        game.setCurrentTurnIndex(0);
+
+        BotAction action1 = BotAction.of(BotActionType.ROLL_DICE, bot.getId());
+        BotActionCandidate candidate1 = new BotActionCandidate("A1", action1, Map.of("t", "ROLL_DICE"));
+
+        when(botFallbackService.listCandidateActions(game)).thenReturn(List.of(candidate1));
+        when(botAiClient.generateDecision(anyString())).thenReturn(Optional.of("{\"chosenActionId\":\"   \"}"));
+
+        Optional<BotAction> result = botAiService.chooseAction(game);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void chooseAction_promptBuildHandlesNullPlayerFieldsAsZero() {
+        Game game = new Game();
+        Player bot = new Player();
+        bot.setId(2L);
+        bot.setBot(true);
+        game.setPlayers(List.of(bot));
+        game.setCurrentTurnIndex(0);
+
+        BotAction action1 = BotAction.of(BotActionType.END_TURN, bot.getId());
+        BotActionCandidate candidate1 = new BotActionCandidate("A1", action1, Map.of("t", "END_TURN"));
+
+        when(botFallbackService.listCandidateActions(game)).thenReturn(List.of(candidate1));
+        when(botFallbackService.getCurrentBotPlayer(game)).thenReturn(bot);
+        when(botAiClient.generateDecision(anyString())).thenAnswer(invocation -> {
+            String prompt = invocation.getArgument(0, String.class);
+            assertTrue(prompt.contains("\"resources\":[0,0,0,0,0]"));
+            assertTrue(prompt.contains("\"settlementPoints\":0"));
+            assertTrue(prompt.contains("\"cityPoints\":0"));
+            assertTrue(prompt.contains("\"devCardPoints\":0"));
+            return Optional.of("{\"chosenActionId\":\"A1\"}");
+        });
+
+        Optional<BotAction> result = botAiService.chooseAction(game);
+
+        assertTrue(result.isPresent());
+        assertEquals(BotActionType.END_TURN, result.get().getType());
+    }
+
+    @Test
+    public void chooseAction_promptBuildHandlesExplicitPlayerStatsAndNoBoard() {
+        Game game = new Game();
+        Player bot = new Player();
+        bot.setId(3L);
+        bot.setBot(true);
+        bot.setVictoryPoints(5);
+        bot.setBrick(1);
+        bot.setWood(2);
+        bot.setWheat(3);
+        bot.setWool(4);
+        bot.setOre(5);
+        bot.setSettlementPoints(2);
+        bot.setCityPoints(3);
+        bot.setDevelopmentCardVictoryPoints(1);
+        game.setPlayers(List.of(bot));
+        game.setCurrentTurnIndex(0);
+
+        BotAction action1 = BotAction.of(BotActionType.END_TURN, bot.getId());
+        BotActionCandidate candidate1 = new BotActionCandidate("A1", action1, Map.of("t", "END_TURN"));
+
+        when(botFallbackService.listCandidateActions(game)).thenReturn(List.of(candidate1));
+        when(botFallbackService.getCurrentBotPlayer(game)).thenReturn(bot);
+        when(botAiClient.generateDecision(anyString())).thenAnswer(invocation -> {
+            String prompt = invocation.getArgument(0, String.class);
+            assertTrue(prompt.contains("\"resources\":[1,2,3,4,5]"));
+            assertTrue(prompt.contains("\"settlementPoints\":2"));
+            assertTrue(prompt.contains("\"cityPoints\":3"));
+            assertTrue(prompt.contains("\"devCardPoints\":1"));
+            assertFalse(prompt.contains("\"board\""));
+            return Optional.of("{\"chosenActionId\":\"A1\"}");
+        });
+
+        Optional<BotAction> result = botAiService.chooseAction(game);
+        assertTrue(result.isPresent());
+    }
+
+    @Test
+    public void chooseAction_candidateWithNullAction_throwsDueToInvalidCandidateShape() {
+        Game game = new Game();
+        Player bot = createBotPlayer();
+        game.setPlayers(List.of(bot));
+        game.setCurrentTurnIndex(0);
+
+        BotActionCandidate invalid = new BotActionCandidate("A1", null, Map.of("t", "BROKEN"));
+        when(botFallbackService.listCandidateActions(game)).thenReturn(List.of(invalid));
+        when(botAiClient.generateDecision(anyString())).thenReturn(Optional.of("{\"chosenActionId\":\"A1\"}"));
+
+        assertThrows(NullPointerException.class, () -> botAiService.chooseAction(game));
     }
 
     @Test
