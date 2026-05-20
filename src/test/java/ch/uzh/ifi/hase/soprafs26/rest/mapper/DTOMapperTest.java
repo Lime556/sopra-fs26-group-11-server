@@ -1,15 +1,24 @@
 package ch.uzh.ifi.hase.soprafs26.rest.mapper;
 
 import java.util.HashSet;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import org.junit.jupiter.api.Test;
 
+import ch.uzh.ifi.hase.soprafs26.constant.FriendRequestStatus;
 import ch.uzh.ifi.hase.soprafs26.constant.UserStatus;
+import ch.uzh.ifi.hase.soprafs26.entity.FriendRequest;
+import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendRequestGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStartGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyParticipantGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserAuthDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserPostDTO;
@@ -119,5 +128,123 @@ public class DTOMapperTest {
 		assertEquals(55L, lobbyGetDTO.getParticipants().get(0).getUserId());
 		assertEquals("player1", lobbyGetDTO.getParticipants().get(0).getUsername());
 		assertEquals(false, lobbyGetDTO.getParticipants().get(0).isBot());
+	}
+
+	@Test
+	public void nullInputs_returnNullDTOs() {
+		assertNull(DTOMapper.INSTANCE.convertUserPostDTOtoEntity(null));
+		assertNull(DTOMapper.INSTANCE.convertEntityToUserGetDTO(null));
+		assertNull(DTOMapper.INSTANCE.convertEntityToUserAuthDTO(null));
+		assertNull(DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(null));
+		assertNull(DTOMapper.INSTANCE.convertEntityToLobbyParticipantGetDTO(null));
+		assertNull(DTOMapper.INSTANCE.convertEntityToGameStartGetDTO(null));
+		assertNull(DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(null));
+		assertNull(DTOMapper.INSTANCE.convertEntityToFriendGetDTO(null));
+	}
+
+	@Test
+	public void lobbyMapping_privateLobbyAndBotParticipant_coverNestedBranches() {
+		Lobby lobby = new Lobby();
+		lobby.setId(2L);
+		lobby.setName("Private Lobby");
+		lobby.setCapacity(4);
+		lobby.setPassword(" secret ");
+		lobby.setHostParticipant(null);
+
+		LobbyParticipant botParticipant = new LobbyParticipant();
+		botParticipant.setId(20L);
+		botParticipant.setBot(true);
+		botParticipant.setUser(null);
+
+		HashSet<LobbyParticipant> participants = new HashSet<>();
+		participants.add(botParticipant);
+		lobby.setParticipants(participants);
+
+		LobbyGetDTO dto = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(lobby);
+
+		assertEquals(true, dto.isPrivateLobby());
+		assertNull(dto.getHostParticipantId());
+		assertEquals(1, dto.getParticipants().size());
+		LobbyParticipantGetDTO participantDTO = dto.getParticipants().get(0);
+		assertNull(participantDTO.getUserId());
+		assertEquals("Bot", participantDTO.getUsername());
+		assertEquals(true, participantDTO.isBot());
+	}
+
+	@Test
+	public void gameAndFriendMappings_coverNestedNullAndPresentBranches() {
+		Game game = new Game();
+		game.setId(33L);
+		GameStartGetDTO gameStartGetDTO = DTOMapper.INSTANCE.convertEntityToGameStartGetDTO(game);
+		assertEquals(33L, gameStartGetDTO.getGameId());
+
+		User sender = new User();
+		sender.setId(1L);
+		sender.setUsername("sender");
+		User receiver = new User();
+		receiver.setId(2L);
+		receiver.setUsername("receiver");
+
+		FriendRequest friendRequest = new FriendRequest();
+		friendRequest.setId(44L);
+		friendRequest.setSender(sender);
+		friendRequest.setReceiver(receiver);
+		friendRequest.setStatus(FriendRequestStatus.PENDING);
+
+		FriendRequestGetDTO requestDTO = DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(friendRequest);
+		assertEquals(44L, requestDTO.getId());
+		assertEquals(1L, requestDTO.getSenderId());
+		assertEquals("sender", requestDTO.getSenderUsername());
+		assertEquals(2L, requestDTO.getReceiverId());
+		assertEquals("receiver", requestDTO.getReceiverUsername());
+
+		friendRequest.setSender(null);
+		friendRequest.setReceiver(null);
+		FriendRequestGetDTO nullNestedDTO = DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(friendRequest);
+		assertNull(nullNestedDTO.getSenderId());
+		assertNull(nullNestedDTO.getSenderUsername());
+		assertNull(nullNestedDTO.getReceiverId());
+		assertNull(nullNestedDTO.getReceiverUsername());
+
+		FriendGetDTO friendDTO = DTOMapper.INSTANCE.convertEntityToFriendGetDTO(sender);
+		assertEquals(sender.getId(), friendDTO.getId());
+		assertEquals(sender.getUsername(), friendDTO.getUsername());
+	}
+
+	@Test
+	public void mapperNestedEdgeCases_coverRemainingNullBranches() {
+		Lobby lobby = new Lobby();
+		lobby.setPassword("   ");
+		lobby.setParticipants(null);
+		LobbyParticipant hostWithoutId = new LobbyParticipant();
+		hostWithoutId.setId(null);
+		lobby.setHostParticipant(hostWithoutId);
+
+		LobbyGetDTO lobbyDTO = DTOMapper.INSTANCE.convertEntityToLobbyGetDTO(lobby);
+		assertEquals(false, lobbyDTO.isPrivateLobby());
+		assertNull(lobbyDTO.getHostParticipantId());
+		assertNull(lobbyDTO.getParticipants());
+
+		LobbyParticipant userParticipant = new LobbyParticipant();
+		User user = new User();
+		user.setId(77L);
+		user.setUsername("seen-user");
+		userParticipant.setUser(user);
+		userParticipant.setLastSeenAt(Instant.parse("2026-05-20T09:00:00Z"));
+
+		LobbyParticipantGetDTO participantDTO = DTOMapper.INSTANCE.convertEntityToLobbyParticipantGetDTO(userParticipant);
+		assertEquals(77L, participantDTO.getUserId());
+		assertEquals("seen-user", participantDTO.getUsername());
+		assertEquals("2026-05-20T09:00:00Z", participantDTO.getLastSeenAt());
+
+		FriendRequest request = new FriendRequest();
+		request.setSender(new User());
+		request.setReceiver(new User());
+
+		FriendRequestGetDTO requestDTO = DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(request);
+		assertNull(requestDTO.getSenderId());
+		assertNull(requestDTO.getSenderUsername());
+		assertNull(requestDTO.getReceiverId());
+		assertNull(requestDTO.getReceiverUsername());
 	}
 }
