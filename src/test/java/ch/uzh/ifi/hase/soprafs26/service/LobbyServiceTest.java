@@ -1004,4 +1004,148 @@ public class LobbyServiceTest {
         assertTrue(game.getPlayers().stream().anyMatch(player -> "hostUser".equals(player.getName()) && !player.isBot()));
         assertTrue(game.getPlayers().stream().anyMatch(player -> player.isBot() && player.getUser() == null));
     }
+
+    @Test
+    public void createLobby_defaultCapacityBlankPasswordAndNullUserId_success() {
+        User anonymousHost = new User();
+        anonymousHost.setToken("valid-token");
+        anonymousHost.setUsername("anonymous");
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(anonymousHost);
+
+        Lobby createdLobby = lobbyService.createLobby("valid-token", null, "   ", "  Trimmed Lobby  ");
+
+        assertEquals("Trimmed Lobby", createdLobby.getName());
+        assertEquals(4, createdLobby.getCapacity());
+        assertEquals(null, createdLobby.getPassword());
+        Mockito.verify(lobbyParticipantRepository, Mockito.never()).findByUser_Id(Mockito.anyLong());
+    }
+
+    @Test
+    public void createLobby_blankLobbyName_throwsBadRequest() {
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.createLobby("valid-token", 4, null, "   "));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    public void startGame_withoutHostOrWithInvalidState_throwsExpectedErrors() {
+        LobbyParticipant requesterParticipant = participant(100L, host, false);
+        lobby.getParticipants().add(requesterParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findById(1L)).thenReturn(Optional.of(lobby));
+
+        ResponseStatusException noHost = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.startGame(1L, "valid-token"));
+        assertEquals(HttpStatus.FORBIDDEN, noHost.getStatusCode());
+
+        lobby.setHostParticipant(requesterParticipant);
+        ResponseStatusException notEnoughPlayers = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.startGame(1L, "valid-token"));
+        assertEquals(HttpStatus.CONFLICT, notEnoughPlayers.getStatusCode());
+
+        LobbyParticipant guestParticipant = participant(101L, user, false);
+        lobby.getParticipants().add(guestParticipant);
+        lobby.setGameId(99L);
+        ResponseStatusException alreadyStarted = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.startGame(1L, "valid-token"));
+        assertEquals(HttpStatus.CONFLICT, alreadyStarted.getStatusCode());
+    }
+
+    @Test
+    public void addAndRemoveBot_afterGameStarted_throwConflict() {
+        LobbyParticipant hostParticipant = participant(100L, host, false);
+        LobbyParticipant botParticipant = participant(101L, null, true);
+        lobby.getParticipants().add(hostParticipant);
+        lobby.getParticipants().add(botParticipant);
+        lobby.setHostParticipant(hostParticipant);
+        lobby.setGameId(99L);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        ResponseStatusException addBot = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.addBot(1L, "valid-token"));
+        ResponseStatusException removeBot = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.removeBot(1L, "valid-token", 101L));
+
+        assertEquals(HttpStatus.CONFLICT, addBot.getStatusCode());
+        assertEquals(HttpStatus.CONFLICT, removeBot.getStatusCode());
+    }
+
+    @Test
+    public void removeBot_targetIsHuman_throwsBadRequest() {
+        LobbyParticipant hostParticipant = participant(100L, host, false);
+        LobbyParticipant guestParticipant = participant(101L, user, false);
+        lobby.getParticipants().add(hostParticipant);
+        lobby.getParticipants().add(guestParticipant);
+        lobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.removeBot(1L, "valid-token", 101L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    public void leaveLobby_hostLeaves_transfersHostToRemainingParticipant() {
+        LobbyParticipant hostParticipant = participant(100L, host, false);
+        LobbyParticipant guestParticipant = participant(101L, user, false);
+        lobby.getParticipants().add(hostParticipant);
+        lobby.getParticipants().add(guestParticipant);
+        lobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        lobbyService.leaveLobby(1L, "valid-token");
+
+        assertEquals(guestParticipant, lobby.getHostParticipant());
+        assertTrue(lobby.getParticipants().contains(guestParticipant));
+        assertFalse(lobby.getParticipants().contains(hostParticipant));
+        Mockito.verify(lobbyParticipantRepository).delete(hostParticipant);
+        Mockito.verify(lobbyRepository).saveAndFlush(lobby);
+    }
+
+    @Test
+    public void kickAndTransferGuards_throwExpectedErrors() {
+        LobbyParticipant hostParticipant = participant(100L, host, false);
+        lobby.getParticipants().add(hostParticipant);
+        lobby.setHostParticipant(hostParticipant);
+
+        Mockito.when(userService.authenticate("valid-token")).thenReturn(host);
+        Mockito.when(lobbyRepository.findByIdWithLock(1L)).thenReturn(Optional.of(lobby));
+
+        ResponseStatusException kickSelf = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.kickParticipant(1L, "valid-token", 100L));
+        ResponseStatusException kickPlayerMissingUserId = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.kickPlayer(1L, "valid-token", null));
+        ResponseStatusException transferMissingParticipantId = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.transferHost(1L, "valid-token", null));
+        ResponseStatusException transferMissingUserId = assertThrows(ResponseStatusException.class,
+                () -> lobbyService.transferHostToUser(1L, "valid-token", null));
+
+        assertEquals(HttpStatus.CONFLICT, kickSelf.getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, kickPlayerMissingUserId.getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, transferMissingParticipantId.getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, transferMissingUserId.getStatusCode());
+    }
+
+    private LobbyParticipant participant(Long id, User user, boolean bot) {
+        LobbyParticipant participant = new LobbyParticipant();
+        participant.setId(id);
+        participant.setLobby(lobby);
+        participant.setUser(user);
+        participant.setBot(bot);
+        participant.setOnline(true);
+        participant.setLastSeenAt(Instant.now());
+        return participant;
+    }
 }

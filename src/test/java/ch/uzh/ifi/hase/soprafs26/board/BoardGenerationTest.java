@@ -6,12 +6,15 @@ import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 
+import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class BoardGenerationTest {
@@ -168,6 +171,74 @@ public class BoardGenerationTest {
 		}
 	}
 
+	@Test
+	public void coordinateHelpers_nullAndValidIds_returnExpectedMappings() {
+		Board board = new Board();
+		board.generateBoard();
+
+		assertTrue(board.getHexCoordinatesForIntersection(null).isEmpty());
+		assertTrue(board.getHexCoordinatesForEdge(null).isEmpty());
+		assertTrue(board.getAdjacentHexIdsForIntersection(null).isEmpty());
+
+		List<Map<String, Integer>> intersectionCoordinates = board.getHexCoordinatesForIntersection(0);
+		List<Map<String, Integer>> edgeCoordinates = board.getHexCoordinatesForEdge(0);
+		List<Integer> adjacentHexIds = board.getAdjacentHexIdsForIntersection(0);
+
+		assertFalse(intersectionCoordinates.isEmpty());
+		assertFalse(edgeCoordinates.isEmpty());
+		assertFalse(adjacentHexIds.isEmpty());
+		assertTrue(intersectionCoordinates.get(0).containsKey("hexId"));
+		assertTrue(intersectionCoordinates.get(0).containsKey("corner"));
+		assertTrue(edgeCoordinates.get(0).containsKey("hexId"));
+		assertTrue(edgeCoordinates.get(0).containsKey("edge"));
+	}
+
+	@Test
+	public void buildIntersectionToHexIdsMap_containsAllGeneratedIntersections() {
+		Board board = new Board();
+		board.generateBoard();
+
+		Map<Integer, List<Integer>> mapping = board.buildIntersectionToHexIdsMap();
+
+		assertEquals(54, mapping.size());
+		assertTrue(mapping.values().stream().allMatch(hexIds -> !hexIds.isEmpty()));
+		assertTrue(mapping.values().stream().flatMap(List::stream).allMatch(hexId -> hexId >= 1 && hexId <= 19));
+	}
+
+	@Test
+	public void privateAdjacencyHelpers_coverTrueFalseAndErrorBranches() {
+		Board board = new Board();
+
+		assertTrue((Boolean) invokePrivate(board, "isRedNumber", new Class<?>[] {int.class}, 6));
+		assertTrue((Boolean) invokePrivate(board, "isRedNumber", new Class<?>[] {int.class}, 8));
+		assertFalse((Boolean) invokePrivate(board, "isRedNumber", new Class<?>[] {int.class}, 5));
+
+		assertTrue((Boolean) invokePrivate(board, "areAdjacentHexes", new Class<?>[] {int.class, int.class}, 1, 2));
+		assertTrue((Boolean) invokePrivate(board, "areAdjacentHexes", new Class<?>[] {int.class, int.class}, 1, 5));
+		assertFalse((Boolean) invokePrivate(board, "areAdjacentHexes", new Class<?>[] {int.class, int.class}, 1, 19));
+
+		List<Integer> adjacentRedNumbers = List.of(
+			6, 8, 2,
+			3, 4, 5, 9,
+			10, 11, 12, 3, 4,
+			5, 9, 10, 11,
+			12, 3, 4
+		);
+		assertTrue((Boolean) invokePrivate(board, "hasAdjacentRedNumbers", new Class<?>[] {List.class}, adjacentRedNumbers));
+
+		List<Integer> separatedRedNumbers = List.of(
+			6, 2, 3,
+			4, 5, 9, 10,
+			11, 12, 3, 4, 5,
+			9, 10, 11, 12,
+			8, 3, 4
+		);
+		assertFalse((Boolean) invokePrivate(board, "hasAdjacentRedNumbers", new Class<?>[] {List.class}, separatedRedNumbers));
+
+		assertThrows(AssertionError.class,
+			() -> invokePrivate(board, "boardCoordinatesForHex", new Class<?>[] {int.class}, 99));
+	}
+
 	private boolean isRedNumber(int diceNumber) {
 		return diceNumber == 6 || diceNumber == 8;
 	}
@@ -205,5 +276,16 @@ public class BoardGenerationTest {
 			case 19 -> new double[] {3, 4};
 			default -> throw new IllegalArgumentException("Unsupported hex id: " + hexId);
 		};
+	}
+
+	@SuppressWarnings("unchecked")
+	private <T> T invokePrivate(Object target, String methodName, Class<?>[] parameterTypes, Object... args) {
+		try {
+			Method method = target.getClass().getDeclaredMethod(methodName, parameterTypes);
+			method.setAccessible(true);
+			return (T) method.invoke(target, args);
+		} catch (Exception exception) {
+			throw new AssertionError("Failed to invoke private method " + methodName, exception);
+		}
 	}
 }

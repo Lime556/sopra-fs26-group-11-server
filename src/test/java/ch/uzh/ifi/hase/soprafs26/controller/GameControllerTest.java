@@ -19,7 +19,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.springframework.web.server.ResponseStatusException;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
+import ch.uzh.ifi.hase.soprafs26.entity.Board;
+import ch.uzh.ifi.hase.soprafs26.entity.City;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
+import ch.uzh.ifi.hase.soprafs26.entity.Road;
+import ch.uzh.ifi.hase.soprafs26.entity.Settlement;
 import ch.uzh.ifi.hase.soprafs26.entity.TurnPhase;
 import ch.uzh.ifi.hase.soprafs26.constant.TimeOfDayMood;
 import ch.uzh.ifi.hase.soprafs26.constant.WeatherCategory;
@@ -1407,6 +1411,99 @@ class GameControllerTest {
     }
 
     @Test
+    void executeBotFallbackAction_aiConsultantUsed_appendsAiEvent() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(botActionExecutorService.executeBotActionWithResult(1L, "token-123", true))
+                .willReturn(new BotActionExecutionResult(game, 10L, true, true, false, null));
+        given(gameService.appendGameEventAndReturnGame(
+            org.mockito.ArgumentMatchers.eq(1L),
+            org.mockito.ArgumentMatchers.eq("token-123"),
+            org.mockito.ArgumentMatchers.any()
+        )).willReturn(game);
+
+        String body = """
+            {
+              "useAi": true
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/bot/fallback")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO> captor =
+            org.mockito.ArgumentCaptor.forClass(ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO.class);
+        Mockito.verify(gameService).appendGameEventAndReturnGame(
+            org.mockito.ArgumentMatchers.eq(1L),
+            org.mockito.ArgumentMatchers.eq("token-123"),
+            captor.capture()
+        );
+        org.junit.jupiter.api.Assertions.assertEquals("Bot AI consultant was used.", captor.getValue().getMessage());
+        org.junit.jupiter.api.Assertions.assertTrue(captor.getValue().getBotAiConsultantUsed());
+    }
+
+    @Test
+    void executeBotFallbackAction_aiFallbackUsed_appendsFallbackReasonEvent() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+
+        given(botActionExecutorService.executeBotActionWithResult(1L, "token-123", true))
+                .willReturn(new BotActionExecutionResult(game, 10L, true, false, true, "AI returned no valid recommendation"));
+        given(gameService.appendGameEventAndReturnGame(
+            org.mockito.ArgumentMatchers.eq(1L),
+            org.mockito.ArgumentMatchers.eq("token-123"),
+            org.mockito.ArgumentMatchers.any()
+        )).willReturn(game);
+
+        String body = """
+            {
+              "useAi": true
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/bot/fallback")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO> captor =
+            org.mockito.ArgumentCaptor.forClass(ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO.class);
+        Mockito.verify(gameService).appendGameEventAndReturnGame(
+            org.mockito.ArgumentMatchers.eq(1L),
+            org.mockito.ArgumentMatchers.eq("token-123"),
+            captor.capture()
+        );
+        org.junit.jupiter.api.Assertions.assertTrue(captor.getValue().getMessage().contains("AI skipped/fallback used"));
+        org.junit.jupiter.api.Assertions.assertTrue(captor.getValue().getBotAiFallbackUsed());
+    }
+
+    @Test
+    void executeBotFallbackAction_invalidUseAiFlag_returnsBadRequest() throws Exception {
+        String body = """
+            {
+              "useAi": "yes"
+            }
+            """;
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/actions/bot/fallback")
+                .header("Authorization", "token-123")
+                .contentType("application/json")
+                .content(body);
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void extractToken_withBearerPrefix_success() throws Exception {
         Game game = new Game();
         game.setId(1L);
@@ -1455,6 +1552,68 @@ class GameControllerTest {
 
         mockMvc.perform(postRequest)
                 .andExpect(status().isAccepted());
+    }
+
+    @Test
+    void getGameById_withBoardPieces_mapsPlayerCoordinatesAndDefaults() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setGameVersion(3L);
+
+        Board board = new Board();
+        board.generateBoard();
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setName("Builder");
+        player.setBot(false);
+        player.setOnline(null);
+
+        Integer settlementIntersection = 0;
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(player.getId());
+        settlement.setIntersectionId(settlementIntersection);
+        board.getIntersections().get(settlementIntersection).setBuilding(settlement);
+
+        Integer cityIntersection = 2;
+        City city = new City();
+        city.setOwnerPlayerId(player.getId());
+        city.setIntersectionId(cityIntersection);
+        board.getIntersections().get(cityIntersection).setBuilding(city);
+
+        Road road = new Road();
+        road.setOwnerPlayerId(player.getId());
+        road.setEdgeId(0);
+        board.getEdges().get(0).setRoad(road);
+
+        game.setBoard(board);
+        game.setPlayers(List.of(player));
+        game.setEventLog(null);
+        game.setChatMessages(null);
+        game.setBankWood(null);
+        game.setBankBrick(2);
+        game.setBankWool(null);
+        game.setBankWheat(4);
+        game.setBankOre(null);
+
+        given(gameService.getGameById(1L, "token-123")).willReturn(game);
+
+        MockHttpServletRequestBuilder getRequest = get("/games/1")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(getRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.players[0].online", is(true)))
+                .andExpect(jsonPath("$.players[0].settlementsOnCorners[0].hexId").exists())
+                .andExpect(jsonPath("$.players[0].citiesOnCorners[0].hexId").exists())
+                .andExpect(jsonPath("$.players[0].roadsOnEdges[0].hexId").exists())
+                .andExpect(jsonPath("$.eventLog").isArray())
+                .andExpect(jsonPath("$.chatMessages").isArray())
+                .andExpect(jsonPath("$.bankResources.wood", is(0)))
+                .andExpect(jsonPath("$.bankResources.brick", is(2)))
+                .andExpect(jsonPath("$.bankResources.wool", is(0)))
+                .andExpect(jsonPath("$.bankResources.wheat", is(4)))
+                .andExpect(jsonPath("$.bankResources.ore", is(0)));
     }
 
     @Test
