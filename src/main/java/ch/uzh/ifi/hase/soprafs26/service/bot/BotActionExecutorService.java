@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +20,7 @@ import ch.uzh.ifi.hase.soprafs26.service.GameService;
 @Service
 public class BotActionExecutorService {
     private static final Logger log = LoggerFactory.getLogger(BotActionExecutorService.class);
-    private static final ConcurrentMap<Long, Object> GAME_LOCKS = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Long, ReentrantLock> GAME_LOCKS = new ConcurrentHashMap<>();
 
     private final GameService gameService;
     private final BotFallbackService botFallbackService;
@@ -40,9 +41,24 @@ public class BotActionExecutorService {
     }
 
     public BotActionExecutionResult executeBotActionWithResult(Long gameId, String playerToken, boolean useAi) {
-        Object lock = GAME_LOCKS.computeIfAbsent(gameId == null ? -1L : gameId, ignored -> new Object());
-        synchronized (lock) {
+        Long lockKey = gameId == null ? -1L : gameId;
+        ReentrantLock lock = GAME_LOCKS.computeIfAbsent(lockKey, ignored -> new ReentrantLock());
+        if (!lock.tryLock()) {
+            log.info("Bot action skipped for game {} because another bot action is already running.", gameId);
+            return new BotActionExecutionResult(
+                gameService.getGameById(gameId, playerToken),
+                null,
+                useAi,
+                false,
+                false,
+                "bot action already running"
+            );
+        }
+
+        try {
             return executeBotActionWithResultLocked(gameId, playerToken, useAi);
+        } finally {
+            lock.unlock();
         }
     }
 

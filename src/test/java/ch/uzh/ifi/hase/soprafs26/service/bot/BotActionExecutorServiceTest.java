@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,6 +20,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -154,6 +160,51 @@ class BotActionExecutorServiceTest {
         assertEquals(1, event.getReceiveResources().get("wool"));
         assertEquals(Integer.valueOf(4), event.getGiveAmount());
         assertEquals(Integer.valueOf(1), event.getReceiveAmount());
+    }
+
+    @Test
+    void executeBotActionWithResult_sameGameAlreadyRunning_skipsDuplicateWithoutAiRequest() throws Exception {
+        Game initial = gameWithVersion(20L);
+        Game current = gameWithVersion(20L);
+        Game afterRoad = gameWithVersion(21L);
+
+        BotAction road = BotAction.road(BotActionType.BUILD_ROAD, 7L, 5);
+        BotAction settlement = BotAction.settlement(BotActionType.BUILD_SETTLEMENT, 7L, 6);
+        BotActionCandidate roadCandidate = candidate("A1", road, Map.of("score", 1));
+        BotActionCandidate settlementCandidate = candidate("A2", settlement, Map.of("score", 2));
+        List<BotActionCandidate> candidates = List.of(roadCandidate, settlementCandidate);
+        CountDownLatch aiStarted = new CountDownLatch(1);
+        CountDownLatch releaseAi = new CountDownLatch(1);
+
+        when(gameService.getGameById(1L, "token")).thenReturn(initial, initial, current);
+        when(botFallbackService.listCandidateActions(initial)).thenReturn(candidates);
+        when(botFallbackService.listCandidateActions(current)).thenReturn(candidates);
+        when(botAiService.chooseAction(initial)).thenAnswer(invocation -> {
+            aiStarted.countDown();
+            assertTrue(releaseAi.await(2, TimeUnit.SECONDS));
+            return Optional.of(road);
+        });
+        when(gameService.addRoadToPlayer(1L, "token", 7L, 5)).thenReturn(afterRoad);
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<BotActionExecutionResult> firstResult = executor.submit(() -> service.executeBotActionWithResult(1L, "token", true));
+            assertTrue(aiStarted.await(2, TimeUnit.SECONDS));
+
+            BotActionExecutionResult duplicateResult = service.executeBotActionWithResult(1L, "token", true);
+
+            assertSame(initial, duplicateResult.game());
+            assertFalse(duplicateResult.aiConsultantUsed());
+            assertFalse(duplicateResult.fallbackUsed());
+            assertEquals("bot action already running", duplicateResult.fallbackReason());
+
+            releaseAi.countDown();
+            assertSame(afterRoad, firstResult.get(2, TimeUnit.SECONDS).game());
+            verify(botAiService, times(1)).chooseAction(initial);
+        } finally {
+            releaseAi.countDown();
+            executor.shutdownNow();
+        }
     }
 
     @Test
