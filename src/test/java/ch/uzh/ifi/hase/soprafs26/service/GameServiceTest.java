@@ -319,6 +319,10 @@ class GameServiceTest {
     void readOnlyGameLookup_doesNotSaveGame() {
         Game game = new Game();
         game.setId(1L);
+        Player player = new Player();
+        player.setId(1L);
+        player.setUser(user);
+        game.setPlayers(List.of(player));
         Mockito.when(repo.findById(1L)).thenReturn(Optional.of(game));
 
         Game result = service.getGameById(1L, "valid-token");
@@ -345,6 +349,36 @@ class GameServiceTest {
         );
 
         assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+    }
+
+    @Test
+    void createGame_staleStartedGameParticipantWhoIsNotPlayer_success() {
+        Lobby oldLobby = new Lobby();
+        oldLobby.setId(1L);
+        oldLobby.setGameId(99L);
+
+        LobbyParticipant staleParticipant = new LobbyParticipant();
+        staleParticipant.setUser(user);
+        staleParticipant.setLobby(oldLobby);
+
+        User otherUser = new User();
+        otherUser.setId(2L);
+        Player otherPlayer = new Player();
+        otherPlayer.setUser(otherUser);
+
+        Game activeGame = new Game();
+        activeGame.setId(99L);
+        activeGame.setFinishedAt(null);
+        activeGame.setPlayers(List.of(otherPlayer));
+
+        Mockito.when(lobbyParticipantRepository.findByUser_Id(user.getId())).thenReturn(List.of(staleParticipant));
+        Mockito.when(gameRepository.findById(99L)).thenReturn(Optional.of(activeGame));
+        Mockito.when(gameRepository.findAll()).thenReturn(List.of(activeGame));
+
+        Game createdGame = gameService.createGame("valid-token", null);
+
+        assertNotNull(createdGame.getId());
+        assertEquals(user.getId(), createdGame.getPlayers().get(0).getUser().getId());
     }
 
     @Test
@@ -438,6 +472,37 @@ class GameServiceTest {
         assertNotNull(updatedGame.getWinner());
         assertEquals(10L, updatedGame.getWinner().getId());
         assertNotNull(updatedGame.getFinishedAt());
+    }
+
+    @Test
+    void updateGameState_activeGameWithPlayerList_throwsConflict() {
+        Game game = new Game();
+        game.setId(101L);
+        game.setGamePhase("ACTIVE");
+
+        Player existingPlayer = new Player();
+        existingPlayer.setId(10L);
+        existingPlayer.setUser(user);
+        game.setPlayers(List.of(existingPlayer));
+
+        GamePostDTO update = new GamePostDTO();
+        PlayerGetDTO existingPlayerDto = new PlayerGetDTO();
+        existingPlayerDto.setId(10L);
+        existingPlayerDto.setName("ExistingPlayer");
+        PlayerGetDTO newPlayer = new PlayerGetDTO();
+        newPlayer.setId(11L);
+        newPlayer.setName("LateJoiner");
+        update.setPlayers(List.of(existingPlayerDto, newPlayer));
+
+        Mockito.when(gameRepository.findById(101L)).thenReturn(Optional.of(game));
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.updateGameState(101L, "valid-token", update)
+        );
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertEquals("Cannot change players after the game has started.", exception.getReason());
     }
 
     @Test
@@ -932,6 +997,10 @@ class GameServiceTest {
         game.setGameVersion(8L);
         game.setChatMessages(List.of("Alice: hello", "Bob: hi"));
         game.setEventLog(List.of("event1", "event2", "event3"));
+        Player player = new Player();
+        player.setId(1L);
+        player.setUser(user);
+        game.setPlayers(List.of(player));
 
         Mockito.when(gameRepository.findById(165L)).thenReturn(Optional.of(game));
 
@@ -1421,7 +1490,7 @@ class GameServiceTest {
     }
 
     @Test
-    void getGameById_botOnlyUnfinishedGame_doesNotMutateReadRequest() {
+    void getGameById_activeGameForNonParticipant_throwsForbidden() {
         Game game = new Game();
         game.setId(166L);
         game.setGamePhase("ACTIVE");
@@ -1460,12 +1529,13 @@ class GameServiceTest {
             .thenAnswer(invocation -> invocation.getArgument(0));
         Mockito.when(lobbyRepository.findByGameId(166L)).thenReturn(Optional.of(finishedGameLobby));
 
-        Game result = gameService.getGameById(166L, "valid-token");
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.getGameById(166L, "valid-token")
+        );
 
-        assertNull(result.getFinishedAt());
-        assertNull(result.getWinner());
-        assertEquals("ACTIVE", result.getGamePhase());
-        assertEquals(7L, result.getGameVersion());
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        assertEquals("User is not part of this game.", exception.getReason());
         Mockito.verify(gameRepository, Mockito.never()).saveAndFlush(game);
     }
 
@@ -1746,6 +1816,7 @@ class GameServiceTest {
 
         Player winner = new Player();
         winner.setId(1L);
+        winner.setUser(user);
         winner.setSettlementPoints(10);
         winner.setCityPoints(0);
         winner.setDevelopmentCardVictoryPoints(0);
