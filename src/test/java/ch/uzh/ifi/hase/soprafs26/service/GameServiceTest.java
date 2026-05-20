@@ -4246,6 +4246,53 @@ class GameServiceTest {
         assertEquals("ACTION", result.getTurnPhase());
     }
 
+    @Test
+    void discardResources_playerWithTwentyFiveCardsDiscardsOnceEvenWhenStillAboveSeven() {
+        Game game = new Game();
+        game.setId(507L);
+        game.setTurnPhase("DISCARD");
+
+        Player player1 = new Player();
+        player1.setId(10L);
+        player1.setName("Alice");
+        player1.setWood(25);
+
+        User player1User = new User();
+        player1User.setId(1000L);
+        player1User.setUsername("Alice");
+        player1.setUser(player1User);
+
+        Player player2 = new Player();
+        player2.setId(11L);
+        player2.setName("Bob");
+        player2.setWood(10);
+
+        User player2User = new User();
+        player2User.setId(1001L);
+        player2User.setUsername("Bob");
+        player2.setUser(player2User);
+
+        game.setPlayers(List.of(player1, player2));
+
+        Mockito.when(gameRepository.findById(507L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        authenticateAs("valid-token", player1);
+
+        Game result = gameService.discardResources(507L, "valid-token", Map.of("wood", 12));
+
+        assertEquals(13, result.getPlayers().get(0).getWood());
+        assertEquals("DISCARD", result.getTurnPhase());
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.discardResources(507L, "valid-token", Map.of("wood", 6))
+        );
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertEquals("This player does not need to discard.", exception.getReason());
+    }
+
     // ===================== TRADE TESTS =====================
     @Test
     void applyBankTrade_validSingleResourceTrade_exchangesResources() {

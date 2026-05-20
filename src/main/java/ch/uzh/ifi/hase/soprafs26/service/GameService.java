@@ -1338,6 +1338,11 @@ public class GameService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Current phase is: " + currentPhase + ". Must be in DISCARD phase.");
             }
+
+            if (hasDiscardedForCurrentSevenRoll(game, currentPlayer)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This player does not need to discard.");
+            }
         
             int totalResources = totalResourceCards(currentPlayer);
             if (totalResources <= 7) {
@@ -1347,6 +1352,7 @@ public class GameService {
         
             int requiredDiscardCount = totalResources / 2;
             discardResourcesByChoice(game, currentPlayer, request.getDiscardResources(), requiredDiscardCount);
+            markDiscardedForCurrentSevenRoll(game, currentPlayer);
         
             if (!hasHumanPlayersWhoMustDiscard(game)) {
                 game.setTurnPhase(TurnPhase.ACTION.toString());
@@ -1371,6 +1377,7 @@ public class GameService {
 
         if (diceSum == 7) {
             game.setRobberMovedAfterSevenRoll(false);
+            game.setSevenRollDiscardedPlayerIds(Collections.emptyList());
         
             applySevenRollEffects(game, currentPlayer, null);
         
@@ -3214,6 +3221,11 @@ public class GameService {
         }
     
         int totalResources = totalResourceCards(discardingPlayer);
+        if (hasDiscardedForCurrentSevenRoll(game, discardingPlayer)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "This player does not need to discard.");
+        }
+
         if (totalResources <= 7) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "This player does not need to discard.");
@@ -3221,6 +3233,7 @@ public class GameService {
     
         int requiredDiscardCount = totalResources / 2;
         discardResourcesByChoice(game, discardingPlayer, discardChoices, requiredDiscardCount);
+        markDiscardedForCurrentSevenRoll(game, discardingPlayer);
     
         if (!hasHumanPlayersWhoMustDiscard(game)) {
             game.setTurnPhase(TurnPhase.ACTION.toString());
@@ -3262,6 +3275,30 @@ public class GameService {
         return game.getPlayers().stream()
             .filter(Objects::nonNull)
             .filter(player -> !player.isBot())
-            .anyMatch(player -> totalResourceCards(player) > 7);
+            .anyMatch(player -> totalResourceCards(player) > 7 && !hasDiscardedForCurrentSevenRoll(game, player));
+    }
+
+    private boolean hasDiscardedForCurrentSevenRoll(Game game, Player player) {
+        if (game == null || player == null || player.getId() == null) {
+            return false;
+        }
+
+        List<String> discardedPlayerIds = game.getSevenRollDiscardedPlayerIds();
+        return discardedPlayerIds != null && discardedPlayerIds.contains(player.getId().toString());
+    }
+
+    private void markDiscardedForCurrentSevenRoll(Game game, Player player) {
+        if (game == null || player == null || player.getId() == null) {
+            return;
+        }
+
+        List<String> discardedPlayerIds = new ArrayList<>(
+            Optional.ofNullable(game.getSevenRollDiscardedPlayerIds()).orElse(Collections.emptyList())
+        );
+        String playerId = player.getId().toString();
+        if (!discardedPlayerIds.contains(playerId)) {
+            discardedPlayerIds.add(playerId);
+            game.setSevenRollDiscardedPlayerIds(discardedPlayerIds);
+        }
     }
 }
