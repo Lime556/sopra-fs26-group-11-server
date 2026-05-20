@@ -172,19 +172,36 @@ public class BotActionExecutorService {
         }
         BotAction action = candidate.action();
         int score = switch (action.getType()) {
-            case BUILD_INITIAL_SETTLEMENT, BUILD_SETTLEMENT -> 1000;
-            case BUILD_CITY -> 900;
-            case BUILD_INITIAL_ROAD, BUILD_ROAD -> 700;
-            case BUY_DEVELOPMENT_CARD -> 500;
+            case BUILD_INITIAL_SETTLEMENT -> 1200;
+            case BUILD_SETTLEMENT -> 1100;
+            case BUILD_CITY -> 1050;
+            case BUILD_INITIAL_ROAD -> 700;
+            case BUILD_ROAD -> 180;
+            case BUY_DEVELOPMENT_CARD -> 120;
             case MOVE_ROBBER -> 400;
             case ROLL_DICE -> 300;
-            case END_TURN -> 0;
+            case END_TURN -> 220;
             case NONE -> -100;
         };
 
         Object productionScore = candidate.promptDetails() == null ? null : candidate.promptDetails().get("score");
         if (productionScore instanceof Number number) {
             score += number.intValue() * 20;
+        }
+        Object expansionScore = candidate.promptDetails() == null ? null : candidate.promptDetails().get("expansionScore");
+        if (expansionScore instanceof Number number) {
+            score += number.intValue() * 16;
+        }
+        Object opensSettlement = candidate.promptDetails() == null ? null : candidate.promptDetails().get("opensSettlement");
+        if (Boolean.TRUE.equals(opensSettlement)) {
+            score += 360;
+        }
+        Object savingForSettlement = candidate.promptDetails() == null ? null : candidate.promptDetails().get("savingForSettlement");
+        Object freeRoad = candidate.promptDetails() == null ? null : candidate.promptDetails().get("freeRoad");
+        if (Boolean.TRUE.equals(savingForSettlement)
+            && !Boolean.TRUE.equals(freeRoad)
+            && (action.getType() == BotActionType.BUILD_ROAD || action.getType() == BotActionType.BUY_DEVELOPMENT_CARD)) {
+            score -= 350;
         }
         Object threatScore = candidate.promptDetails() == null ? null : candidate.promptDetails().get("threat");
         if (threatScore instanceof Number number) {

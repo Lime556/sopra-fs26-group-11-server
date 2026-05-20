@@ -129,12 +129,12 @@ public class BotFallbackService {
             return BotAction.settlement(BotActionType.BUILD_SETTLEMENT, bot.getId(), settlementIntersectionId);
         }
 
-        Integer roadEdgeId = randomValidRoad(game, bot);
+        Integer roadEdgeId = bestValidRoad(game, bot);
         if (roadEdgeId != null) {
             return BotAction.road(BotActionType.BUILD_ROAD, bot.getId(), roadEdgeId);
         }
 
-        if (canBuyDevelopmentCard(game, bot)) {
+        if (shouldBuyDevelopmentCard(game, bot)) {
             return BotAction.of(BotActionType.BUY_DEVELOPMENT_CARD, bot.getId());
         }
 
@@ -217,7 +217,7 @@ public class BotFallbackService {
         return randomCandidate(candidates);
     }
 
-    private Integer randomValidRoad(Game game, Player bot) {
+    private Integer bestValidRoad(Game game, Player bot) {
         if (resourceValue(bot.getFreeRoadBuildsRemaining()) <= 0
             && (resourceValue(bot.getWood()) < 1 || resourceValue(bot.getBrick()) < 1)) {
             return null;
@@ -227,7 +227,9 @@ public class BotFallbackService {
             return null;
         }
 
-        List<Integer> candidates = new ArrayList<>();
+        boolean savingForSettlement = isSavingForSettlement(bot);
+        Integer bestEdgeId = null;
+        int bestScore = Integer.MIN_VALUE;
         for (Edge edge : edges(game)) {
             if (edge == null || edge.isOccupied()) {
                 continue;
@@ -239,10 +241,20 @@ public class BotFallbackService {
                 hasOwnRoadAtIntersection(game, edge.getIntersectionAId(), bot.getId())
                 || hasOwnRoadAtIntersection(game, edge.getIntersectionBId(), bot.getId());
             if (connectedToOwnBuilding || connectedToOwnRoad) {
-                candidates.add(edge.getId());
+                int expansionScore = roadExpansionScore(game, edge);
+                boolean opensSettlement = roadOpensSettlement(game, edge);
+                if (savingForSettlement && !opensSettlement && resourceValue(bot.getFreeRoadBuildsRemaining()) <= 0) {
+                    continue;
+                }
+
+                int score = expansionScore + (opensSettlement ? 12 : 0);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestEdgeId = edge.getId();
+                }
             }
         }
-        return randomCandidate(candidates);
+        return bestEdgeId;
     }
 
     private boolean canBuyDevelopmentCard(Game game, Player bot) {
@@ -256,6 +268,57 @@ public class BotFallbackService {
             && resourceValue(bot.getWool()) >= 1
             && resourceValue(bot.getWheat()) >= 1
             && resourceValue(bot.getOre()) >= 1;
+    }
+
+    private boolean shouldBuyDevelopmentCard(Game game, Player bot) {
+        if (!canBuyDevelopmentCard(game, bot)) {
+            return false;
+        }
+        if (isSavingForSettlement(bot) || isSavingForCity(bot)) {
+            return false;
+        }
+        return countPlayerSettlements(game, bot.getId()) + countPlayerCities(game, bot.getId()) >= 3;
+    }
+
+    private boolean isSavingForSettlement(Player bot) {
+        int missing = 0;
+        missing += resourceValue(bot.getWood()) >= 1 ? 0 : 1;
+        missing += resourceValue(bot.getBrick()) >= 1 ? 0 : 1;
+        missing += resourceValue(bot.getWool()) >= 1 ? 0 : 1;
+        missing += resourceValue(bot.getWheat()) >= 1 ? 0 : 1;
+        return missing <= 1;
+    }
+
+    private boolean isSavingForCity(Player bot) {
+        int missingWheat = Math.max(0, 2 - resourceValue(bot.getWheat()));
+        int missingOre = Math.max(0, 3 - resourceValue(bot.getOre()));
+        return missingWheat + missingOre <= 2;
+    }
+
+    private int roadExpansionScore(Game game, Edge edge) {
+        if (edge == null) {
+            return 0;
+        }
+        return Math.max(
+            productionScoreForIntersection(game, edge.getIntersectionAId()),
+            productionScoreForIntersection(game, edge.getIntersectionBId())
+        );
+    }
+
+    private boolean roadOpensSettlement(Game game, Edge edge) {
+        if (edge == null) {
+            return false;
+        }
+        return canEventuallyBuildSettlementAt(game, edge.getIntersectionAId())
+            || canEventuallyBuildSettlementAt(game, edge.getIntersectionBId());
+    }
+
+    private boolean canEventuallyBuildSettlementAt(Game game, Integer intersectionId) {
+        Intersection intersection = findIntersectionById(game, intersectionId);
+        return intersection != null
+            && !intersection.isOccupied()
+            && !hasAdjacentBuilding(game, intersectionId)
+            && productionScoreForIntersection(game, intersectionId) > 0;
     }
 
     private Integer firstValidRobberHex(Game game) {
@@ -480,24 +543,36 @@ public class BotFallbackService {
                         || hasOwnRoadAtIntersection(game, edge.getIntersectionBId(), bot.getId());
 
                 if (connectedToOwnBuilding || connectedToOwnRoad) {
+                    int expansionScore = roadExpansionScore(game, edge);
+                    boolean opensSettlement = roadOpensSettlement(game, edge);
                     addCandidate(
                         candidates,
                         BotAction.road(BotActionType.BUILD_ROAD, bot.getId(), edge.getId()),
                         Map.of(
                             "t", "BUILD_ROAD",
                             "edgeId", edge.getId(),
-                            "connects", List.of(edge.getIntersectionAId(), edge.getIntersectionBId())
+                            "connects", List.of(edge.getIntersectionAId(), edge.getIntersectionBId()),
+                            "expansionScore", expansionScore,
+                            "opensSettlement", opensSettlement,
+                            "savingForSettlement", isSavingForSettlement(bot),
+                            "freeRoad", resourceValue(bot.getFreeRoadBuildsRemaining()) > 0
                         )
                     );
                 }
             }
         }
 
-        if (canBuyDevelopmentCard(game, bot)) {
+        if (shouldBuyDevelopmentCard(game, bot)) {
             addCandidate(
                 candidates,
                 BotAction.of(BotActionType.BUY_DEVELOPMENT_CARD, bot.getId()),
-                Map.of("t", "BUY_DEVELOPMENT_CARD", "cost", List.of(0, 0, 1, 1, 1))
+                Map.of(
+                    "t", "BUY_DEVELOPMENT_CARD",
+                    "cost", List.of(0, 0, 1, 1, 1),
+                    "savingForSettlement", isSavingForSettlement(bot),
+                    "settlements", countPlayerSettlements(game, bot.getId()),
+                    "cities", countPlayerCities(game, bot.getId())
+                )
             );
         }
 

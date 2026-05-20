@@ -264,6 +264,7 @@ public class GameService {
         }
     
         String stolenResource = robberHelper(game, player, targetHexId, targetPlayerId);
+        Player target = targetPlayerId == null ? null : requirePlayer(game, targetPlayerId);
 
         if (Integer.valueOf(7).equals(game.getDiceValue())) {
             game.setRobberMovedAfterSevenRoll(true);
@@ -277,7 +278,7 @@ public class GameService {
                 ? "moved robber to hex " + targetHexId
                 : "moved robber to hex " + targetHexId + " and stole "
                     + (stolenResource == null ? "a resource" : "1 " + stolenResource)
-                    + " from player " + targetPlayerId
+                    + " from " + describePlayer(target)
         );
         return saveChangedGame(game);
     }
@@ -1584,7 +1585,8 @@ public class GameService {
 
         player.setKnightsPlayed(safeInt(player.getKnightsPlayed(), 0) + 1);
 
-        robberHelper(game, player, targetHexId, targetPlayerId);
+        String stolenResource = robberHelper(game, player, targetHexId, targetPlayerId);
+        Player target = targetPlayerId == null ? null : requirePlayer(game, targetPlayerId);
 
         updateLargestArmyOwnership(game);
         recalculateVictoryState(game);
@@ -1594,7 +1596,9 @@ public class GameService {
             "PLAY_KNIGHT",
             targetPlayerId == null
                 ? "moved robber to hex " + targetHexId
-                : "moved robber to hex " + targetHexId + " and stole from player " + targetPlayerId
+                : "moved robber to hex " + targetHexId + " and stole "
+                    + (stolenResource == null ? "a resource" : "1 " + stolenResource)
+                    + " from " + describePlayer(target)
         );
         return saveChangedGame(game);
     }
