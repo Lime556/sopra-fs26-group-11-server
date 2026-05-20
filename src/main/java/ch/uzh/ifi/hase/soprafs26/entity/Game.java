@@ -96,6 +96,10 @@ public class Game{
     @Column
     private Boolean robberMovedAfterSevenRoll;
 
+    @Convert(converter = StringListJsonConverter.class)
+    @Column(columnDefinition = "CLOB")
+    private List<String> sevenRollDiscardedPlayerIds;
+
     @Column
     private Integer bankWood;
 
@@ -260,6 +264,14 @@ public class Game{
 
     public void setRobberMovedAfterSevenRoll(Boolean robberMovedAfterSevenRoll) {
         this.robberMovedAfterSevenRoll = robberMovedAfterSevenRoll;
+    }
+
+    public List<String> getSevenRollDiscardedPlayerIds() {
+        return sevenRollDiscardedPlayerIds;
+    }
+
+    public void setSevenRollDiscardedPlayerIds(List<String> sevenRollDiscardedPlayerIds) {
+        this.sevenRollDiscardedPlayerIds = sevenRollDiscardedPlayerIds;
     }
 
     public Integer getBankWood() {

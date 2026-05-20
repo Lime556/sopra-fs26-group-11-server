@@ -193,7 +193,7 @@ public class GameController {
              Optional.ofNullable(currentPlayer.getWool()).orElse(0) +
              Optional.ofNullable(currentPlayer.getWheat()).orElse(0) +
              Optional.ofNullable(currentPlayer.getOre()).orElse(0)) : 0;
-        Boolean currentPlayerMustDiscard = (game.getDiceValue() != null && game.getDiceValue() == 7 && totalResources > 7);
+        Boolean currentPlayerMustDiscard = playerMustDiscardForCurrentSevenRoll(game, currentPlayer, totalResources);
         return new GameStateDTO(
             game.getId(),
             game.getCurrentTurnIndex(),
@@ -717,9 +717,7 @@ public class GameController {
                 + Optional.ofNullable(requestingPlayer.getOre()).orElse(0))
             : 0;
 
-        Boolean currentPlayerMustDiscard = TurnPhase.DISCARD.toString().equals(game.getTurnPhase())
-            && requestingPlayer != null
-            && requestingPlayerTotalResources > 7;
+        Boolean currentPlayerMustDiscard = playerMustDiscardForCurrentSevenRoll(game, requestingPlayer, requestingPlayerTotalResources);
 
         GameSyncDTO dto = new GameSyncDTO();
         dto.setGameId(game.getId());
@@ -740,6 +738,18 @@ public class GameController {
         dto.setRobberMovedAfterSevenRoll(game.getRobberMovedAfterSevenRoll());
 
         return dto;
+    }
+
+    private boolean playerMustDiscardForCurrentSevenRoll(Game game, Player player, int totalResources) {
+        if (game == null || player == null || player.getId() == null) {
+            return false;
+        }
+
+        return TurnPhase.DISCARD.toString().equals(game.getTurnPhase())
+            && totalResources > 7
+            && !Optional.ofNullable(game.getSevenRollDiscardedPlayerIds())
+                .orElse(Collections.emptyList())
+                .contains(player.getId().toString());
     }
 
     @PostMapping("/games/{gameId}/actions/discard-resources")
