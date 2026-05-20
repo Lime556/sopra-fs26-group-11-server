@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import ch.uzh.ifi.hase.soprafs26.entity.Board;
+import ch.uzh.ifi.hase.soprafs26.entity.Boat;
 import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
@@ -140,6 +141,42 @@ public class BotFallbackServiceTest {
         assertEquals(Integer.valueOf(4), action.getGiveAmount());
         assertEquals("wool", action.getReceiveResource());
         assertEquals(Integer.valueOf(1), action.getReceiveAmount());
+    }
+
+    @Test
+    public void chooseFallbackAction_oneResourceFromSettlement_usesSpecificPortRatio() {
+        Game game = new Game();
+        Board board = new Board();
+        board.generateBoard();
+        Boat woodPort = board.getBoats().stream()
+            .filter(boat -> "WOOD".equals(boat.getBoatType()))
+            .findFirst()
+            .orElseThrow();
+        Integer portIntersectionId = board.getIntersectionIdsForHex(woodPort.getHexId()).get(woodPort.getFirstCorner());
+        board.getIntersections().get(portIntersectionId).setBuilding(settlement(10L, portIntersectionId));
+        Edge remoteEdge = board.getEdges().stream()
+            .filter(edge -> !portIntersectionId.equals(edge.getIntersectionAId()) && !portIntersectionId.equals(edge.getIntersectionBId()))
+            .findFirst()
+            .orElseThrow();
+        remoteEdge.setRoad(road(10L, remoteEdge.getId()));
+        game.setBoard(board);
+
+        Player bot = botPlayer();
+        bot.setWood(3);
+        bot.setBrick(1);
+        bot.setWheat(1);
+        game.setBankWool(19);
+        game.setPlayers(List.of(bot));
+        game.setCurrentTurnIndex(0);
+        game.setGamePhase(GamePhase.ACTIVE);
+        game.setTurnPhase(TurnPhase.ACTION);
+
+        BotAction action = botFallbackService.chooseFallbackAction(game);
+
+        assertEquals(BotActionType.BANK_TRADE, action.getType());
+        assertEquals("wood", action.getGiveResource());
+        assertEquals(Integer.valueOf(2), action.getGiveAmount());
+        assertEquals("wool", action.getReceiveResource());
     }
 
     @Test

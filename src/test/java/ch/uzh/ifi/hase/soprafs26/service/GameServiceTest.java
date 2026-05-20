@@ -45,6 +45,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.DevelopmentDeckGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO;
@@ -270,6 +271,48 @@ class GameServiceTest {
         assertEquals(3, response.getCurrent().getWeather_code());
         assertEquals(1, response.getCurrent().getIs_day());
         assertEquals("2026-05-17T14:45", response.getCurrent().getTime());
+    }
+
+    @Test
+    void createGame_customDevelopmentDeck_clampsAndStoresCounts() {
+        DevelopmentDeckGetDTO deck = new DevelopmentDeckGetDTO();
+        deck.setKnight(3);
+        deck.setVictoryPoint(-2);
+        deck.setRoadBuilding(1);
+        deck.setYearOfPlenty(0);
+        deck.setMonopoly(4);
+
+        GamePostDTO dto = new GamePostDTO();
+        dto.setDevelopmentDeck(deck);
+
+        Game result = gameService.createGame("valid-token", dto);
+
+        assertEquals(3, result.getDevelopmentKnightRemaining());
+        assertEquals(0, result.getDevelopmentVictoryPointRemaining());
+        assertEquals(1, result.getDevelopmentRoadBuildingRemaining());
+        assertEquals(0, result.getDevelopmentYearOfPlentyRemaining());
+        assertEquals(4, result.getDevelopmentMonopolyRemaining());
+    }
+
+    @Test
+    void createGame_blankDevelopmentDeck_usesDefaultCounts() {
+        DevelopmentDeckGetDTO deck = new DevelopmentDeckGetDTO();
+        deck.setKnight(0);
+        deck.setVictoryPoint(0);
+        deck.setRoadBuilding(0);
+        deck.setYearOfPlenty(0);
+        deck.setMonopoly(0);
+
+        GamePostDTO dto = new GamePostDTO();
+        dto.setDevelopmentDeck(deck);
+
+        Game result = gameService.createGame("valid-token", dto);
+
+        assertEquals(14, result.getDevelopmentKnightRemaining());
+        assertEquals(5, result.getDevelopmentVictoryPointRemaining());
+        assertEquals(2, result.getDevelopmentRoadBuildingRemaining());
+        assertEquals(2, result.getDevelopmentYearOfPlentyRemaining());
+        assertEquals(2, result.getDevelopmentMonopolyRemaining());
     }
 
     @Test
@@ -3122,6 +3165,129 @@ class GameServiceTest {
     }
 
     @Test
+    public void moveRobberAndStealFromFirstAdjacentPlayer_adjacentVictim_transfersOneResourceAndLogsName() {
+        Game game = new Game();
+        game.setId(203L);
+        game.setDiceValue(7);
+        game.setRobberTileIndex(1);
+        game.setRobberMovedAfterSevenRoll(false);
+        game.setGamePhase("ACTIVE");
+        game.setTurnPhase("ACTION");
+
+        Board board = new Board();
+        board.generateBoard();
+        game.setBoard(board);
+
+        Player bot = new Player();
+        bot.setId(10L);
+        bot.setName("Bot 1");
+        bot.setBot(true);
+        bot.setWood(0);
+        bot.setBrick(0);
+        bot.setWool(0);
+        bot.setWheat(0);
+        bot.setOre(0);
+
+        Player victim = new Player();
+        victim.setId(11L);
+        victim.setName("Victim");
+        victim.setWool(1);
+
+        Integer targetHexId = 2;
+        Integer adjacentIntersectionId = board.getIntersectionIdsForHex(targetHexId).get(0);
+        Settlement settlement = new Settlement();
+        settlement.setOwnerPlayerId(victim.getId());
+        settlement.setIntersectionId(adjacentIntersectionId);
+        findIntersection(board, adjacentIntersectionId).setBuilding(settlement);
+
+        game.setPlayers(List.of(bot, victim));
+
+        Mockito.when(gameRepository.findById(203L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game result = gameService.moveRobberAndStealFromFirstAdjacentPlayer(203L, "valid-token", bot.getId(), targetHexId);
+
+        assertEquals(targetHexId, result.getRobberTileIndex());
+        assertEquals(Boolean.TRUE, result.getRobberMovedAfterSevenRoll());
+        assertEquals(TurnPhase.ACTION.toString(), result.getTurnPhase());
+        assertEquals(1, result.getPlayers().get(0).getWool());
+        assertEquals(0, result.getPlayers().get(1).getWool());
+        assertTrue(result.getEventLog().stream().anyMatch(entry -> entry.contains("from Victim")));
+    }
+
+    @Test
+    public void moveRobberAndStealFromFirstAdjacentPlayer_noAdjacentVictim_onlyMovesRobber() {
+        Game game = new Game();
+        game.setId(204L);
+        game.setDiceValue(6);
+        game.setRobberTileIndex(1);
+        game.setGamePhase("ACTIVE");
+        game.setTurnPhase("ACTION");
+
+        Board board = new Board();
+        board.generateBoard();
+        game.setBoard(board);
+
+        Player bot = new Player();
+        bot.setId(10L);
+        bot.setName("Bot 1");
+        bot.setBot(true);
+        bot.setWood(0);
+        bot.setBrick(0);
+        bot.setWool(0);
+        bot.setWheat(0);
+        bot.setOre(0);
+
+        Player other = new Player();
+        other.setId(11L);
+        other.setName("Other");
+        other.setWood(3);
+
+        game.setPlayers(List.of(bot, other));
+
+        Mockito.when(gameRepository.findById(204L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Game result = gameService.moveRobberAndStealFromFirstAdjacentPlayer(204L, "valid-token", bot.getId(), 2);
+
+        assertEquals(2, result.getRobberTileIndex());
+        assertNull(result.getRobberMovedAfterSevenRoll());
+        assertEquals(0, result.getPlayers().get(0).getWood());
+        assertEquals(3, result.getPlayers().get(1).getWood());
+        assertTrue(result.getEventLog().stream().anyMatch(entry -> entry.contains("moved robber to hex 2")));
+    }
+
+    @Test
+    public void moveRobberAndStealFromFirstAdjacentPlayer_discardPhase_throwsConflictBeforeMove() {
+        Game game = new Game();
+        game.setId(205L);
+        game.setRobberTileIndex(1);
+        game.setTurnPhase(TurnPhase.DISCARD.toString());
+
+        Board board = new Board();
+        board.generateBoard();
+        game.setBoard(board);
+
+        Player bot = new Player();
+        bot.setId(10L);
+        bot.setName("Bot 1");
+        bot.setBot(true);
+        game.setPlayers(List.of(bot));
+
+        Mockito.when(gameRepository.findById(205L)).thenReturn(Optional.of(game));
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.moveRobberAndStealFromFirstAdjacentPlayer(205L, "valid-token", bot.getId(), 2)
+        );
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertEquals(1, game.getRobberTileIndex());
+    }
+
+    @Test
     public void rollDice_sevenRoll_discardsResourcesForPlayersWithMoreThanSevenCards() {
         Game game = new Game();
         game.setId(1L);
@@ -4441,6 +4607,79 @@ class GameServiceTest {
         );
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    void applyBotPlayerTrade_botToBotTrade_exchangesResourcesWithoutSourceUserAuth() {
+        Game game = new Game();
+        game.setId(613L);
+
+        Player sourceBot = new Player();
+        sourceBot.setId(10L);
+        sourceBot.setName("Bot 1");
+        sourceBot.setBot(true);
+        sourceBot.setOre(2);
+
+        Player targetBot = new Player();
+        targetBot.setId(11L);
+        targetBot.setName("Bot 2");
+        targetBot.setBot(true);
+        targetBot.setWool(2);
+
+        game.setPlayers(List.of(sourceBot, targetBot));
+
+        Mockito.when(gameRepository.findById(613L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(10L);
+        tradeEvent.setTargetPlayerId(11L);
+        tradeEvent.setGiveResource("ore");
+        tradeEvent.setReceiveResource("wool");
+        tradeEvent.setAmount(1);
+
+        Game result = gameService.applyBotPlayerTrade(613L, "valid-token", tradeEvent);
+
+        assertEquals(1, result.getPlayers().get(0).getOre());
+        assertEquals(1, result.getPlayers().get(0).getWool());
+        assertEquals(1, result.getPlayers().get(1).getWool());
+        assertEquals(1, result.getPlayers().get(1).getOre());
+        assertTrue(result.getEventLog().stream().anyMatch(entry -> entry.contains("PLAYER_TRADE_FINALIZE")));
+    }
+
+    @Test
+    void applyBotPlayerTrade_humanTarget_throwsForbidden() {
+        Game game = new Game();
+        game.setId(614L);
+
+        Player sourceBot = new Player();
+        sourceBot.setId(10L);
+        sourceBot.setBot(true);
+        sourceBot.setOre(1);
+
+        Player humanTarget = new Player();
+        humanTarget.setId(11L);
+        humanTarget.setBot(false);
+        humanTarget.setWool(1);
+
+        game.setPlayers(List.of(sourceBot, humanTarget));
+
+        Mockito.when(gameRepository.findById(614L)).thenReturn(Optional.of(game));
+
+        GameEventDTO tradeEvent = new GameEventDTO();
+        tradeEvent.setSourcePlayerId(10L);
+        tradeEvent.setTargetPlayerId(11L);
+        tradeEvent.setGiveResource("ore");
+        tradeEvent.setReceiveResource("wool");
+        tradeEvent.setAmount(1);
+
+        ResponseStatusException exception = assertThrows(
+            ResponseStatusException.class,
+            () -> gameService.applyBotPlayerTrade(614L, "valid-token", tradeEvent)
+        );
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
     }
 
     // ===================== DEVELOPMENT CARD TESTS =====================
