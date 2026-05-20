@@ -1148,6 +1148,76 @@ public class GameService {
         return appendGameEventAndReturnGame(gameId, playerToken, tradeEvent);
     }
 
+    public Game autoRespondBotsToTradeRequest(Long gameId, String playerToken, GameEventDTO tradeRequest) {
+        authenticate(playerToken);
+        if (tradeRequest == null || tradeRequest.getSourcePlayerId() == null) {
+            return getGameById(gameId, playerToken);
+        }
+
+        Game game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Game with id " + gameId + " was not found."));
+
+        List<Player> players = game.getPlayers();
+        Player source = findPlayerById(players, tradeRequest.getSourcePlayerId());
+        if (source == null || source.isBot()) {
+            return game;
+        }
+
+        Map<String, Integer> sourceGives = normalizeTradeBundle(tradeRequest.getGiveResources());
+        Map<String, Integer> sourceReceives = normalizeTradeBundle(tradeRequest.getReceiveResources());
+        int offeredTotal = sumTradeBundle(sourceGives);
+        int requestedTotal = sumTradeBundle(sourceReceives);
+
+        for (Player bot : players == null ? Collections.<Player>emptyList() : players) {
+            if (bot == null || !bot.isBot() || bot.getId() == null || bot.getId().equals(source.getId())) {
+                continue;
+            }
+            if (tradeRequest.getTargetPlayerId() != null && !tradeRequest.getTargetPlayerId().equals(bot.getId())) {
+                continue;
+            }
+
+            boolean botCanPay = hasEnoughResources(bot, sourceReceives);
+            boolean botAccepts = botCanPay && offeredTotal >= requestedTotal && tradeHelpsBot(bot, sourceGives);
+
+            GameEventDTO response = new GameEventDTO();
+            response.setType("PLAYER_TRADE");
+            response.setSourcePlayerId(source.getId());
+            response.setTargetPlayerId(bot.getId());
+            response.setTradeAction(botAccepts ? "ACCEPT" : "DENY");
+            response.setTradeRequestId(tradeRequest.getTradeRequestId());
+            response.setGiveResources(tradeRequest.getGiveResources());
+            response.setReceiveResources(tradeRequest.getReceiveResources());
+            response.setMessage(bot.getName() + (botAccepts ? " accepted the trade request." : " denied the trade request."));
+            game = appendGameEventAndReturnGame(gameId, playerToken, response);
+        }
+
+        return game;
+    }
+
+    private boolean hasEnoughResources(Player player, Map<String, Integer> bundle) {
+        if (player == null || bundle == null) {
+            return false;
+        }
+        for (String resource : TRADE_RESOURCES) {
+            if (getResourceByName(player, resource) < bundle.getOrDefault(resource, 0)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean tradeHelpsBot(Player bot, Map<String, Integer> receivedResources) {
+        if (bot == null || receivedResources == null) {
+            return false;
+        }
+        return receivedResources.getOrDefault("wood", 0) > 0 && resourceValue(bot.getWood()) < 1
+            || receivedResources.getOrDefault("brick", 0) > 0 && resourceValue(bot.getBrick()) < 1
+            || receivedResources.getOrDefault("wool", 0) > 0 && resourceValue(bot.getWool()) < 1
+            || receivedResources.getOrDefault("wheat", 0) > 0 && resourceValue(bot.getWheat()) < 2
+            || receivedResources.getOrDefault("ore", 0) > 0 && resourceValue(bot.getOre()) < 3;
+    }
+
     public Game applyPlayerTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
         return applyPlayerTradeInternal(gameId, playerToken, tradeEvent, true);
     }

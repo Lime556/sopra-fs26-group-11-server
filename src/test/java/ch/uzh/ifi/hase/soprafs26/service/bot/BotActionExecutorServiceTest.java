@@ -80,9 +80,9 @@ class BotActionExecutorServiceTest {
         BotActionExecutionResult result = service.executeBotActionWithResult(1L, "token", true);
 
         assertEquals(afterRoll, result.game());
-        assertTrue(result.fallbackUsed());
+        assertFalse(result.fallbackUsed());
         assertFalse(result.aiConsultantUsed());
-        assertEquals("only forced action available: ROLL_DICE", result.fallbackReason());
+        assertEquals(null, result.fallbackReason());
     }
 
     @Test

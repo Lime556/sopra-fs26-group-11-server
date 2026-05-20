@@ -143,13 +143,13 @@ public class BotFallbackService {
             return playerTrade;
         }
 
+        if (shouldBuyDevelopmentCard(game, bot)) {
+            return BotAction.of(BotActionType.BUY_DEVELOPMENT_CARD, bot.getId());
+        }
+
         Integer roadEdgeId = bestValidRoad(game, bot);
         if (roadEdgeId != null) {
             return BotAction.road(BotActionType.BUILD_ROAD, bot.getId(), roadEdgeId);
-        }
-
-        if (shouldBuyDevelopmentCard(game, bot)) {
-            return BotAction.of(BotActionType.BUY_DEVELOPMENT_CARD, bot.getId());
         }
 
         return BotAction.of(BotActionType.END_TURN, bot.getId());
@@ -291,7 +291,8 @@ public class BotFallbackService {
         if (isSavingForSettlement(bot) || isSavingForCity(bot)) {
             return false;
         }
-        return countPlayerSettlements(game, bot.getId()) + countPlayerCities(game, bot.getId()) >= 3;
+        return countPlayerSettlements(game, bot.getId()) + countPlayerCities(game, bot.getId()) >= 2
+            || countPlayerRoads(game, bot.getId()) >= 4;
     }
 
     private boolean isSavingForSettlement(Player bot) {
@@ -711,14 +712,20 @@ public class BotFallbackService {
             }
 
             for (Player target : game.getPlayers()) {
-                if (target == null || !target.isBot() || bot.getId().equals(target.getId())) {
+                if (target == null || bot.getId().equals(target.getId())) {
                     continue;
                 }
                 if (resourceValueForName(target, receiveResource) < 1) {
                     continue;
                 }
+                if (!target.isBot() && ThreadLocalRandom.current().nextInt(100) >= 35) {
+                    continue;
+                }
                 if (targetNeedsResourceForImmediateBuild(game, target, giveResource)
                     && resourceValueForName(target, receiveResource) > resourceRequirementForBestNeed(game, target, receiveResource)) {
+                    return BotAction.playerTrade(bot.getId(), target.getId(), giveResource, receiveResource, 1, 1);
+                }
+                if (!target.isBot() && resourceValueForName(target, receiveResource) >= 2) {
                     return BotAction.playerTrade(bot.getId(), target.getId(), giveResource, receiveResource, 1, 1);
                 }
             }

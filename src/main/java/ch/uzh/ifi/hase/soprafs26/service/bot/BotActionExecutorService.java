@@ -99,7 +99,16 @@ public class BotActionExecutorService {
         }
 
         try {
-            return new BotActionExecutionResult(execute(gameId, playerToken, action), playerId, useAi, aiConsultantUsed, fallbackUsed, fallbackReason);
+            Game executedGame = execute(gameId, playerToken, action);
+            boolean forcedDiceRoll = BotActionType.ROLL_DICE.equals(action.getType());
+            return new BotActionExecutionResult(
+                executedGame,
+                playerId,
+                useAi,
+                aiConsultantUsed,
+                forcedDiceRoll ? false : fallbackUsed,
+                forcedDiceRoll ? null : fallbackReason
+            );
         } catch (ResponseStatusException exception) {
             if (BotActionType.END_TURN.equals(action.getType())) {
                 throw exception;
@@ -186,7 +195,7 @@ public class BotActionExecutorService {
             case BUILD_CITY -> 1050;
             case BUILD_INITIAL_ROAD -> 700;
             case BUILD_ROAD -> 180;
-            case BUY_DEVELOPMENT_CARD -> 120;
+            case BUY_DEVELOPMENT_CARD -> 320;
             case BANK_TRADE -> 1060;
             case PLAYER_TRADE -> 980;
             case MOVE_ROBBER -> 400;
@@ -304,7 +313,7 @@ public class BotActionExecutorService {
             );
             case BUY_DEVELOPMENT_CARD -> gameService.buyDevelopmentCard(gameId, playerToken, action.getPlayerId());
             case BANK_TRADE -> gameService.applyBankTrade(gameId, playerToken, tradeEvent(action, "BANK_TRADE"));
-            case PLAYER_TRADE -> gameService.applyBotPlayerTrade(gameId, playerToken, tradeEvent(action, "PLAYER_TRADE_FINALIZE"));
+            case PLAYER_TRADE -> executePlayerTrade(gameId, playerToken, action);
             case END_TURN -> gameService.endTurn(gameId, playerToken);
             case NONE -> gameService.getGameById(gameId, playerToken);
         };
@@ -312,6 +321,22 @@ public class BotActionExecutorService {
 
     private boolean isTradeAction(BotActionType type) {
         return BotActionType.BANK_TRADE.equals(type) || BotActionType.PLAYER_TRADE.equals(type);
+    }
+
+    private Game executePlayerTrade(Long gameId, String playerToken, BotAction action) {
+        try {
+            return gameService.applyBotPlayerTrade(gameId, playerToken, tradeEvent(action, "PLAYER_TRADE_FINALIZE"));
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode() == null || exception.getStatusCode().value() != 403) {
+                throw exception;
+            }
+        }
+
+        GameEventDTO event = tradeEvent(action, "PLAYER_TRADE");
+        event.setTradeAction("REQUEST");
+        event.setTradeRequestId("bot-" + action.getPlayerId() + "-" + System.currentTimeMillis());
+        event.setMessage("Bot requested a trade.");
+        return gameService.appendGameEventAndReturnGame(gameId, playerToken, event);
     }
 
     private GameEventDTO tradeEvent(BotAction action, String type) {
