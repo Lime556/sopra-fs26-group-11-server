@@ -1138,6 +1138,14 @@ public class GameService {
     }
 
     public Game applyPlayerTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+        return applyPlayerTradeInternal(gameId, playerToken, tradeEvent, true);
+    }
+
+    public Game applyBotPlayerTrade(Long gameId, String playerToken, GameEventDTO tradeEvent) {
+        return applyPlayerTradeInternal(gameId, playerToken, tradeEvent, false);
+    }
+
+    private Game applyPlayerTradeInternal(Long gameId, String playerToken, GameEventDTO tradeEvent, boolean enforceSourceAuthentication) {
         User authenticatedUser = authenticate(playerToken);
 
         if (tradeEvent == null || tradeEvent.getSourcePlayerId() == null || tradeEvent.getTargetPlayerId() == null) {
@@ -1182,7 +1190,11 @@ public class GameService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trade player was not found.");
         }
 
-        ensurePlayerMatchesAuthenticatedUser(source, authenticatedUser, "finalize trade");
+        if (enforceSourceAuthentication) {
+            ensurePlayerMatchesAuthenticatedUser(source, authenticatedUser, "finalize trade");
+        } else if (!source.isBot() || !target.isBot()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only bot-to-bot trades can be finalized automatically.");
+        }
 
         for (String resource : TRADE_RESOURCES) {
             int giveAmount = giveBundle.get(resource);
