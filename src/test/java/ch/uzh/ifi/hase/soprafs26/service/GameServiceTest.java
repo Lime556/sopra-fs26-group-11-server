@@ -349,16 +349,18 @@ class GameServiceTest {
         b.generateBoard();
         List<Boat> boats = b.getBoats();
         assertFalse(boats.isEmpty());
-        Boat boat = boats.get(0);
+        Boat boat = boats.stream()
+            .filter(candidate -> "STANDARD".equalsIgnoreCase(candidate.getBoatType()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected at least one standard port on the generated board."));
 
         Player player = new Player();
         player.setId(42L);
         player.setName("P");
 
-        // find an intersection that corresponds to the boat's corner
-        List<Integer> hexIntersections = b.getIntersectionIdsForHex(boat.getHexId());
-        int cornerIndex = boat.getFirstCorner();
-        Integer intersectionId = hexIntersections.get(cornerIndex);
+        // find an intersection that corresponds to the boat
+        Integer intersectionId = findIntersectionTouchingBoat(b, boat);
+        assertNotNull(intersectionId);
 
         // set building on that intersection
         Intersection inter = findIntersection(b, intersectionId);
@@ -372,27 +374,7 @@ class GameServiceTest {
         game.setBoard(b);
         game.setPlayers(List.of(player));
 
-        // invoke hasPortAccess
-        // Convert boat type to port type
-        String portType;
-        String boatType = boat.getBoatType();
-        if ("STANDARD".equalsIgnoreCase(boatType)) {
-            portType = "3:1";
-        } else if ("WOOD".equalsIgnoreCase(boatType)) {
-            portType = "wood";
-        } else if ("BRICK".equalsIgnoreCase(boatType)) {
-            portType = "brick";
-        } else if ("SHEEP".equalsIgnoreCase(boatType)) {
-            portType = "wool";
-        } else if ("WHEAT".equalsIgnoreCase(boatType)) {
-            portType = "wheat";
-        } else if ("STONE".equalsIgnoreCase(boatType)) {
-            portType = "ore";
-        } else {
-            portType = boatType; // fallback
-        }
-        
-        boolean has = (Boolean) invoke("hasPortAccess", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, Player.class, String.class}, game, player, portType);
+        boolean has = (Boolean) invoke("hasPortAccess", new Class[] {ch.uzh.ifi.hase.soprafs26.entity.Game.class, Player.class, String.class}, game, player, "3:1");
         assertTrue(has);
     }
 
