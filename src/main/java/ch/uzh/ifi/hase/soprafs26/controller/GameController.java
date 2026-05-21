@@ -34,6 +34,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.DiceRollDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameAmbienceDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameChatMessageDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.GameHeartbeatDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PortGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
@@ -113,10 +114,10 @@ public class GameController {
 
     @PostMapping("/games/{gameId}/heartbeat")
     @ResponseStatus(HttpStatus.OK)
-    public GameGetDTO heartbeatGame(@PathVariable Long gameId,
+    public GameHeartbeatDTO heartbeatGame(@PathVariable Long gameId,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         Game game = gameService.heartbeatGame(gameId, extractToken(authorizationHeader));
-        return convertGameToDto(game);
+        return convertGameToHeartbeatDto(game);
     }
 
     @PutMapping("/games/{gameId}")
@@ -480,6 +481,21 @@ public class GameController {
         dto.setEventLog(game.getEventLog() == null ? Collections.emptyList() : new ArrayList<>(game.getEventLog()));
         dto.setChatMessages(game.getChatMessages() == null ? Collections.emptyList() : new ArrayList<>(game.getChatMessages()));
         dto.setBankResources(readBankResources(game));
+        dto.setRobberMovedAfterSevenRoll(game.getRobberMovedAfterSevenRoll());
+        return dto;
+    }
+
+    private GameHeartbeatDTO convertGameToHeartbeatDto(Game game) {
+        GameHeartbeatDTO dto = new GameHeartbeatDTO();
+        dto.setId(game.getId());
+        dto.setGameVersion(game.getGameVersion());
+        dto.setPlayers(convertPlayersToDto(game.getPlayers(), null));
+        dto.setCurrentTurnIndex(game.getCurrentTurnIndex());
+        dto.setTurnPhase(game.getTurnPhase());
+        dto.setGamePhase(game.getGamePhase());
+        dto.setWinner(convertPlayerToDto(game.getWinner()));
+        dto.setFinishedAt(game.getFinishedAt());
+        dto.setGameFinished(game.getFinishedAt() != null && game.getWinner() != null);
         dto.setRobberMovedAfterSevenRoll(game.getRobberMovedAfterSevenRoll());
         return dto;
     }
