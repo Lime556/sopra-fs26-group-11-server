@@ -7,12 +7,14 @@ import org.mapstruct.factory.Mappers;
 import ch.uzh.ifi.hase.soprafs26.entity.FriendRequest;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.entity.LobbyInvitation;
 import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendRequestGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStartGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyInvitationGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyParticipantGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserAuthDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserGetDTO;
@@ -77,6 +79,17 @@ public interface DTOMapper {
 	@Mapping(source = "status", target = "status")
 	@Mapping(source = "createdAt", target = "createdAt")
 	FriendRequestGetDTO convertEntityToFriendRequestGetDTO(FriendRequest friendRequest);
+
+	@Mapping(source = "id", target = "id")
+	@Mapping(source = "lobby.id", target = "lobbyId")
+	@Mapping(source = "lobby.name", target = "lobbyName")
+	@Mapping(source = "sender.id", target = "senderId")
+	@Mapping(source = "sender.username", target = "senderUsername")
+	@Mapping(source = "receiver.id", target = "receiverId")
+	@Mapping(source = "receiver.username", target = "receiverUsername")
+	@Mapping(source = "status", target = "status")
+	@Mapping(source = "createdAt", target = "createdAt")
+	LobbyInvitationGetDTO convertEntityToLobbyInvitationGetDTO(LobbyInvitation lobbyInvitation);
 
 	FriendGetDTO convertEntityToFriendGetDTO(User user);
 }
