@@ -16,4 +16,6 @@ public interface LobbyInvitationRepository extends JpaRepository<LobbyInvitation
     boolean existsByLobbyAndReceiverAndStatus(Lobby lobby, User receiver, LobbyInvitationStatus status);
 
     List<LobbyInvitation> findByReceiverAndStatusOrderByCreatedAtDesc(User receiver, LobbyInvitationStatus status);
+
+    void deleteByLobby(Lobby lobby);
 }

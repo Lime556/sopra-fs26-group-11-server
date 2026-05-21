@@ -26,6 +26,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
+import ch.uzh.ifi.hase.soprafs26.repository.LobbyInvitationRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.PlayerRepository;
@@ -46,6 +47,9 @@ public class LobbyServiceTest {
 
     @Mock
     private PlayerRepository playerRepository;
+
+    @Mock
+    private LobbyInvitationRepository lobbyInvitationRepository;
 
     @InjectMocks
     private LobbyService lobbyService;
@@ -300,6 +304,7 @@ public class LobbyServiceTest {
         assertEquals(null, abandonedLobby.getHostParticipant());
         Mockito.verify(lobbyParticipantRepository).delete(staleParticipant);
         Mockito.verify(lobbyParticipantRepository).delete(botParticipant);
+        Mockito.verify(lobbyInvitationRepository).deleteByLobby(abandonedLobby);
         Mockito.verify(lobbyRepository).delete(abandonedLobby);
     }
 
@@ -772,6 +777,7 @@ public class LobbyServiceTest {
         lobbyService.leaveLobby(1L, "valid-token");
 
         Mockito.verify(lobbyParticipantRepository, Mockito.times(1)).delete(existingParticipant);
+        Mockito.verify(lobbyInvitationRepository).deleteByLobby(lobby);
         Mockito.verify(lobbyRepository, Mockito.times(1)).delete(lobby);
     }
 
@@ -925,6 +931,7 @@ public class LobbyServiceTest {
 
         Mockito.verify(lobbyParticipantRepository).delete(hostParticipant);
         Mockito.verify(lobbyParticipantRepository).delete(guestParticipant);
+        Mockito.verify(lobbyInvitationRepository).deleteByLobby(lobby);
         Mockito.verify(lobbyRepository).delete(lobby);
     }
 
