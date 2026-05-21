@@ -257,26 +257,7 @@ public class GameController {
         String token = extractToken(authorizationHeader);
         boolean useAi = readOptionalBoolean(body, "useAi", false);
         BotActionExecutionResult result = botActionExecutorService.executeBotActionWithResult(gameId, token, useAi);
-        Game game = result.game();
-
-        if (result.fallbackUsed() || result.aiConsultantUsed()) {
-            GameEventDTO event = new GameEventDTO();
-            event.setType("ACTION");
-            event.setSourcePlayerId(result.playerId());
-            event.setBotAiRequested(result.aiRequested());
-            event.setBotAiFallbackUsed(result.fallbackUsed());
-            event.setBotAiConsultantUsed(result.aiConsultantUsed());
-            if (result.aiConsultantUsed()) {
-                event.setMessage("Bot AI consultant was used.");
-            } else if (result.aiRequested()) {
-                event.setMessage("Bot AI skipped/fallback used: " + result.fallbackReason());
-            } else {
-                event.setMessage("Bot deterministic fallback was used.");
-            }
-            game = gameService.appendGameEventAndReturnGame(gameId, token, event);
-        }
-
-        return convertGameToDto(game);
+        return convertGameToDto(result.game());
     }
 
     @PostMapping("/games/{gameId}/actions/build-settlement")

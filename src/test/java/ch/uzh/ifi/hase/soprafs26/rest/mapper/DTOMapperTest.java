@@ -8,16 +8,19 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import org.junit.jupiter.api.Test;
 
 import ch.uzh.ifi.hase.soprafs26.constant.FriendRequestStatus;
+import ch.uzh.ifi.hase.soprafs26.constant.LobbyInvitationStatus;
 import ch.uzh.ifi.hase.soprafs26.constant.UserStatus;
 import ch.uzh.ifi.hase.soprafs26.entity.FriendRequest;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
+import ch.uzh.ifi.hase.soprafs26.entity.LobbyInvitation;
 import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.FriendRequestGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStartGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyInvitationGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.LobbyParticipantGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserAuthDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.UserGetDTO;
@@ -139,6 +142,7 @@ public class DTOMapperTest {
 		assertNull(DTOMapper.INSTANCE.convertEntityToLobbyParticipantGetDTO(null));
 		assertNull(DTOMapper.INSTANCE.convertEntityToGameStartGetDTO(null));
 		assertNull(DTOMapper.INSTANCE.convertEntityToFriendRequestGetDTO(null));
+		assertNull(DTOMapper.INSTANCE.convertEntityToLobbyInvitationGetDTO(null));
 		assertNull(DTOMapper.INSTANCE.convertEntityToFriendGetDTO(null));
 	}
 
@@ -246,5 +250,40 @@ public class DTOMapperTest {
 		assertNull(requestDTO.getSenderUsername());
 		assertNull(requestDTO.getReceiverId());
 		assertNull(requestDTO.getReceiverUsername());
+	}
+
+	@Test
+	public void lobbyInvitationMapping_mapsNestedFields() {
+		User sender = new User();
+		sender.setId(11L);
+		sender.setUsername("sender-user");
+
+		User receiver = new User();
+		receiver.setId(22L);
+		receiver.setUsername("receiver-user");
+
+		Lobby lobby = new Lobby();
+		lobby.setId(33L);
+		lobby.setName("Cool Lobby");
+
+		LobbyInvitation invitation = new LobbyInvitation();
+		invitation.setId(44L);
+		invitation.setLobby(lobby);
+		invitation.setSender(sender);
+		invitation.setReceiver(receiver);
+		invitation.setStatus(LobbyInvitationStatus.PENDING);
+		invitation.setCreatedAt(Instant.parse("2026-05-21T10:00:00Z"));
+
+		LobbyInvitationGetDTO dto = DTOMapper.INSTANCE.convertEntityToLobbyInvitationGetDTO(invitation);
+
+		assertEquals(44L, dto.getId());
+		assertEquals(33L, dto.getLobbyId());
+		assertEquals("Cool Lobby", dto.getLobbyName());
+		assertEquals(11L, dto.getSenderId());
+		assertEquals("sender-user", dto.getSenderUsername());
+		assertEquals(22L, dto.getReceiverId());
+		assertEquals("receiver-user", dto.getReceiverUsername());
+		assertEquals(LobbyInvitationStatus.PENDING, dto.getStatus());
+		assertEquals(Instant.parse("2026-05-21T10:00:00Z"), dto.getCreatedAt());
 	}
 }
