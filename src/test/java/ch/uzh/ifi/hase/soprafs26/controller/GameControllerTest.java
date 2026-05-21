@@ -1411,17 +1411,12 @@ class GameControllerTest {
     }
 
     @Test
-    void executeBotFallbackAction_aiConsultantUsed_appendsAiEvent() throws Exception {
+    void executeBotFallbackAction_aiConsultantUsed_returnsGameWithoutLogging() throws Exception {
         Game game = new Game();
         game.setId(1L);
 
         given(botActionExecutorService.executeBotActionWithResult(1L, "token-123", true))
                 .willReturn(new BotActionExecutionResult(game, 10L, true, true, false, null));
-        given(gameService.appendGameEventAndReturnGame(
-            org.mockito.ArgumentMatchers.eq(1L),
-            org.mockito.ArgumentMatchers.eq("token-123"),
-            org.mockito.ArgumentMatchers.any()
-        )).willReturn(game);
 
         String body = """
             {
@@ -1437,29 +1432,21 @@ class GameControllerTest {
         mockMvc.perform(postRequest)
                 .andExpect(status().isOk());
 
-        org.mockito.ArgumentCaptor<ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO> captor =
-            org.mockito.ArgumentCaptor.forClass(ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO.class);
-        Mockito.verify(gameService).appendGameEventAndReturnGame(
-            org.mockito.ArgumentMatchers.eq(1L),
-            org.mockito.ArgumentMatchers.eq("token-123"),
-            captor.capture()
+        // Verify that appendGameEventAndReturnGame is NOT called for AI events
+        Mockito.verify(gameService, Mockito.never()).appendGameEventAndReturnGame(
+            org.mockito.ArgumentMatchers.anyLong(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.any()
         );
-        org.junit.jupiter.api.Assertions.assertEquals("Bot AI consultant was used.", captor.getValue().getMessage());
-        org.junit.jupiter.api.Assertions.assertTrue(captor.getValue().getBotAiConsultantUsed());
     }
 
     @Test
-    void executeBotFallbackAction_aiFallbackUsed_appendsFallbackReasonEvent() throws Exception {
+    void executeBotFallbackAction_aiFallbackUsed_returnsGameWithoutLogging() throws Exception {
         Game game = new Game();
         game.setId(1L);
 
         given(botActionExecutorService.executeBotActionWithResult(1L, "token-123", true))
                 .willReturn(new BotActionExecutionResult(game, 10L, true, false, true, "AI returned no valid recommendation"));
-        given(gameService.appendGameEventAndReturnGame(
-            org.mockito.ArgumentMatchers.eq(1L),
-            org.mockito.ArgumentMatchers.eq("token-123"),
-            org.mockito.ArgumentMatchers.any()
-        )).willReturn(game);
 
         String body = """
             {
@@ -1475,15 +1462,12 @@ class GameControllerTest {
         mockMvc.perform(postRequest)
                 .andExpect(status().isOk());
 
-        org.mockito.ArgumentCaptor<ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO> captor =
-            org.mockito.ArgumentCaptor.forClass(ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO.class);
-        Mockito.verify(gameService).appendGameEventAndReturnGame(
-            org.mockito.ArgumentMatchers.eq(1L),
-            org.mockito.ArgumentMatchers.eq("token-123"),
-            captor.capture()
+        // Verify that appendGameEventAndReturnGame is NOT called for fallback events
+        Mockito.verify(gameService, Mockito.never()).appendGameEventAndReturnGame(
+            org.mockito.ArgumentMatchers.anyLong(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.any()
         );
-        org.junit.jupiter.api.Assertions.assertTrue(captor.getValue().getMessage().contains("AI skipped/fallback used"));
-        org.junit.jupiter.api.Assertions.assertTrue(captor.getValue().getBotAiFallbackUsed());
     }
 
     @Test
