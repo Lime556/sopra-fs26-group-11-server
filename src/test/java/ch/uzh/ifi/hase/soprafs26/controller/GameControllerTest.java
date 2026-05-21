@@ -220,6 +220,43 @@ class GameControllerTest {
     }
 
     @Test
+    void heartbeatGame_validRequest_returnsLeanPresencePayload() throws Exception {
+        Game game = new Game();
+        game.setId(1L);
+        game.setCurrentTurnIndex(0);
+        game.setTurnPhase(TurnPhase.ACTION.toString());
+        game.setGamePhase("PLAYING");
+        game.setRobberMovedAfterSevenRoll(true);
+        game.setBoard(new Board());
+        game.setEventLog(List.of("event"));
+        game.setChatMessages(List.of("chat"));
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setName("Player1");
+        player.setOnline(true);
+        game.setPlayers(List.of(player));
+
+        given(gameService.heartbeatGame(1L, "token-123")).willReturn(game);
+
+        MockHttpServletRequestBuilder postRequest = post("/games/1/heartbeat")
+                .header("Authorization", "token-123");
+
+        mockMvc.perform(postRequest)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(1)))
+                .andExpect(jsonPath("$.currentTurnIndex", is(0)))
+                .andExpect(jsonPath("$.turnPhase", is("ACTION")))
+                .andExpect(jsonPath("$.gamePhase", is("PLAYING")))
+                .andExpect(jsonPath("$.players[0].id", is(10)))
+                .andExpect(jsonPath("$.players[0].online", is(true)))
+                .andExpect(jsonPath("$.robberMovedAfterSevenRoll", is(true)))
+                .andExpect(jsonPath("$.board").doesNotExist())
+                .andExpect(jsonPath("$.eventLog").doesNotExist())
+                .andExpect(jsonPath("$.chatMessages").doesNotExist());
+    }
+
+    @Test
     void getGameAmbience_missingToken_returnsUnauthorized() throws Exception {
         given(gameService.getGameById(1L, null))
                 .willThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authorization token."));
