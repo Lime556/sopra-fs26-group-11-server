@@ -34,6 +34,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.DiceRollDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameAmbienceDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameChatMessageDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.PortGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameStateDTO;
@@ -45,7 +46,6 @@ import ch.uzh.ifi.hase.soprafs26.service.AmbienceService;
 import ch.uzh.ifi.hase.soprafs26.service.GameService;
 import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutionResult;
 import ch.uzh.ifi.hase.soprafs26.service.bot.BotActionExecutorService;
-
 @RestController
 public class GameController {
 
@@ -58,6 +58,7 @@ public class GameController {
         "PLAYER_TRADE_FINALIZE",
         "DEVELOPMENT_CARD_BOUGHT",
         "DEVELOPMENT_CARD_PLAYED_KNIGHT",
+
         "DEVELOPMENT_CARD_PLAYED_ROAD_BUILDING",
         "DEVELOPMENT_CARD_PLAYED_YEAR_OF_PLENTY",
         "DEVELOPMENT_CARD_PLAYED_MONOPOLY",
@@ -597,10 +598,18 @@ public class GameController {
         dto.setHexTiles(board.getHexTiles());
         dto.setIntersections(board.getIntersections());
         dto.setEdges(board.getEdges());
-        dto.setPorts(board.getPorts());
+        dto.setPorts(convertPortsToDto(board.getBoats()));
         dto.setBoats(convertBoatsToDto(board.getBoats()));
         dto.setHexTile_DiceNumbers(board.getHexTile_DiceNumbers());
         return dto;
+    }
+
+    private List<PortGetDTO> convertPortsToDto(List<Boat> ports) {
+        if (ports == null) {
+            return Collections.emptyList();
+        }
+
+        return ports.stream().map(this::convertPortToDto).toList();
     }
 
     private List<BoatGetDTO> convertBoatsToDto(List<Boat> boats) {
@@ -609,6 +618,15 @@ public class GameController {
         }
 
         return boats.stream().map(this::convertBoatToDto).toList();
+    }
+
+    private PortGetDTO convertPortToDto(Boat boat) {
+        PortGetDTO dto = new PortGetDTO();
+        dto.setId(boat.getId());
+        dto.setHexId(boat.getHexId());
+        dto.setType(boat.getBoatType());
+        dto.setCorners(List.of(boat.getFirstCorner(), boat.getSecondCorner()));
+        return dto;
     }
 
     private BoatGetDTO convertBoatToDto(Boat boat) {
