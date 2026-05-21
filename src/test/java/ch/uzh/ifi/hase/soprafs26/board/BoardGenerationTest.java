@@ -6,10 +6,15 @@ import ch.uzh.ifi.hase.soprafs26.entity.Board;
 import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -20,19 +25,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class BoardGenerationTest {
 
 	@Test
-	public void generateBoard_staticLayout_isCreatedCorrectly() {
+	public void generateBoard_randomizedPorts_areCreatedCorrectly() {
 		Board board = new Board();
 
 		List<String> generatedTiles = board.generateBoard();
 
-		List<String> expectedPorts = List.of(
-				"STANDARD", "BRICK", "STONE", "WHEAT", "WOOD",
-				"STANDARD", "SHEEP", "STANDARD", "STANDARD"
-		);
-
 		assertEquals(19, generatedTiles.size());
 		assertEquals(19, board.getHexTile_DiceNumbers().size());
 		assertEquals(generatedTiles, board.getHexTiles());
+		assertEquals(9, board.getPorts().size());
+		assertEquals(1, Collections.frequency(board.getPorts(), "WOOD"));
+		assertEquals(1, Collections.frequency(board.getPorts(), "BRICK"));
+		assertEquals(1, Collections.frequency(board.getPorts(), "SHEEP"));
+		assertEquals(1, Collections.frequency(board.getPorts(), "WHEAT"));
+		assertEquals(1, Collections.frequency(board.getPorts(), "ORE"));
+		assertEquals(4, Collections.frequency(board.getPorts(), "STANDARD"));
 
 		assertEquals(1, Collections.frequency(generatedTiles, "DESERT"));
 		assertEquals(4, Collections.frequency(generatedTiles, "SHEEP"));
@@ -55,7 +62,8 @@ public class BoardGenerationTest {
 		assertEquals(1, Collections.frequency(diceNumbers, 12));
 		assertEquals(0, Collections.frequency(diceNumbers, 7));
 
-		assertEquals(expectedPorts, board.getPorts());
+		assertPortsRespectBaseGameSpacing(board);
+		assertPortsDoNotShareCorners(board);
 	}
 
 	@Test
@@ -286,6 +294,117 @@ public class BoardGenerationTest {
 			return (T) method.invoke(target, args);
 		} catch (Exception exception) {
 			throw new AssertionError("Failed to invoke private method " + methodName, exception);
+		}
+	}
+
+	private void assertPortsDoNotShareCorners(Board board) {
+		Set<String> occupiedCornerKeys = new HashSet<>();
+
+		for (var port : board.getBoats()) {
+			double[] center = invokePrivate(board, "toPixel", new Class<?>[] {int.class}, port.getHexId());
+			double[] firstCornerPoint = invokePrivate(board, "getCornerPoint", new Class<?>[] {double.class, double.class, int.class}, center[0], center[1], port.getFirstCorner());
+			double[] secondCornerPoint = invokePrivate(board, "getCornerPoint", new Class<?>[] {double.class, double.class, int.class}, center[0], center[1], port.getSecondCorner());
+			String firstCornerKey = invokePrivate(board, "formatPoint", new Class<?>[] {double.class, double.class}, firstCornerPoint[0], firstCornerPoint[1]);
+			String secondCornerKey = invokePrivate(board, "formatPoint", new Class<?>[] {double.class, double.class}, secondCornerPoint[0], secondCornerPoint[1]);
+
+			assertTrue(occupiedCornerKeys.add(firstCornerKey));
+			assertTrue(occupiedCornerKeys.add(secondCornerKey));
+		}
+	}
+
+	private void assertPortsRespectBaseGameSpacing(Board board) {
+		List<CoastalPortPosition> orderedCandidates = loadOrderedCoastalPortCandidates(board);
+		List<Integer> selectedIndices = new ArrayList<>();
+
+		for (var port : board.getBoats()) {
+			selectedIndices.add(findCandidateIndex(orderedCandidates, port));
+		}
+
+		for (int i = 0; i < selectedIndices.size(); i++) {
+			int currentIndex = selectedIndices.get(i);
+			int nextIndex = selectedIndices.get((i + 1) % selectedIndices.size());
+			int spacing = (nextIndex - currentIndex + orderedCandidates.size()) % orderedCandidates.size();
+
+			assertTrue(spacing >= 3, "Ports must leave at least two coastal edges between neighboring ports.");
+		}
+	}
+
+	private List<CoastalPortPosition> loadOrderedCoastalPortCandidates(Board board) {
+		List<?> rawCandidates = invokePrivate(board, "buildCoastalPortCandidates", new Class<?>[] {});
+		List<CoastalPortPosition> orderedCandidates = new ArrayList<>();
+
+		for (Object candidate : rawCandidates) {
+			int hexId = readPrivateIntField(candidate, "hexId");
+			int firstCorner = readPrivateIntField(candidate, "firstCorner");
+			int secondCorner = readPrivateIntField(candidate, "secondCorner");
+			double[] center = invokePrivate(board, "toPixel", new Class<?>[] {int.class}, hexId);
+			double[] firstCornerPoint = invokePrivate(board, "getCornerPoint", new Class<?>[] {double.class, double.class, int.class}, center[0], center[1], firstCorner);
+			double[] secondCornerPoint = invokePrivate(board, "getCornerPoint", new Class<?>[] {double.class, double.class, int.class}, center[0], center[1], secondCorner);
+
+			orderedCandidates.add(new CoastalPortPosition(
+				hexId,
+				firstCorner,
+				secondCorner,
+				(firstCornerPoint[0] + secondCornerPoint[0]) / 2.0,
+				(firstCornerPoint[1] + secondCornerPoint[1]) / 2.0
+			));
+		}
+
+		double centerX = orderedCandidates.stream().mapToDouble(candidate -> candidate.midpointX).average().orElse(0.0);
+		double centerY = orderedCandidates.stream().mapToDouble(candidate -> candidate.midpointY).average().orElse(0.0);
+
+		orderedCandidates.sort(
+			Comparator.comparingDouble((CoastalPortPosition candidate) -> Math.atan2(candidate.midpointY - centerY, candidate.midpointX - centerX))
+				.thenComparingInt(candidate -> candidate.hexId)
+				.thenComparingInt(candidate -> candidate.firstCorner)
+				.thenComparingInt(candidate -> candidate.secondCorner)
+		);
+
+		for (int i = 0; i < orderedCandidates.size(); i++) {
+			orderedCandidates.get(i).index = i;
+		}
+
+		return orderedCandidates;
+	}
+
+	private int findCandidateIndex(List<CoastalPortPosition> orderedCandidates, Object port) {
+		int hexId = (Integer) invokePrivate(port, "getHexId", new Class<?>[] {});
+		int firstCorner = (Integer) invokePrivate(port, "getFirstCorner", new Class<?>[] {});
+		int secondCorner = (Integer) invokePrivate(port, "getSecondCorner", new Class<?>[] {});
+
+		for (CoastalPortPosition candidate : orderedCandidates) {
+			if (candidate.hexId == hexId && candidate.firstCorner == firstCorner && candidate.secondCorner == secondCorner) {
+				return candidate.index;
+			}
+		}
+
+		throw new AssertionError("Could not match generated port to a coastal edge candidate.");
+	}
+
+	private int readPrivateIntField(Object target, String fieldName) {
+		try {
+			Field field = target.getClass().getDeclaredField(fieldName);
+			field.setAccessible(true);
+			return field.getInt(target);
+		} catch (Exception exception) {
+			throw new AssertionError("Failed to read private field " + fieldName, exception);
+		}
+	}
+
+	private static final class CoastalPortPosition {
+		private final int hexId;
+		private final int firstCorner;
+		private final int secondCorner;
+		private final double midpointX;
+		private final double midpointY;
+		private int index;
+
+		private CoastalPortPosition(int hexId, int firstCorner, int secondCorner, double midpointX, double midpointY) {
+			this.hexId = hexId;
+			this.firstCorner = firstCorner;
+			this.secondCorner = secondCorner;
+			this.midpointX = midpointX;
+			this.midpointY = midpointY;
 		}
 	}
 }

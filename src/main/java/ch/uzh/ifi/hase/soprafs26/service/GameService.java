@@ -15,8 +15,8 @@ import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -35,7 +35,6 @@ import ch.uzh.ifi.hase.soprafs26.entity.Edge;
 import ch.uzh.ifi.hase.soprafs26.entity.Game;
 import ch.uzh.ifi.hase.soprafs26.entity.GamePhase;
 import ch.uzh.ifi.hase.soprafs26.entity.Intersection;
-import ch.uzh.ifi.hase.soprafs26.entity.Lobby;
 import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.Road;
@@ -51,6 +50,7 @@ import ch.uzh.ifi.hase.soprafs26.rest.dto.GameEventDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GamePostDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.GameVersionDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.PlayerGetDTO;
+import ch.uzh.ifi.hase.soprafs26.rest.dto.PortGetDTO;
 import ch.uzh.ifi.hase.soprafs26.rest.dto.RollDiceRequestDTO;
 
 @Service
@@ -2415,10 +2415,57 @@ public class GameService {
         board.setHexTiles(boardGetDTO.getHexTiles());
         board.setIntersections(boardGetDTO.getIntersections());
         board.setEdges(boardGetDTO.getEdges());
-        board.setPorts(boardGetDTO.getPorts());
-        board.setBoats(convertBoatDtosToEntity(boardGetDTO.getBoats()));
+        board.setPorts(extractPortTypes(boardGetDTO.getPorts(), boardGetDTO.getBoats()));
+        board.setBoats(convertPortDtosToEntity(boardGetDTO.getPorts(), boardGetDTO.getBoats()));
         board.setHexTile_DiceNumbers(boardGetDTO.getHexTile_DiceNumbers());
         return board;
+    }
+
+    private List<String> extractPortTypes(List<PortGetDTO> ports, List<BoatGetDTO> boats) {
+        if (ports != null) {
+            List<String> portTypes = new ArrayList<>();
+            for (PortGetDTO port : ports) {
+                portTypes.add(port == null ? null : port.getType());
+            }
+            return portTypes;
+        }
+
+        if (boats != null) {
+            List<String> portTypes = new ArrayList<>();
+            for (BoatGetDTO boat : boats) {
+                portTypes.add(boat == null ? null : boat.getBoatType());
+            }
+            return portTypes;
+        }
+
+        return Collections.emptyList();
+    }
+
+    private List<Boat> convertPortDtosToEntity(List<PortGetDTO> ports, List<BoatGetDTO> boats) {
+        if (ports != null) {
+            List<Boat> convertedPorts = new ArrayList<>();
+            for (PortGetDTO port : ports) {
+                convertedPorts.add(convertPortDtoToEntity(port));
+            }
+            return convertedPorts;
+        }
+
+        return convertBoatDtosToEntity(boats);
+    }
+
+    private Boat convertPortDtoToEntity(PortGetDTO portDto) {
+        Boat boat = new Boat();
+        boat.setId(portDto.getId());
+        boat.setBoatType(portDto.getType());
+
+        List<Integer> corners = portDto.getCorners();
+        if (corners != null && corners.size() >= 2) {
+            boat.setFirstCorner(corners.get(0));
+            boat.setSecondCorner(corners.get(1));
+        }
+
+        boat.setHexId(portDto.getHexId());
+        return boat;
     }
 
     private List<Boat> convertBoatDtosToEntity(List<BoatGetDTO> boats) {
