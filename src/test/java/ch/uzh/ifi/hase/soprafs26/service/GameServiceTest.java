@@ -1677,6 +1677,76 @@ class GameServiceTest {
     }
 
     @Test
+    void recalculateVictoryState_belowTargetClearsStaleFinishedPhase() throws Exception {
+        Game game = new Game();
+        game.setGamePhase("FINISHED");
+        game.setFinishedAt(java.time.LocalDateTime.now());
+        game.setTargetVictoryPoints(10);
+        game.setBoard(new Board());
+
+        Player player = new Player();
+        player.setId(1L);
+        player.setSettlementPoints(9);
+        player.setCityPoints(0);
+        player.setDevelopmentCardVictoryPoints(0);
+        player.setHasLongestRoad(false);
+        player.setHasLargestArmy(false);
+        game.setPlayers(List.of(player));
+
+        invoke("recalculateVictoryState", new Class[] {Game.class}, game);
+
+        assertNull(game.getWinner());
+        assertNull(game.getFinishedAt());
+        assertEquals("ACTIVE", game.getGamePhase());
+        assertEquals(9, player.getVictoryPoints());
+    }
+
+    @Test
+    void validatePlayerTradeResponse_acceptBotTrade_finalizesTradeImmediately() {
+        Game game = new Game();
+        game.setId(171L);
+        game.setGamePhase("ACTIVE");
+
+        Player bot = new Player();
+        bot.setId(10L);
+        bot.setName("Bot 1");
+        bot.setBot(true);
+        bot.setWood(1);
+        bot.setOre(0);
+
+        Player human = new Player();
+        human.setId(20L);
+        human.setName(user.getUsername());
+        human.setUser(user);
+        human.setWood(0);
+        human.setOre(1);
+
+        game.setPlayers(List.of(bot, human));
+
+        Mockito.when(gameRepository.findById(171L)).thenReturn(Optional.of(game));
+        Mockito.when(gameRepository.saveAndFlush(Mockito.any(Game.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+        GameEventDTO accept = new GameEventDTO();
+        accept.setSourcePlayerId(bot.getId());
+        accept.setTargetPlayerId(human.getId());
+        accept.setTradeAction("ACCEPT");
+        accept.setTradeRequestId("bot-10-test");
+        accept.setGiveResources(Map.of("wood", 1));
+        accept.setReceiveResources(Map.of("ore", 1));
+
+        Game result = gameService.validatePlayerTradeResponse(171L, "valid-token", accept);
+
+        assertEquals(0, bot.getWood());
+        assertEquals(1, bot.getOre());
+        assertEquals(1, human.getWood());
+        assertEquals(0, human.getOre());
+        assertNotNull(result.getLatestTradeRequest());
+        assertTrue(result.getLatestTradeRequest().contains("PLAYER_TRADE_FINALIZE"));
+        Mockito.verify(gameRepository).saveAndFlush(game);
+    }
+
+    @Test
     void recalculateVictoryState_fiveConnectedRoads_setsLongestRoad() {
         Game game = new Game();
         game.setId(1L);
