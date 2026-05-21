@@ -366,6 +366,10 @@ public class GameController {
         gameEventDTO.setType("PLAYER_TRADE");
         gameEventDTO.setTradeAction("REQUEST");
         Game game = gameService.validatePlayerTradeRequest(gameId, extractToken(authorizationHeader), gameEventDTO);
+        Game gameWithBotResponses = gameService.autoRespondBotsToTradeRequest(gameId, extractToken(authorizationHeader), gameEventDTO);
+        if (gameWithBotResponses != null) {
+            game = gameWithBotResponses;
+        }
         return convertGameToDto(game);
     }
 

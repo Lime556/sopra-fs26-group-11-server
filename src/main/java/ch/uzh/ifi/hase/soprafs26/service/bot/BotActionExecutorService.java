@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +20,7 @@ import ch.uzh.ifi.hase.soprafs26.service.GameService;
 @Service
 public class BotActionExecutorService {
     private static final Logger log = LoggerFactory.getLogger(BotActionExecutorService.class);
-    private static final ConcurrentMap<Long, Object> GAME_LOCKS = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Long, ReentrantLock> GAME_LOCKS = new ConcurrentHashMap<>();
 
     private final GameService gameService;
     private final BotFallbackService botFallbackService;
@@ -40,9 +41,24 @@ public class BotActionExecutorService {
     }
 
     public BotActionExecutionResult executeBotActionWithResult(Long gameId, String playerToken, boolean useAi) {
-        Object lock = GAME_LOCKS.computeIfAbsent(gameId == null ? -1L : gameId, ignored -> new Object());
-        synchronized (lock) {
+        Long lockKey = gameId == null ? -1L : gameId;
+        ReentrantLock lock = GAME_LOCKS.computeIfAbsent(lockKey, ignored -> new ReentrantLock());
+        if (!lock.tryLock()) {
+            log.info("Bot action skipped for game {} because another bot action is already running.", gameId);
+            return new BotActionExecutionResult(
+                gameService.getGameById(gameId, playerToken),
+                null,
+                useAi,
+                false,
+                false,
+                "bot action already running"
+            );
+        }
+
+        try {
             return executeBotActionWithResultLocked(gameId, playerToken, useAi);
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -99,7 +115,16 @@ public class BotActionExecutorService {
         }
 
         try {
-            return new BotActionExecutionResult(execute(gameId, playerToken, action), playerId, useAi, aiConsultantUsed, fallbackUsed, fallbackReason);
+            Game executedGame = execute(gameId, playerToken, action);
+            boolean forcedDiceRoll = BotActionType.ROLL_DICE.equals(action.getType());
+            return new BotActionExecutionResult(
+                executedGame,
+                playerId,
+                useAi,
+                aiConsultantUsed,
+                forcedDiceRoll ? false : fallbackUsed,
+                forcedDiceRoll ? null : fallbackReason
+            );
         } catch (ResponseStatusException exception) {
             if (BotActionType.END_TURN.equals(action.getType())) {
                 throw exception;
@@ -186,7 +211,7 @@ public class BotActionExecutorService {
             case BUILD_CITY -> 1050;
             case BUILD_INITIAL_ROAD -> 700;
             case BUILD_ROAD -> 180;
-            case BUY_DEVELOPMENT_CARD -> 120;
+            case BUY_DEVELOPMENT_CARD -> 320;
             case BANK_TRADE -> 1060;
             case PLAYER_TRADE -> 980;
             case MOVE_ROBBER -> 400;
@@ -304,7 +329,7 @@ public class BotActionExecutorService {
             );
             case BUY_DEVELOPMENT_CARD -> gameService.buyDevelopmentCard(gameId, playerToken, action.getPlayerId());
             case BANK_TRADE -> gameService.applyBankTrade(gameId, playerToken, tradeEvent(action, "BANK_TRADE"));
-            case PLAYER_TRADE -> gameService.applyBotPlayerTrade(gameId, playerToken, tradeEvent(action, "PLAYER_TRADE_FINALIZE"));
+            case PLAYER_TRADE -> executePlayerTrade(gameId, playerToken, action);
             case END_TURN -> gameService.endTurn(gameId, playerToken);
             case NONE -> gameService.getGameById(gameId, playerToken);
         };
@@ -312,6 +337,22 @@ public class BotActionExecutorService {
 
     private boolean isTradeAction(BotActionType type) {
         return BotActionType.BANK_TRADE.equals(type) || BotActionType.PLAYER_TRADE.equals(type);
+    }
+
+    private Game executePlayerTrade(Long gameId, String playerToken, BotAction action) {
+        try {
+            return gameService.applyBotPlayerTrade(gameId, playerToken, tradeEvent(action, "PLAYER_TRADE_FINALIZE"));
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode() == null || exception.getStatusCode().value() != 403) {
+                throw exception;
+            }
+        }
+
+        GameEventDTO event = tradeEvent(action, "PLAYER_TRADE");
+        event.setTradeAction("REQUEST");
+        event.setTradeRequestId("bot-" + action.getPlayerId() + "-" + System.currentTimeMillis());
+        event.setMessage("Bot requested a trade.");
+        return gameService.appendGameEventAndReturnGame(gameId, playerToken, event);
     }
 
     private GameEventDTO tradeEvent(BotAction action, String type) {
