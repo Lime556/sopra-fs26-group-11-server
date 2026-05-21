@@ -3,14 +3,15 @@ package ch.uzh.ifi.hase.soprafs26.entity;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
-import java.util.HashMap;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Random;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class Board implements Serializable {
@@ -36,10 +37,9 @@ public class Board implements Serializable {
         "BRICK", "WHEAT", "SHEEP"
     );
 
-    // Fixed port order (around the board): 4x generic and 5x resource-specific.
-    private static final List<String> STANDARD_PORTS = Arrays.asList(
-        "STANDARD", "BRICK", "STONE", "WHEAT", "WOOD",
-        "STANDARD", "SHEEP", "STANDARD", "STANDARD"
+    private static final List<String> STANDARD_PORT_TYPES = Arrays.asList(
+        "WOOD", "BRICK", "SHEEP", "WHEAT", "ORE",
+        "STANDARD", "STANDARD", "STANDARD", "STANDARD"
     );
 
     // Numbers according to die value to generate the board, -1 for desert tile
@@ -62,6 +62,8 @@ public class Board implements Serializable {
     );
 
     private static final int MAX_BOARD_GENERATION_ATTEMPTS = 100;
+    private static final int EXPECTED_PORT_COUNT = 9;
+    private static final List<Integer> STANDARD_PORT_GAP_PATTERN = Arrays.asList(2, 2, 3, 2, 2, 3, 2, 2, 3);
 
     private List<String> hexTiles;
     private List<Intersection> intersections;
@@ -118,31 +120,137 @@ public class Board implements Serializable {
         this.hexTile_DiceNumbers = hexTile_DiceNumbers;
     }
 
-    private List<Boat> createDefaultBoats(List<String> portTypes) {
-        List<Boat> defaultBoats = new ArrayList<>();
-        int[][] anchors = {
-            {16, 0, 5},
-            {2, 4, 3},
-            {3, 4, 5},
-            {4, 3, 4},
-            {7, 4, 5},
-            {12, 5, 0},
-            {13, 2, 3},
-            {19, 0, 1},
-            {18, 1, 2}
-        };
+    private List<String> createRandomizedPortTypes(Random random) {
+        List<String> randomizedPortTypes = new ArrayList<>(STANDARD_PORT_TYPES);
+        Collections.shuffle(randomizedPortTypes, random);
+        return randomizedPortTypes;
+    }
 
-        for (int i = 0; i < anchors.length; i++) {
+    private List<Boat> createRandomizedBoats(List<String> portTypes, Random random) {
+        List<CoastalPortCandidate> coastalCandidates = buildCoastalPortCandidates();
+        if (coastalCandidates.size() < EXPECTED_PORT_COUNT) {
+            throw new IllegalStateException("Board generation found too few coastal edges for ports.");
+        }
+
+        List<CoastalPortCandidate> orderedCandidates = orderCoastalPortCandidates(coastalCandidates);
+        int rotationOffset = random.nextInt(orderedCandidates.size());
+        List<CoastalPortCandidate> rotatedCandidates = rotateCandidates(orderedCandidates, rotationOffset);
+        List<CoastalPortCandidate> selectedCandidates = selectPortCandidates(rotatedCandidates);
+
+        return buildRandomizedBoats(selectedCandidates, portTypes);
+    }
+
+    private List<CoastalPortCandidate> orderCoastalPortCandidates(List<CoastalPortCandidate> coastalCandidates) {
+        double centerX = coastalCandidates.stream().mapToDouble(candidate -> candidate.midpointX).average().orElse(0.0);
+        double centerY = coastalCandidates.stream().mapToDouble(candidate -> candidate.midpointY).average().orElse(0.0);
+
+        return coastalCandidates.stream()
+            .sorted(
+                Comparator.comparingDouble((CoastalPortCandidate candidate) -> calculatePolarAngle(candidate, centerX, centerY))
+                    .thenComparingInt(candidate -> candidate.hexId)
+                    .thenComparingInt(candidate -> candidate.firstCorner)
+                    .thenComparingInt(candidate -> candidate.secondCorner)
+            )
+            .collect(Collectors.toList());
+    }
+
+    private double calculatePolarAngle(CoastalPortCandidate candidate, double centerX, double centerY) {
+        return Math.atan2(candidate.midpointY - centerY, candidate.midpointX - centerX);
+    }
+
+    private List<CoastalPortCandidate> rotateCandidates(List<CoastalPortCandidate> orderedCandidates, int rotationOffset) {
+        List<CoastalPortCandidate> rotatedCandidates = new ArrayList<>(orderedCandidates);
+        Collections.rotate(rotatedCandidates, -rotationOffset);
+        return rotatedCandidates;
+    }
+
+    private List<CoastalPortCandidate> selectPortCandidates(List<CoastalPortCandidate> orderedCandidates) {
+        List<CoastalPortCandidate> selectedCandidates = new ArrayList<>();
+        int candidateIndex = 0;
+
+        for (int gap : STANDARD_PORT_GAP_PATTERN) {
+            if (candidateIndex >= orderedCandidates.size()) {
+                throw new IllegalStateException("Could not generate a valid port sequence with the coastal edges available.");
+            }
+
+            selectedCandidates.add(orderedCandidates.get(candidateIndex));
+            candidateIndex += gap + 1;
+        }
+
+        if (selectedCandidates.size() != EXPECTED_PORT_COUNT) {
+            throw new IllegalStateException("Could not generate a valid port sequence with the coastal edges available.");
+        }
+
+        return selectedCandidates;
+    }
+
+    private List<Boat> buildRandomizedBoats(List<CoastalPortCandidate> selectedCandidates, List<String> portTypes) {
+        List<Boat> randomizedBoats = new ArrayList<>();
+
+        for (int i = 0; i < selectedCandidates.size(); i++) {
+            CoastalPortCandidate candidate = selectedCandidates.get(i);
             Boat boat = new Boat();
             boat.setId(i + 1);
             boat.setBoatType(portTypes != null && i < portTypes.size() ? portTypes.get(i) : "STANDARD");
-            boat.setHexId(anchors[i][0]);
-            boat.setFirstCorner(anchors[i][1]);
-            boat.setSecondCorner(anchors[i][2]);
-            defaultBoats.add(boat);
+            boat.setHexId(candidate.hexId);
+            boat.setFirstCorner(candidate.firstCorner);
+            boat.setSecondCorner(candidate.secondCorner);
+            randomizedBoats.add(boat);
         }
 
-        return defaultBoats;
+        return randomizedBoats;
+    }
+
+    private List<CoastalPortCandidate> buildCoastalPortCandidates() {
+        Map<String, Integer> intersectionKeyToId = new LinkedHashMap<>();
+        Map<String, Integer> edgeCounts = new HashMap<>();
+        Map<String, CoastalPortCandidate> edgeCandidates = new LinkedHashMap<>();
+        int nextIntersectionId = 0;
+
+        for (int hexId = 1; hexId <= 19; hexId++) {
+            double[] center = toPixel(hexId);
+            int[] cornerIds = new int[6];
+
+            for (int cornerIndex = 0; cornerIndex < 6; cornerIndex++) {
+                double[] cornerPoint = getCornerPoint(center[0], center[1], cornerIndex);
+                String cornerKey = formatPoint(cornerPoint[0], cornerPoint[1]);
+
+                Integer intersectionId = intersectionKeyToId.get(cornerKey);
+                if (intersectionId == null) {
+                    intersectionId = nextIntersectionId++;
+                    intersectionKeyToId.put(cornerKey, intersectionId);
+                }
+
+                cornerIds[cornerIndex] = intersectionId;
+            }
+
+            for (int edgeIndex = 0; edgeIndex < 6; edgeIndex++) {
+                int firstCornerId = cornerIds[edgeIndex];
+                int secondCornerId = cornerIds[(edgeIndex + 1) % 6];
+                String edgeKey = createCanonicalEdgeKey(firstCornerId, secondCornerId);
+                double[] firstCornerPoint = getCornerPoint(center[0], center[1], edgeIndex);
+                double[] secondCornerPoint = getCornerPoint(center[0], center[1], (edgeIndex + 1) % 6);
+
+                edgeCounts.put(edgeKey, edgeCounts.getOrDefault(edgeKey, 0) + 1);
+                edgeCandidates.putIfAbsent(
+                    edgeKey,
+                    new CoastalPortCandidate(
+                        hexId,
+                        edgeIndex,
+                        (edgeIndex + 1) % 6,
+                        firstCornerId,
+                        secondCornerId,
+                        (firstCornerPoint[0] + secondCornerPoint[0]) / 2.0,
+                        (firstCornerPoint[1] + secondCornerPoint[1]) / 2.0
+                    )
+                );
+            }
+        }
+
+        return edgeCandidates.entrySet().stream()
+            .filter(entry -> edgeCounts.getOrDefault(entry.getKey(), 0) == 1)
+            .map(Map.Entry::getValue)
+            .collect(Collectors.toList());
     }
 
     private void createDefaultIntersectionsAndEdges() {
@@ -413,8 +521,8 @@ public List<Integer> getAdjacentHexIdsForIntersection(Integer intersectionId) {
     public List<String> generateBoard() {
         Random random = new Random();
         createDefaultIntersectionsAndEdges();
-        this.ports = new ArrayList<>(STANDARD_PORTS);
-        this.boats = createDefaultBoats(this.ports);
+        this.ports = createRandomizedPortTypes(random);
+        this.boats = createRandomizedBoats(this.ports, random);
 
         for (int attempt = 0; attempt < MAX_BOARD_GENERATION_ATTEMPTS; attempt++) {
             List<String> randomizedTiles = createRandomizedHexTiles(random);
@@ -485,5 +593,33 @@ public List<Integer> getAdjacentHexIdsForIntersection(Integer intersectionId) {
         double deltaY = Math.abs(firstCoordinates[1] - secondCoordinates[1]);
 
         return (deltaX == 1.0 && deltaY == 0.0) || (deltaX == 0.5 && deltaY == 1.0);
+    }
+
+    private static final class CoastalPortCandidate {
+        private final int hexId;
+        private final int firstCorner;
+        private final int secondCorner;
+        private final int firstCornerId;
+        private final int secondCornerId;
+        private final double midpointX;
+        private final double midpointY;
+
+        private CoastalPortCandidate(
+            int hexId,
+            int firstCorner,
+            int secondCorner,
+            int firstCornerId,
+            int secondCornerId,
+            double midpointX,
+            double midpointY
+        ) {
+            this.hexId = hexId;
+            this.firstCorner = firstCorner;
+            this.secondCorner = secondCorner;
+            this.firstCornerId = firstCornerId;
+            this.secondCornerId = secondCornerId;
+            this.midpointX = midpointX;
+            this.midpointY = midpointY;
+        }
     }
 }

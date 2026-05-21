@@ -10,7 +10,7 @@ public class BoardGetDTO {
     private List<String> hexTiles;
     private List<Intersection> intersections;
     private List<Edge> edges;
-    private List<String> ports;
+    private List<PortGetDTO> ports;
     private List<BoatGetDTO> boats;
     private List<Integer> hexTile_DiceNumbers;
 
@@ -46,11 +46,11 @@ public class BoardGetDTO {
         this.edges = edges;
     }
 
-    public List<String> getPorts() {
+    public List<PortGetDTO> getPorts() {
         return ports;
     }
 
-    public void setPorts(List<String> ports) {
+    public void setPorts(List<PortGetDTO> ports) {
         this.ports = ports;
     }
 
