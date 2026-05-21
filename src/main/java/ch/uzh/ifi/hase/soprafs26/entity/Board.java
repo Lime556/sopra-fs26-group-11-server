@@ -126,6 +126,12 @@ public class Board implements Serializable {
         return randomizedPortTypes;
     }
 
+    private List<Integer> createRandomizedPortGaps(Random random) {
+        List<Integer> randomizedPortGaps = new ArrayList<>(STANDARD_PORT_GAP_PATTERN);
+        Collections.shuffle(randomizedPortGaps, random);
+        return randomizedPortGaps;
+    }
+
     private List<Boat> createRandomizedBoats(List<String> portTypes, Random random) {
         List<CoastalPortCandidate> coastalCandidates = buildCoastalPortCandidates();
         if (coastalCandidates.size() < EXPECTED_PORT_COUNT) {
@@ -135,7 +141,8 @@ public class Board implements Serializable {
         List<CoastalPortCandidate> orderedCandidates = orderCoastalPortCandidates(coastalCandidates);
         int rotationOffset = random.nextInt(orderedCandidates.size());
         List<CoastalPortCandidate> rotatedCandidates = rotateCandidates(orderedCandidates, rotationOffset);
-        List<CoastalPortCandidate> selectedCandidates = selectPortCandidates(rotatedCandidates);
+        List<Integer> randomizedPortGaps = createRandomizedPortGaps(random);
+        List<CoastalPortCandidate> selectedCandidates = selectPortCandidates(rotatedCandidates, randomizedPortGaps);
 
         return buildRandomizedBoats(selectedCandidates, portTypes);
     }
@@ -164,11 +171,11 @@ public class Board implements Serializable {
         return rotatedCandidates;
     }
 
-    private List<CoastalPortCandidate> selectPortCandidates(List<CoastalPortCandidate> orderedCandidates) {
+    private List<CoastalPortCandidate> selectPortCandidates(List<CoastalPortCandidate> orderedCandidates, List<Integer> portGaps) {
         List<CoastalPortCandidate> selectedCandidates = new ArrayList<>();
         int candidateIndex = 0;
 
-        for (int gap : STANDARD_PORT_GAP_PATTERN) {
+        for (int gap : portGaps) {
             if (candidateIndex >= orderedCandidates.size()) {
                 throw new IllegalStateException("Could not generate a valid port sequence with the coastal edges available.");
             }
