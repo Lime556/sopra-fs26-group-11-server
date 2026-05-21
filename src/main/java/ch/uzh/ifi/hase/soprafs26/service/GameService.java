@@ -600,16 +600,7 @@ public class GameService {
 
         String result;
         if ("PLAYER_TRADE".equalsIgnoreCase(action) || "PLAYER_TRADE_FINALIZE".equalsIgnoreCase(action)) {
-            try {
-                result = objectMapper.writeValueAsString(gameEventDTO);
-                // Update specific trade fields to allow lightweight polling detection for all trade-related actions
-                // This ensures that all clients are notified of trade-related events immediately
-                // and can update their UI (e.g., trade response status or popup visibility)
-                game.setTradeRequestedAt(java.time.Instant.now());
-                game.setLatestTradeRequest(result);
-            } catch (JsonProcessingException exception) {
-                throw new IllegalStateException("Could not serialize game event.", exception);
-            }
+            result = serializeTradeEvent(game, gameEventDTO);
         } else if (Boolean.TRUE.equals(gameEventDTO.getBotAiFallbackUsed()) || Boolean.TRUE.equals(gameEventDTO.getBotAiConsultantUsed())) {
             try {
                 result = objectMapper.writeValueAsString(gameEventDTO);
@@ -628,6 +619,20 @@ public class GameService {
 
         appendStructuredEvent(game, sourcePlayer, action, result);
         return saveChangedGame(game);
+    }
+
+    private String serializeTradeEvent(Game game, GameEventDTO gameEventDTO) {
+        try {
+            String result = objectMapper.writeValueAsString(gameEventDTO);
+            // Update specific trade fields to allow lightweight polling detection for all trade-related actions
+            // This ensures that all clients are notified of trade-related events immediately
+            // and can update their UI (e.g., trade response status or popup visibility)
+            game.setTradeRequestedAt(java.time.Instant.now());
+            game.setLatestTradeRequest(result);
+            return result;
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize game event.", exception);
+        }
     }
 
     public Game addRoadToPlayer(Long gameId, String playerToken, Long playerId, Integer edgeId) {
@@ -1143,9 +1148,79 @@ public class GameService {
                     throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for player trade.");
                 }
             }
+
+            if (source.isBot()) {
+                Map<String, Integer> giveBundle;
+                if (tradeEvent.getGiveResources() != null) {
+                    giveBundle = normalizeTradeBundle(tradeEvent.getGiveResources());
+                } else {
+                    Integer giveAmount = tradeEvent.getGiveAmount() != null ? tradeEvent.getGiveAmount() : tradeEvent.getAmount();
+                    if (tradeEvent.getGiveResource() == null || giveAmount == null || giveAmount < 1) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+                    }
+                    giveBundle = createSingleResourceBundle(tradeEvent.getGiveResource(), giveAmount);
+                }
+                return executeAcceptedBotSourceTrade(game, players, source, target, giveBundle, receiveBundle, tradeEvent);
+            }
         }
 
         return appendGameEventAndReturnGame(gameId, playerToken, tradeEvent);
+    }
+
+    private Game executeAcceptedBotSourceTrade(
+        Game game,
+        List<Player> players,
+        Player source,
+        Player target,
+        Map<String, Integer> giveBundle,
+        Map<String, Integer> receiveBundle,
+        GameEventDTO originalTradeEvent
+    ) {
+        if (sumTradeBundle(giveBundle) < 1 || sumTradeBundle(receiveBundle) < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid player trade payload.");
+        }
+
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            int receiveAmount = receiveBundle.get(resource);
+            if (getResourceByName(source, resource) < giveAmount || getResourceByName(target, resource) < receiveAmount) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough resources for player trade.");
+            }
+        }
+
+        for (String resource : TRADE_RESOURCES) {
+            int giveAmount = giveBundle.get(resource);
+            int receiveAmount = receiveBundle.get(resource);
+
+            if (giveAmount > 0) {
+                setResourceByName(source, resource, getResourceByName(source, resource) - giveAmount);
+                setResourceByName(target, resource, getResourceByName(target, resource) + giveAmount);
+            }
+            if (receiveAmount > 0) {
+                setResourceByName(target, resource, getResourceByName(target, resource) - receiveAmount);
+                setResourceByName(source, resource, getResourceByName(source, resource) + receiveAmount);
+            }
+        }
+
+        game.setPlayers(players);
+
+        int totalGive = sumTradeBundle(giveBundle);
+        int totalReceive = sumTradeBundle(receiveBundle);
+        GameEventDTO finalizeEvent = new GameEventDTO();
+        finalizeEvent.setType("PLAYER_TRADE_FINALIZE");
+        finalizeEvent.setSourcePlayerId(source.getId());
+        finalizeEvent.setTargetPlayerId(target.getId());
+        finalizeEvent.setTradeRequestId(originalTradeEvent.getTradeRequestId());
+        finalizeEvent.setGiveResources(giveBundle);
+        finalizeEvent.setReceiveResources(receiveBundle);
+        finalizeEvent.setMessage(
+            describePlayer(source) + " traded with " + describePlayer(target)
+                + ": gave " + totalGive + " resources and received " + totalReceive + " resources"
+        );
+
+        String result = serializeTradeEvent(game, finalizeEvent);
+        appendStructuredEvent(game, describePlayer(source), "PLAYER_TRADE_FINALIZE", result);
+        return saveChangedGame(game);
     }
 
     public Game autoRespondBotsToTradeRequest(Long gameId, String playerToken, GameEventDTO tradeRequest) {
@@ -2667,6 +2742,9 @@ public class GameService {
         } else {
             game.setWinner(null);
             game.setFinishedAt(null);
+            if ("FINISHED".equals(game.getGamePhase())) {
+                game.setGamePhase(GamePhase.ACTIVE.toString());
+            }
         }
     }
 
