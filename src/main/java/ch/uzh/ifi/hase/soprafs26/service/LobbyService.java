@@ -19,6 +19,7 @@ import ch.uzh.ifi.hase.soprafs26.entity.LobbyParticipant;
 import ch.uzh.ifi.hase.soprafs26.entity.Player;
 import ch.uzh.ifi.hase.soprafs26.entity.User;
 import ch.uzh.ifi.hase.soprafs26.repository.GameRepository;
+import ch.uzh.ifi.hase.soprafs26.repository.LobbyInvitationRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyParticipantRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.LobbyRepository;
 import ch.uzh.ifi.hase.soprafs26.repository.PlayerRepository;
@@ -39,18 +40,21 @@ public class LobbyService {
     private final PlayerRepository playerRepository;
     private final UserService userService;
     private final LobbyParticipantRepository lobbyParticipantRepository;
+    private final LobbyInvitationRepository lobbyInvitationRepository;
     
     public LobbyService(
         LobbyRepository lobbyRepository,
         GameRepository gameRepository,
         PlayerRepository playerRepository,
         LobbyParticipantRepository lobbyParticipantRepository,
+        LobbyInvitationRepository lobbyInvitationRepository,
         UserService userService
     ) {
         this.lobbyRepository = lobbyRepository;
         this.gameRepository = gameRepository;
         this.playerRepository = playerRepository;
         this.lobbyParticipantRepository = lobbyParticipantRepository;
+        this.lobbyInvitationRepository = lobbyInvitationRepository;
         this.userService = userService;
     }
 
@@ -300,7 +304,7 @@ public class LobbyService {
         lobbyParticipantRepository.delete(participant);
 
         if (lobby.getParticipants().isEmpty()) {
-            lobbyRepository.delete(lobby);
+            deleteLobbyAndAssociations(lobby);
             return;
         }
 
@@ -405,7 +409,7 @@ public class LobbyService {
             lobbyParticipantRepository.delete(participant);
         }
         lobby.getParticipants().clear();
-        lobbyRepository.delete(lobby);
+        deleteLobbyAndAssociations(lobby);
     }
 
 
@@ -638,7 +642,7 @@ public class LobbyService {
             }
             lobby.getParticipants().clear();
             lobby.setHostParticipant(null);
-            lobbyRepository.delete(lobby);
+            deleteLobbyAndAssociations(lobby);
             return true;
         }
 
@@ -659,6 +663,12 @@ public class LobbyService {
                 .anyMatch(participant -> !participant.isBot()
                         && participant.getUser() != null
                         && participant.isOnline());
+    }
+
+    private void deleteLobbyAndAssociations(Lobby lobby) {
+        lobby.setHostParticipant(null);
+        lobbyInvitationRepository.deleteByLobby(lobby);
+        lobbyRepository.delete(lobby);
     }
 
     private LobbyParticipant findParticipantByUserOrThrow(Lobby lobby, User user) {
